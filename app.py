@@ -345,13 +345,12 @@ else:
                     except Exception as e: st.error(f"Erro: {e}")
 
     # ==========================================
-    # ABA 3: RADAR EM MASSA (ALVO & STOP LOSS) - NOVA!
+    # ABA 3: RADAR EM MASSA (ALVO & STOP LOSS)
     # ==========================================
     with aba_stop:
         st.subheader("🛡️ Radar de Risco Definido (Alvo & Stop Loss)")
         st.markdown("Nesta estratégia, o robô faz apenas **uma** entrada por sinal (sem preço médio) e aguarda o atingimento do Alvo ou do Stop de proteção.")
         
-        # Filtros desta aba organizados na tela principal para não poluir a barra lateral (Sidebar)
         st.markdown("##### ⚙️ Configurações da Varredura")
         cs1, cs2, cs3 = st.columns(3)
         with cs1:
@@ -415,21 +414,18 @@ else:
 
                     for i in range(1, len(df_back)):
                         if em_pos:
-                            # 1º Verifica se pegou o Stop (Prioridade por segurança em backtest diário)
                             if df_back['Low'].iloc[i] <= stop_price:
                                 trades.append({'Lucro (R$)': - (capital_stop * stop_dec), 'Situação': 'Stop Acionado ❌'})
                                 derrotas += 1
                                 em_pos = False
                                 continue
                             
-                            # 2º Verifica se pegou o Alvo
                             elif df_back['High'].iloc[i] >= take_profit:
                                 trades.append({'Lucro (R$)': capital_stop * alvo_dec, 'Situação': 'Gain Atingido ✅'})
                                 vitorias += 1
                                 em_pos = False
                                 continue
 
-                        # Verifica Sinal de Entrada (Repique)
                         condicao_entrada = (df_back['IFR_Prev'].iloc[i] < 25) and (df_back['IFR'].iloc[i] >= 25)
                         if condicao_entrada and not em_pos:
                             em_pos = True
@@ -453,7 +449,16 @@ else:
 
                     if len(trades) > 0:
                         df_t = pd.DataFrame(trades)
-                        ls_resumo.append({'Ativo': ativo, 'Total Trades': len(df_t), 'Acertos ✅': vitorias, 'Stops ❌': derrotas, 'Lucro R$': df_t['Lucro (R$)'].sum()})
+                        # AQUI ESTÁ O NOVO CÁLCULO DE PORCENTAGEM DE ACERTO!
+                        taxa_acerto = (vitorias / len(df_t)) * 100
+                        ls_resumo.append({
+                            'Ativo': ativo, 
+                            'Total Trades': len(df_t), 
+                            'Acertos ✅': vitorias, 
+                            'Stops ❌': derrotas, 
+                            'Taxa de Acerto': f"{taxa_acerto:.2f}%", 
+                            'Lucro R$': df_t['Lucro (R$)'].sum()
+                        })
 
                 except Exception as e: pass
                 time.sleep(0.1)
@@ -477,3 +482,4 @@ else:
                 df_resumo['Lucro R$'] = df_resumo['Lucro R$'].apply(lambda x: f"R$ {x:,.2f}")
                 st.dataframe(df_resumo, use_container_width=True, hide_index=True)
             else: st.warning("Nenhuma operação finalizada.")
+    
