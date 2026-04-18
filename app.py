@@ -119,7 +119,13 @@ else:
             ativos_selecionados = bdrs_elite if lista_escolhida == "BDRs Elite" else ibrx_selecao if lista_escolhida == "IBrX Seleção" else bdrs_elite + ibrx_selecao
             periodo_selecionado = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="r1_per")
             txt_alvo = st.number_input("Alvo (%):", value=3.0, step=0.5, key="r1_alvo")
+            
+            # Novo campo: Período do IFR
+            txt_ifr = st.number_input("Período do IFR:", min_value=2, max_value=50, value=8, step=1, key="r1_ifr")
+            
+            # Retornado ao formato de float (com casa decimal)
             txt_capital = st.number_input("Capital por Sinal (R$):", value=10000.0, step=1000.0, key="r1_cap")
+            
             tempo = st.radio("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="r1_tmp")
             btn_iniciar = st.button("🚀 Iniciar Varredura PM", use_container_width=True, type="primary", key="r1_btn")
 
@@ -145,7 +151,9 @@ else:
 
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     df_full = df_full.dropna()
-                    df_full['IFR'] = ta.rsi(df_full['Close'], length=8)
+                    
+                    # CÁLCULO DINÂMICO DO IFR DE ACORDO COM A ESCOLHA DO USUÁRIO
+                    df_full['IFR'] = ta.rsi(df_full['Close'], length=txt_ifr)
                     df_full['IFR_Prev'] = df_full['IFR'].shift(1)
                     df_full = df_full.dropna()
 
@@ -222,7 +230,7 @@ else:
             status_text.empty()
             progress_bar.empty()
 
-            st.subheader("🚀 Oportunidades Hoje (PM)")
+            st.subheader(f"🚀 Oportunidades Hoje (PM | IFR {txt_ifr})")
             if len(lista_sinais) > 0: st.dataframe(pd.DataFrame(lista_sinais), use_container_width=True, hide_index=True)
             else: st.info("Nenhum ativo deu sinal de entrada na última barra.")
 
@@ -255,6 +263,7 @@ else:
             lupa_capital = st.number_input("Capital por Sinal (R$):", value=10000.0, step=1000.0, key="l2_cap")
         with col3:
             lupa_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="l2_tmp")
+            lupa_ifr = st.number_input("Período do IFR:", min_value=2, max_value=50, value=8, step=1, key="l2_ifr")
             
         btn_raiox = st.button("🔍 Gerar Raio-X", type="primary", use_container_width=True, key="l2_btn")
 
@@ -276,7 +285,9 @@ else:
                         else:
                             df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                             df_full = df_full.dropna()
-                            df_full['IFR'] = ta.rsi(df_full['Close'], length=8)
+                            
+                            # CÁLCULO DINÂMICO DO IFR
+                            df_full['IFR'] = ta.rsi(df_full['Close'], length=lupa_ifr)
                             df_full['IFR_Prev'] = df_full['IFR'].shift(1)
                             df_full = df_full.dropna()
 
@@ -363,6 +374,7 @@ else:
         with cs3:
             capital_stop = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="s_cap")
             tempo_stop = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="s_tmp")
+            ifr_stop = st.number_input("Período do IFR:", min_value=2, max_value=50, value=8, step=1, key="s_ifr")
         
         btn_iniciar_stop = st.button("🚀 Iniciar Varredura (Alvo & Stop)", type="primary", use_container_width=True, key="s_btn")
 
@@ -389,7 +401,9 @@ else:
 
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     df_full = df_full.dropna()
-                    df_full['IFR'] = ta.rsi(df_full['Close'], length=8)
+                    
+                    # CÁLCULO DINÂMICO DO IFR
+                    df_full['IFR'] = ta.rsi(df_full['Close'], length=ifr_stop)
                     df_full['IFR_Prev'] = df_full['IFR'].shift(1)
                     df_full = df_full.dropna()
 
@@ -449,7 +463,6 @@ else:
 
                     if len(trades) > 0:
                         df_t = pd.DataFrame(trades)
-                        # AQUI ESTÁ O NOVO CÁLCULO DE PORCENTAGEM DE ACERTO!
                         taxa_acerto = (vitorias / len(df_t)) * 100
                         ls_resumo.append({
                             'Ativo': ativo, 
@@ -466,7 +479,7 @@ else:
             s_text.empty()
             p_bar.empty()
 
-            st.subheader("🚀 Oportunidades Hoje (Radar Stop)")
+            st.subheader(f"🚀 Oportunidades Hoje (Radar Stop | IFR {ifr_stop})")
             if len(ls_sinais) > 0: st.dataframe(pd.DataFrame(ls_sinais), use_container_width=True, hide_index=True)
             else: st.info("Nenhum ativo deu sinal de entrada na última barra.")
 
@@ -482,4 +495,3 @@ else:
                 df_resumo['Lucro R$'] = df_resumo['Lucro R$'].apply(lambda x: f"R$ {x:,.2f}")
                 st.dataframe(df_resumo, use_container_width=True, hide_index=True)
             else: st.warning("Nenhuma operação finalizada.")
-    
