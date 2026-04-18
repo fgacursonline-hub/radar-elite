@@ -42,7 +42,7 @@ def tela_login():
                 else:
                     st.error("❌ Usuário ou senha incorretos. Tente novamente.")
 
-# --- O CORAÇÃO DO SISTEMA (SÓ RODA SE AUTENTICADO) ---
+# --- O CORAÇÃO DO SISTEMA ---
 if not st.session_state['autenticado']:
     tela_login()
 else:
@@ -102,11 +102,10 @@ else:
     st.title("🎯 Plataforma Caçadores de Elite")
     st.markdown("Ferramentas quantitativas para exploração e análise de ativos.")
     
-    # CRIANDO AS DUAS ABAS PRINCIPAIS DO SITE
     aba_radar, aba_lupa = st.tabs(["📡 Radar em Massa", "🔬 Raio-X do Ativo"])
 
     # ==========================================
-    # ABA 1: RADAR EM MASSA (CÓDIGO ORIGINAL)
+    # ABA 1: RADAR EM MASSA
     # ==========================================
     with aba_radar:
         with st.sidebar:
@@ -114,10 +113,8 @@ else:
             lista_escolhida = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"])
             ativos_selecionados = bdrs_elite if lista_escolhida == "BDRs Elite" else ibrx_selecao if lista_escolhida == "IBrX Seleção" else bdrs_elite + ibrx_selecao
             periodo_selecionado = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3)
-            modo_entrada = st.selectbox("Gatilho de Entrada:", options=['cruzamento', 'toque'], format_func=lambda x: 'Repique (Cruza > 25)' if x == 'cruzamento' else 'Faca Caindo (Toque <= 25)')
             txt_alvo = st.number_input("Alvo (%):", value=3.0, step=0.5)
-            txt_pm = st.number_input("Gatilho PM (%):", value=0.0, step=0.5)
-            txt_capital = st.number_input("Capital/Trade (R$):", value=10000.0, step=1000.0)
+            txt_capital = st.number_input("Capital por Sinal (R$):", value=10000.0, step=1000.0)
             tempo = st.radio("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x])
             btn_iniciar = st.button("🚀 Iniciar Varredura do Radar", use_container_width=True, type="primary")
 
@@ -132,7 +129,6 @@ else:
 
             intervalo_tv = tradutor_intervalo.get(tempo, Interval.in_daily)
             alvo_decimal = txt_alvo / 100
-            gatilho_pm_decimal = txt_pm / 100
 
             lista_sinais, lista_abertos, lista_resumo = [], [], []
             progress_bar = st.progress(0)
@@ -172,51 +168,53 @@ else:
                     col_data = df_back.columns[0]
 
                     for i in range(1, len(df_back)):
-                        if not em_pos:
-                            condicao_entrada = False
-                            if modo_entrada == 'cruzamento' and (df_back['IFR_Prev'].iloc[i] < 25) and (df_back['IFR'].iloc[i] >= 25): condicao_entrada = True
-                            elif modo_entrada == 'toque' and df_back['IFR'].iloc[i] <= 25: condicao_entrada = True
-
-                            if condicao_entrada:
-                                em_pos = True
-                                entrada_original = df_back['Close'].iloc[i]
-                                preco_medio = entrada_original
-                                d_ent = df_back[col_data].iloc[i]
-                                take_profit = preco_medio * (1 + alvo_decimal)
-                                min_price_in_trade = entrada_original
-                                pm_realizado = False
-                                capital_alocado = txt_capital
-                        else:
-                            if df_back['Low'].iloc[i] < min_price_in_trade: min_price_in_trade = df_back['Low'].iloc[i]
-
-                            if gatilho_pm_decimal < 0 and not pm_realizado:
-                                preco_acionamento_pm = entrada_original * (1 + gatilho_pm_decimal)
-                                if df_back['Low'].iloc[i] <= preco_acionamento_pm:
-                                    pm_realizado = True
-                                    preco_medio = (entrada_original + preco_acionamento_pm) / 2
-                                    take_profit = preco_medio * (1 + alvo_decimal)
-                                    capital_alocado = txt_capital * 2
+                        if em_pos:
+                            if df_back['Low'].iloc[i] < min_price_in_trade: 
+                                min_price_in_trade = df_back['Low'].iloc[i]
 
                             if df_back['High'].iloc[i] >= take_profit:
-                                d_sai = df_back[col_data].iloc[i]
-                                trades.append({'Lucro (R$)': capital_alocado * alvo_decimal, 'Drawdown_Raw': ((min_price_in_trade / entrada_original) - 1) * 100})
+                                lucro_rs = capital_total * alvo_decimal
+                                trades.append({'Lucro (R$)': lucro_rs, 'Drawdown_Raw': ((min_price_in_trade / preco_entrada_inicial) - 1) * 100})
                                 em_pos = False
+                                continue 
+
+                        # Sinal exclusivo: Repique (Cruza > 25)
+                        condicao_entrada = (df_back['IFR_Prev'].iloc[i] < 25) and (df_back['IFR'].iloc[i] >= 25)
+
+                        if condicao_entrada:
+                            if not em_pos:
+                                em_pos = True
+                                d_ent = df_back[col_data].iloc[i]
+                                preco_entrada_inicial = df_back['Close'].iloc[i]
+                                min_price_in_trade = df_back['Low'].iloc[i]
+                                qtd_pms = 0
+                                
+                                preco_compra = preco_entrada_inicial
+                                capital_total = txt_capital
+                                qtd_acoes = capital_total / preco_compra
+                                preco_medio = preco_compra
+                                take_profit = preco_medio * (1 + alvo_decimal)
+                            else:
+                                qtd_pms += 1
+                                preco_compra = df_back['Close'].iloc[i]
+                                capital_total += txt_capital
+                                qtd_acoes += txt_capital / preco_compra
+                                preco_medio = capital_total / qtd_acoes
+                                take_profit = preco_medio * (1 + alvo_decimal)
 
                     if em_pos:
-                        queda_maxima = ((min_price_in_trade / entrada_original) - 1) * 100
+                        queda_maxima = ((min_price_in_trade / preco_entrada_inicial) - 1) * 100
                         resultado_atual = ((df_back['Close'].iloc[-1] / preco_medio) - 1) * 100
                         lista_abertos.append({
                             'Ativo': ativo, 'Entrada': d_ent.strftime('%d/%m %H:%M') if tempo in ['15m', '60m'] else d_ent.strftime('%d/%m/%Y'),
                             'Dias': (df_back[col_data].iloc[-1] - d_ent).days, 'PM': f"R$ {preco_medio:.2f}",
                             'Cotação Atual': f"R$ {df_back['Close'].iloc[-1]:.2f}", 'Prej. Máx': f"{queda_maxima:.2f}%",
                             'Resultado Atual': f"+{resultado_atual:.2f}%" if resultado_atual > 0 else f"{resultado_atual:.2f}%",
-                            'Fez PM?': 'Sim' if pm_realizado else 'Não'
+                            'Fez PM?': f"Sim ({qtd_pms}x)" if qtd_pms > 0 else 'Não'
                         })
                     else:
-                        tem_sinal = False
-                        if modo_entrada == 'cruzamento' and (df_full['IFR_Prev'].iloc[-1] < 25) and (df_full['IFR'].iloc[-1] >= 25): tem_sinal = True
-                        elif modo_entrada == 'toque' and df_full['IFR'].iloc[-1] <= 25: tem_sinal = True
-                        if tem_sinal: lista_sinais.append({'Ativo': ativo, 'Gatilho': modo_entrada.upper(), 'Preço Atual': f"R$ {df_full['Close'].iloc[-1]:.2f}"})
+                        tem_sinal = (df_full['IFR_Prev'].iloc[-1] < 25) and (df_full['IFR'].iloc[-1] >= 25)
+                        if tem_sinal: lista_sinais.append({'Ativo': ativo, 'Preço Atual': f"R$ {df_full['Close'].iloc[-1]:.2f}"})
 
                     if len(trades) > 0:
                         df_t = pd.DataFrame(trades)
@@ -228,7 +226,7 @@ else:
             status_text.empty()
             progress_bar.empty()
 
-            st.subheader("🚀 Oportunidades de Entrada Hoje")
+            st.subheader("🚀 Oportunidades de Entrada Hoje (Repique)")
             if len(lista_sinais) > 0: st.dataframe(pd.DataFrame(lista_sinais), use_container_width=True, hide_index=True)
             else: st.info("Nenhum ativo deu sinal de entrada na última barra.")
 
@@ -246,25 +244,22 @@ else:
             else: st.warning("Nenhuma operação finalizada no período.")
 
     # ==========================================
-    # ABA 2: RAIO-X DO ATIVO (NOVO CÓDIGO)
+    # ABA 2: RAIO-X DO ATIVO
     # ==========================================
     with aba_lupa:
         st.subheader("🔬 Análise Detalhada de Ativo Único")
-        st.markdown("Digite o código da ação para investigar o histórico completo de testes, verificar drawdowns e ver operação por operação.")
+        st.markdown("Investigue o histórico completo testando a estratégia de Repique (Cruza > 25) com PM Dinâmico.")
         
-        # Usando colunas para organizar os campos do formulário visualmente
         col1, col2, col3 = st.columns(3)
         with col1:
             lupa_ativo = st.text_input("Ativo (Ex: TSLA34):", value="TSLA34")
             lupa_periodo = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=2, key="lupa_per")
         with col2:
             lupa_alvo = st.number_input("Alvo (%):", value=3.0, step=0.5, key="lupa_alvo")
-            lupa_pm = st.number_input("Gatilho PM (%):", value=0.0, step=0.5, key="lupa_pm")
+            lupa_capital = st.number_input("Capital por Sinal (R$):", value=10000.0, step=1000.0, key="lupa_cap")
         with col3:
-            lupa_capital = st.number_input("Capital/Operação (R$):", value=10000.0, step=1000.0, key="lupa_cap")
             lupa_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="lupa_tmp")
-            lupa_gatilho = st.selectbox("Gatilho:", options=['cruzamento', 'toque'], format_func=lambda x: 'Repique' if x == 'cruzamento' else 'Faca Caindo', key="lupa_gat")
-
+            
         btn_raiox = st.button("🔍 Gerar Raio-X", type="primary", use_container_width=True)
 
         if btn_raiox:
@@ -273,14 +268,12 @@ else:
                 st.error("Por favor, digite o código de um ativo.")
             else:
                 ativo = ativo_input.replace('.SA', '')
-                
-                # Regras de limite de tempo do TradingView
                 if lupa_tempo == '15m' and lupa_periodo not in ['1mo', '3mo']: lupa_periodo = '60d'
                 elif lupa_tempo == '60m' and lupa_periodo in ['5y', 'max']: lupa_periodo = '2y'
 
                 intervalo_tv = tradutor_intervalo.get(lupa_tempo, Interval.in_daily)
 
-                with st.spinner(f'Calculando histórico pesado de {ativo}...'):
+                with st.spinner(f'Testando Backtest de PM Dinâmico em {ativo}...'):
                     try:
                         df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
 
@@ -308,43 +301,20 @@ else:
                             trades = []
                             em_pos = False
                             alvo_decimal = lupa_alvo / 100
-                            gatilho_pm_decimal = lupa_pm / 100
                             df_back = df.reset_index()
                             col_data = df_back.columns[0]
                             trade_aberto = None
 
                             for i in range(1, len(df_back)):
-                                if not em_pos:
-                                    condicao_entrada = False
-                                    if lupa_gatilho == 'cruzamento' and (df_back['IFR_Prev'].iloc[i] < 25) and (df_back['IFR'].iloc[i] >= 25): condicao_entrada = True
-                                    elif lupa_gatilho == 'toque' and df_back['IFR'].iloc[i] <= 25: condicao_entrada = True
-
-                                    if condicao_entrada:
-                                        em_pos = True
-                                        entrada_original = df_back['Close'].iloc[i]
-                                        preco_medio = entrada_original
-                                        d_ent = df_back[col_data].iloc[i]
-                                        take_profit = preco_medio * (1 + alvo_decimal)
-                                        min_price_in_trade = entrada_original
-                                        pm_realizado = False
-                                        capital_alocado = lupa_capital
-                                else:
+                                if em_pos:
                                     if df_back['Low'].iloc[i] < min_price_in_trade:
                                         min_price_in_trade = df_back['Low'].iloc[i]
-
-                                    if gatilho_pm_decimal < 0 and not pm_realizado:
-                                        preco_acionamento_pm = entrada_original * (1 + gatilho_pm_decimal)
-                                        if df_back['Low'].iloc[i] <= preco_acionamento_pm:
-                                            pm_realizado = True
-                                            preco_medio = (entrada_original + preco_acionamento_pm) / 2
-                                            take_profit = preco_medio * (1 + alvo_decimal)
-                                            capital_alocado = lupa_capital * 2
 
                                     if df_back['High'].iloc[i] >= take_profit:
                                         d_sai = df_back[col_data].iloc[i]
                                         duracao = (d_sai - d_ent).days
-                                        lucro_rs = capital_alocado * alvo_decimal
-                                        drawdown_pct = ((min_price_in_trade / entrada_original) - 1) * 100
+                                        lucro_rs = capital_total * alvo_decimal
+                                        drawdown_pct = ((min_price_in_trade / preco_entrada_inicial) - 1) * 100
                                         trades.append({
                                             'Entrada_Raw': d_ent,
                                             'Entrada': d_ent.strftime('%d/%m/%Y %H:%M') if lupa_tempo in ['15m', '60m'] else d_ent.strftime('%d/%m/%Y'),
@@ -353,21 +323,44 @@ else:
                                             'Lucro (R$)': lucro_rs,
                                             'Drawdown_Raw': drawdown_pct,
                                             'Queda Máx': f"{drawdown_pct:.2f}%",
-                                            'Fez PM?': 'Sim' if pm_realizado else 'Não',
+                                            'Fez PM?': f"Sim ({qtd_pms}x)" if qtd_pms > 0 else 'Não',
                                             'Tipo': 'Day Trade' if duracao == 0 else '-'
                                         })
                                         em_pos = False
+                                        continue
+
+                                condicao_entrada = (df_back['IFR_Prev'].iloc[i] < 25) and (df_back['IFR'].iloc[i] >= 25)
+
+                                if condicao_entrada:
+                                    if not em_pos:
+                                        em_pos = True
+                                        d_ent = df_back[col_data].iloc[i]
+                                        preco_entrada_inicial = df_back['Close'].iloc[i]
+                                        min_price_in_trade = df_back['Low'].iloc[i]
+                                        qtd_pms = 0
+                                        
+                                        preco_compra = preco_entrada_inicial
+                                        capital_total = lupa_capital
+                                        qtd_acoes = capital_total / preco_compra
+                                        preco_medio = preco_compra
+                                        take_profit = preco_medio * (1 + alvo_decimal)
+                                    else:
+                                        qtd_pms += 1
+                                        preco_compra = df_back['Close'].iloc[i]
+                                        capital_total += lupa_capital
+                                        qtd_acoes += lupa_capital / preco_compra
+                                        preco_medio = capital_total / qtd_acoes
+                                        take_profit = preco_medio * (1 + alvo_decimal)
 
                             if em_pos:
-                                drawdown_pct_aberto = ((min_price_in_trade / entrada_original) - 1) * 100
+                                drawdown_pct_aberto = ((min_price_in_trade / preco_entrada_inicial) - 1) * 100
                                 trade_aberto = {
                                     'Entrada': d_ent.strftime('%d/%m/%Y %H:%M') if lupa_tempo in ['15m', '60m'] else d_ent.strftime('%d/%m/%Y'),
                                     'Duração (dias)': (df_back[col_data].iloc[-1] - d_ent).days,
-                                    'Fez PM?': 'Sim' if pm_realizado else 'Não',
+                                    'Fez PM?': f"Sim ({qtd_pms}x)" if qtd_pms > 0 else 'Não',
                                     'Queda Máx': f"{drawdown_pct_aberto:.2f}%"
                                 }
 
-                            # --- EXIBIÇÃO VISUAL DOS RESULTADOS ---
                             st.divider()
                             st.markdown(f"### 📊 Resultado: {ativo}")
                             st.caption(f"Período Analisado: {tradutor_periodo_nome.get(lupa_periodo)} ({df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')})")
@@ -375,20 +368,16 @@ else:
                             if len(trades) > 0:
                                 df_t = pd.DataFrame(trades).sort_values(by='Entrada_Raw', ascending=False)
                                 
-                                # Painel Executivo (Métricas)
                                 mc1, mc2, mc3, mc4 = st.columns(4)
                                 mc1.metric("Lucro Total Estimado", f"R$ {df_t['Lucro (R$)'].sum():,.2f}")
                                 mc2.metric("Pior Queda", f"{df_t['Drawdown_Raw'].min():.2f}%")
                                 mc3.metric("Tempo Preso (Médio)", f"{round(df_t['Duração'].mean(), 1)} dias")
                                 mc4.metric("Operações Fechadas", f"{len(df_t)}")
                                 
-                                # Status Atual e Sinais
                                 if trade_aberto:
-                                    st.warning(f"⚠️ **Ativo em operação no momento:** Entrada em {trade_aberto['Entrada']} | Calor Máx: {trade_aberto['Queda Máx']} | Duração: {trade_aberto['Duração (dias)']} dias")
+                                    st.warning(f"⚠️ **Ativo em operação no momento:** Entrada em {trade_aberto['Entrada']} | Calor Máx: {trade_aberto['Queda Máx']} | Duração: {trade_aberto['Duração (dias)']} dias | Defesas: {trade_aberto['Fez PM?']}")
                                 elif not em_pos:
-                                    if lupa_gatilho == 'cruzamento' and (df_full['IFR_Prev'].iloc[-1] < 25) and (df_full['IFR'].iloc[-1] >= 25):
-                                        st.success("🚀 SINAL DE ENTRADA DETECTADO AGORA NA ÚLTIMA BARRA!")
-                                    elif lupa_gatilho == 'toque' and df_full['IFR'].iloc[-1] <= 25:
+                                    if (df_full['IFR_Prev'].iloc[-1] < 25) and (df_full['IFR'].iloc[-1] >= 25):
                                         st.success("🚀 SINAL DE ENTRADA DETECTADO AGORA NA ÚLTIMA BARRA!")
 
                                 st.markdown("#### 📋 Extrato de Operações (Histórico)")
