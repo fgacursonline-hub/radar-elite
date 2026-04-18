@@ -46,11 +46,18 @@ def tela_login():
 if not st.session_state['autenticado']:
     tela_login()
 else:
-    with st.sidebar:
-        if st.button("🚪 Sair do Sistema"):
+    # --- CABEÇALHO COM BOTÃO DE SAIR ---
+    col_topo1, col_topo2 = st.columns([6, 1])
+    with col_topo1:
+        st.title("🎯 Plataforma Caçadores de Elite")
+        st.markdown("Ferramentas quantitativas para exploração e análise de ativos.")
+    with col_topo2:
+        st.write("") # Espaçamento
+        if st.button("🚪 Sair do Sistema", use_container_width=True):
             st.session_state['autenticado'] = False
             st.rerun()
-        st.divider()
+
+    st.divider()
 
     @st.cache_resource
     def get_tv_connection():
@@ -99,10 +106,7 @@ else:
         'SHUL4.SA', 'BRSR6.SA',
     ]
 
-    st.title("🎯 Plataforma Caçadores de Elite")
-    st.markdown("Ferramentas quantitativas para exploração e análise de ativos.")
-    
-    # NOVAS ABAS ATUALIZADAS
+    # ABAS PRINCIPAIS
     aba_padrao, aba_radar, aba_lupa, aba_stop = st.tabs(["📡 Radar (Padrão)", "📡 Radar (PM Dinâmico)", "🔬 Raio-X do Ativo", "🛡️ Radar (Alvo & Stop)"])
 
     def colorir_lucro(row):
@@ -242,32 +246,39 @@ else:
     # ABA 2: RADAR EM MASSA (PM DINÂMICO)
     # ==========================================
     with aba_radar:
-        with st.sidebar:
-            st.header("⚙️ Filtros: Radar PM")
-            lista_escolhida = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="r1_lista")
-            ativos_selecionados = bdrs_elite if lista_escolhida == "BDRs Elite" else ibrx_selecao if lista_escolhida == "IBrX Seleção" else bdrs_elite + ibrx_selecao
-            periodo_selecionado = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="r1_per")
-            txt_alvo = st.number_input("Alvo (%):", value=3.0, step=0.5, key="r1_alvo")
-            txt_ifr = st.number_input("Período do IFR:", min_value=2, max_value=50, value=8, step=1, key="r1_ifr")
-            txt_capital = st.number_input("Capital por Sinal (R$):", value=10000.0, step=1000.0, key="r1_cap")
-            tempo = st.radio("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="r1_tmp")
-            btn_iniciar = st.button("🚀 Iniciar Varredura PM", use_container_width=True, type="primary", key="r1_btn")
+        st.subheader("📡 Radar PM Dinâmico")
+        st.markdown("O robô defende a posição fazendo novos aportes a cada novo sinal de entrada, reduzindo o preço médio.")
+        
+        st.markdown("##### ⚙️ Configurações da Varredura")
+        cr1, cr2, cr3 = st.columns(3)
+        with cr1:
+            lista_pm = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="r1_lista")
+            ativos_pm = bdrs_elite if lista_pm == "BDRs Elite" else ibrx_selecao if lista_pm == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+            periodo_pm = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="r1_per")
+        with cr2:
+            alvo_pm = st.number_input("Alvo (%):", value=3.0, step=0.5, key="r1_alvo")
+            ifr_pm = st.number_input("Período do IFR:", min_value=2, max_value=50, value=8, step=1, key="r1_ifr")
+        with cr3:
+            capital_pm = st.number_input("Capital por Sinal (R$):", value=10000.0, step=1000.0, key="r1_cap")
+            tempo_pm = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="r1_tmp")
+            
+        btn_iniciar_pm = st.button("🚀 Iniciar Varredura PM", type="primary", use_container_width=True, key="r1_btn")
 
-        if btn_iniciar:
-            if tempo == '15m' and periodo_selecionado not in ['1mo', '3mo']: periodo_selecionado = '60d'
-            elif tempo == '60m' and periodo_selecionado in ['5y', 'max']: periodo_selecionado = '2y'
+        if btn_iniciar_pm:
+            if tempo_pm == '15m' and periodo_pm not in ['1mo', '3mo']: periodo_pm = '60d'
+            elif tempo_pm == '60m' and periodo_pm in ['5y', 'max']: periodo_pm = '2y'
 
-            intervalo_tv = tradutor_intervalo.get(tempo, Interval.in_daily)
-            alvo_decimal = txt_alvo / 100
+            intervalo_tv = tradutor_intervalo.get(tempo_pm, Interval.in_daily)
+            alvo_decimal = alvo_pm / 100
 
             lista_sinais, lista_abertos, lista_resumo = [], [], []
             progress_bar = st.progress(0)
             status_text = st.empty()
 
-            for idx, ativo_raw in enumerate(ativos_selecionados):
+            for idx, ativo_raw in enumerate(ativos_pm):
                 ativo = ativo_raw.replace('.SA', '')
-                status_text.text(f"🔍 Analisando (PM): {ativo} ({idx+1}/{len(ativos_selecionados)})")
-                progress_bar.progress((idx + 1) / len(ativos_selecionados))
+                status_text.text(f"🔍 Analisando (PM): {ativo} ({idx+1}/{len(ativos_pm)})")
+                progress_bar.progress((idx + 1) / len(ativos_pm))
 
                 try:
                     df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
@@ -276,18 +287,18 @@ else:
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     df_full = df_full.dropna()
                     
-                    df_full['IFR'] = ta.rsi(df_full['Close'], length=txt_ifr)
+                    df_full['IFR'] = ta.rsi(df_full['Close'], length=ifr_pm)
                     df_full['IFR_Prev'] = df_full['IFR'].shift(1)
                     df_full = df_full.dropna()
 
                     data_atual = df_full.index[-1]
-                    if periodo_selecionado == '1mo': data_corte = data_atual - pd.DateOffset(months=1)
-                    elif periodo_selecionado == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
-                    elif periodo_selecionado == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
-                    elif periodo_selecionado == '1y': data_corte = data_atual - pd.DateOffset(years=1)
-                    elif periodo_selecionado == '2y': data_corte = data_atual - pd.DateOffset(years=2)
-                    elif periodo_selecionado == '5y': data_corte = data_atual - pd.DateOffset(years=5)
-                    elif periodo_selecionado == '60d': data_corte = data_atual - pd.DateOffset(days=60)
+                    if periodo_pm == '1mo': data_corte = data_atual - pd.DateOffset(months=1)
+                    elif periodo_pm == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
+                    elif periodo_pm == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
+                    elif periodo_pm == '1y': data_corte = data_atual - pd.DateOffset(years=1)
+                    elif periodo_pm == '2y': data_corte = data_atual - pd.DateOffset(years=2)
+                    elif periodo_pm == '5y': data_corte = data_atual - pd.DateOffset(years=5)
+                    elif periodo_pm == '60d': data_corte = data_atual - pd.DateOffset(days=60)
                     else: data_corte = df_full.index[0]
 
                     df = df_full[df_full.index >= data_corte].copy()
@@ -317,15 +328,15 @@ else:
                                 min_price_in_trade = df_back['Low'].iloc[i]
                                 qtd_pms = 0
                                 preco_compra = preco_entrada_inicial
-                                capital_total = float(txt_capital)
+                                capital_total = float(capital_pm)
                                 qtd_acoes = capital_total / preco_compra
                                 preco_medio = preco_compra
                                 take_profit = preco_medio * (1 + alvo_decimal)
                             else:
                                 qtd_pms += 1
                                 preco_compra = df_back['Close'].iloc[i]
-                                capital_total += float(txt_capital)
-                                qtd_acoes += float(txt_capital) / preco_compra
+                                capital_total += float(capital_pm)
+                                qtd_acoes += float(capital_pm) / preco_compra
                                 preco_medio = capital_total / qtd_acoes
                                 take_profit = preco_medio * (1 + alvo_decimal)
 
@@ -333,7 +344,7 @@ else:
                         queda_maxima = ((min_price_in_trade / preco_entrada_inicial) - 1) * 100
                         resultado_atual = ((df_back['Close'].iloc[-1] / preco_medio) - 1) * 100
                         lista_abertos.append({
-                            'Ativo': ativo, 'Entrada': d_ent.strftime('%d/%m %H:%M') if tempo in ['15m', '60m'] else d_ent.strftime('%d/%m/%Y'),
+                            'Ativo': ativo, 'Entrada': d_ent.strftime('%d/%m %H:%M') if tempo_pm in ['15m', '60m'] else d_ent.strftime('%d/%m/%Y'),
                             'Dias': (df_back[col_data].iloc[-1] - d_ent).days, 'PM': f"R$ {preco_medio:.2f}",
                             'Cotação Atual': f"R$ {df_back['Close'].iloc[-1]:.2f}", 'Prej. Máx': f"{queda_maxima:.2f}%",
                             'Resultado Atual': f"+{resultado_atual:.2f}%" if resultado_atual > 0 else f"{resultado_atual:.2f}%",
@@ -353,7 +364,7 @@ else:
             status_text.empty()
             progress_bar.empty()
 
-            st.subheader(f"🚀 Oportunidades Hoje (PM | IFR {txt_ifr})")
+            st.subheader(f"🚀 Oportunidades Hoje (PM | IFR {ifr_pm})")
             if len(lista_sinais) > 0: st.dataframe(pd.DataFrame(lista_sinais), use_container_width=True, hide_index=True)
             else: st.info("Nenhum ativo deu sinal de entrada na última barra.")
 
@@ -363,7 +374,7 @@ else:
                 st.dataframe(df_abertos.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
             else: st.success("Sua carteira está limpa.")
 
-            st.subheader(f"📊 Top 10 Histórico ({tradutor_periodo_nome.get(periodo_selecionado, periodo_selecionado)})")
+            st.subheader(f"📊 Top 10 Histórico ({tradutor_periodo_nome.get(periodo_pm, periodo_pm)})")
             if len(lista_resumo) > 0:
                 df_resumo = pd.DataFrame(lista_resumo).sort_values(by='Lucro R$', ascending=False).head(10)
                 df_resumo['Lucro R$'] = df_resumo['Lucro R$'].apply(lambda x: f"R$ {x:,.2f}")
