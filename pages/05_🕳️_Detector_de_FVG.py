@@ -27,7 +27,7 @@ st.divider()
 aba_individual, aba_radar, aba_backtest = st.tabs(["🔍 Raio-X Individual", "📡 Radar de Oportunidades", "📊 Backtest FVG (Estatísticas)"])
 
 # ==========================================
-# ABA 1: RAIO-X INDIVIDUAL (MANTIDA)
+# ABA 1: RAIO-X INDIVIDUAL
 # ==========================================
 with aba_individual:
     st.subheader("Análise Detalhada por Ativo")
@@ -86,7 +86,7 @@ with aba_individual:
             except Exception as e: st.error(f"Erro: {e}")
 
 # ==========================================
-# ABA 2: RADAR DE OPORTUNIDADES (MANTIDA)
+# ABA 2: RADAR DE OPORTUNIDADES
 # ==========================================
 with aba_radar:
     st.subheader("Varredura em Massa")
@@ -128,22 +128,23 @@ with aba_radar:
         else: st.warning("Nenhum ativo tocando em Gap no momento.")
 
 # ==========================================
-# ABA 3: NOVO BACKTEST DE FVG (OPÇÃO B)
+# ABA 3: BACKTEST FINANCEIRO DE FVG
 # ==========================================
 with aba_backtest:
     st.subheader("Simulador de Estratégia FVG")
-    st.markdown("Descubra a Taxa de Acerto comprando nos Gaps de Alta. Regra: Compra no toque da zona, Lucro de 2x o Risco.")
+    st.markdown("Veja o resultado financeiro operando a favor dos Gaps de Alta. Regra: Compra no toque, Alvo de 2x o Risco.")
     
-    b1, b2, b3 = st.columns(3)
+    b1, b2, b3, b4 = st.columns(4)
     with b1: bk_ativo = st.text_input("Ativo para Backtest:", value="TSLA34").upper()
     with b2: bk_tempo = st.selectbox("Tempo Gráfico:", ['60m', '1d', '1wk'], index=1, format_func=lambda x: {'60m':'60 min','1d':'Diário','1wk':'Semanal'}[x], key="bk_tempo")
-    with b3: bk_velas = st.number_input("Analisar Histórico de Velas:", value=500, step=100)
+    with b3: bk_velas = st.number_input("Histórico (Velas):", value=500, step=100)
+    with b4: bk_qtd = st.number_input("Qtd. Ações:", value=100, step=100, help="Define o tamanho do lote para calcular o financeiro.")
 
-    if st.button("⚙️ Rodar Backtest", type="primary", use_container_width=True):
+    if st.button("⚙️ Rodar Backtest Financeiro", type="primary", use_container_width=True):
         ativo = bk_ativo.strip().replace('.SA', '')
         intervalo_tv = {'60m': Interval.in_1_hour, '1d': Interval.in_daily, '1wk': Interval.in_weekly}.get(bk_tempo, Interval.in_daily)
 
-        with st.spinner("Simulando trades no passado..."):
+        with st.spinner(f"Simulando operações em {ativo}..."):
             try:
                 df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=bk_velas)
                 if df is not None and len(df) > 50:
@@ -157,26 +158,25 @@ with aba_backtest:
                             topo = df['Low'].iloc[i]
                             fundo = df['High'].iloc[i-2]
                             
-                            # Configura a Operação
-                            preco_entrada = topo # Entra logo que encosta no topo do gap
-                            stop_loss = fundo * 0.995 # SL meio por cento abaixo do gap
-                            take_profit = preco_entrada + (2 * (preco_entrada - stop_loss)) # Alvo 2x o risco
+                            preco_entrada = topo 
+                            stop_loss = fundo * 0.995 
+                            take_profit = preco_entrada + (2 * (preco_entrada - stop_loss)) 
                             
                             entrou = False
                             
-                            # Olha para as velas seguintes para ver o que aconteceu
                             for j in range(i+1, len(df)):
                                 if not entrou:
                                     if df['Low'].iloc[j] <= preco_entrada:
                                         entrou = True
                                         data_entrada = df.index[j]
                                 else:
-                                    # Já entrou, vamos ver se bateu Alvo ou Stop
                                     if df['Low'].iloc[j] <= stop_loss:
-                                        trades_realizados.append({'Data Entrada': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🔴 LOSS', 'Preço Entrada': preco_entrada, 'Saída': stop_loss})
+                                        resultado_fin = (stop_loss - preco_entrada) * bk_qtd
+                                        trades_realizados.append({'Data': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🔴 LOSS', 'Entrada': f"R$ {preco_entrada:.2f}", 'Saída': f"R$ {stop_loss:.2f}", 'Financeiro (R$)': resultado_fin})
                                         break
                                     elif df['High'].iloc[j] >= take_profit:
-                                        trades_realizados.append({'Data Entrada': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🟢 GAIN', 'Preço Entrada': preco_entrada, 'Saída': take_profit})
+                                        resultado_fin = (take_profit - preco_entrada) * bk_qtd
+                                        trades_realizados.append({'Data': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🟢 GAIN', 'Entrada': f"R$ {preco_entrada:.2f}", 'Saída': f"R$ {take_profit:.2f}", 'Financeiro (R$)': resultado_fin})
                                         break
 
                     if trades_realizados:
@@ -184,32 +184,38 @@ with aba_backtest:
                         gains = len(df_trades[df_trades['Resultado'] == '🟢 GAIN'])
                         losses = len(df_trades[df_trades['Resultado'] == '🔴 LOSS'])
                         total_trades = gains + losses
+                        lucro_total = df_trades['Financeiro (R$)'].sum()
                         
                         if total_trades > 0:
                             taxa_acerto = (gains / total_trades) * 100
                             
                             st.markdown("---")
-                            res1, res2, res3 = st.columns(3)
-                            res1.metric("Total de Trades Simulados", total_trades)
+                            res1, res2, res3, res4 = st.columns(4)
+                            res1.metric("Total de Trades", total_trades)
                             res2.metric("Taxa de Acerto", f"{taxa_acerto:.1f}%")
-                            res3.metric("Relação Risco/Retorno", "2 para 1")
+                            res3.metric("Risco/Retorno", "2 para 1")
+                            res4.metric("💰 Resultado Final", f"R$ {lucro_total:.2f}")
                             
-                            if taxa_acerto >= 40:
-                                st.success("📈 **Estratégia Vencedora!** Com um alvo de 2x o risco, qualquer taxa de acerto acima de 33% gera lucro matemático no longo prazo.")
+                            if lucro_total > 0:
+                                st.success(f"📈 **Estratégia Lucrativa!** Operando lotes de {bk_qtd} ações, o robô finalizou o período com lucro matemático.")
                             else:
-                                st.warning("⚠️ **Estratégia Empatada/Perdedora.** Para este ativo específico, o Gap tem sido violado muitas vezes. Ajuste o Stop ou busque confluências.")
+                                st.warning(f"⚠️ **Estratégia no Prejuízo.** Mesmo com o payoff a favor, a taxa de acerto foi muito baixa neste ativo.")
                             
-                            st.write("Histórico de Operações do Robô:")
+                            st.write("Histórico Financeiro das Operações:")
                             
-                            # Aplica cor na tabela
+                            # Formata a coluna financeira para ficar bonita na tabela
+                            df_trades_show = df_trades.copy()
+                            df_trades_show['Financeiro (R$)'] = df_trades_show['Financeiro (R$)'].apply(lambda x: f"R$ {x:.2f}")
+                            
+                            # Aplica cor no fundo
                             def colorir_resultado(val):
                                 color = '#d4edda' if 'GAIN' in val else '#f8d7da'
                                 text_color = '#155724' if 'GAIN' in val else '#721c24'
                                 return f'background-color: {color}; color: {text_color}'
                                 
-                            st.dataframe(df_trades.style.map(colorir_resultado, subset=['Resultado']), use_container_width=True)
+                            st.dataframe(df_trades_show.style.map(colorir_resultado, subset=['Resultado']), use_container_width=True)
                     else:
-                        st.info("O robô não encontrou trades fechados no período selecionado (talvez as ordens ainda estejam abertas).")
+                        st.info("O robô não encontrou operações que foram fechadas no período (talvez elas ainda estejam rodando).")
                 else:
                     st.error("Dados insuficientes.")
             except Exception as e:
