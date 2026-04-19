@@ -252,6 +252,200 @@ with aba_padrao:
         else: st.warning("Nenhuma operação finalizada.")
 
 # ESPAÇO PARA AS PRÓXIMAS ABAS
-with aba_avancado: st.info("Em breve: Configurações de condução pela MM9 e Stop no fundo anterior.")
+# ==========================================
+# ABA 2: RADAR AVANÇADO 9.1 (OPÇÕES DE CONDUÇÃO)
+# ==========================================
+with aba_avancado:
+    st.subheader("⚙️ Radar 9.1 Avançado (Fundo Anterior & MM9)")
+    st.markdown("A entrada continua sendo pela MME9, mas você pode alterar a localização do **Stop Inicial** (para evitar violinadas) e a **Média de Condução**.")
+    
+    ca1, ca2, ca3 = st.columns(3)
+    with ca1:
+        lista_91a = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="a91_lista")
+        ativos_91a = bdrs_elite if lista_91a == "BDRs Elite" else ibrx_selecao if lista_91a == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        periodo_91a = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="a91_per")
+    with ca2:
+        tipo_stop = st.selectbox("Posição do Stop Inicial:", ["Mínima do Candle Referência", "Fundo Anterior (Últimos 5 candles)"], key="a91_stop")
+        tipo_conducao = st.selectbox("Média de Condução (Trailing):", ["MME9 (Exponencial)", "MM9 (Aritmética)"], key="a91_cond")
+    with ca3:
+        capital_91a = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="a91_cap")
+        tempo_91a = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="a91_tmp")
+
+    btn_iniciar_91a = st.button("🚀 Iniciar Varredura Avançada", type="primary", use_container_width=True, key="a91_btn")
+
+    if btn_iniciar_91a:
+        if tempo_91a == '15m' and periodo_91a not in ['1mo', '3mo']: periodo_91a = '60d'
+        elif tempo_91a == '60m' and periodo_91a in ['5y', 'max']: periodo_91a = '2y'
+
+        intervalo_tv = tradutor_intervalo.get(tempo_91a, Interval.in_daily)
+
+        ls_armados_a, ls_abertos_a, ls_resumo_a = [], [], []
+        p_bar_a = st.progress(0)
+        s_text_a = st.empty()
+
+        for idx, ativo_raw in enumerate(ativos_91a):
+            ativo = ativo_raw.replace('.SA', '')
+            s_text_a.text(f"🔍 Analisando 9.1 Avançado: {ativo} ({idx+1}/{len(ativos_91a)})")
+            p_bar_a.progress((idx + 1) / len(ativos_91a))
+
+            try:
+                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                if df_full is None or len(df_full) < 50: continue
+
+                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                df_full = df_full.dropna()
+                
+                # --- CÁLCULO DAS MÉDIAS E FUNDOS ---
+                df_full['MME9'] = ta.ema(df_full['Close'], length=9)
+                df_full['MME9_Prev1'] = df_full['MME9'].shift(1)
+                df_full['MME9_Prev2'] = df_full['MME9'].shift(2)
+                
+                # MM9 Aritmética para condução alternativa
+                df_full['MM9'] = ta.sma(df_full['Close'], length=9)
+                df_full['MM9_Prev1'] = df_full['MM9'].shift(1)
+                df_full['MM9_Prev2'] = df_full['MM9'].shift(2)
+                
+                # Rastreador de Fundo Anterior (Mínima dos últimos 5 candles)
+                df_full['Fundo_5'] = df_full['Low'].rolling(window=5).min()
+                df_full = df_full.dropna()
+
+                data_atual = df_full.index[-1]
+                if periodo_91a == '1mo': data_corte = data_atual - pd.DateOffset(months=1)
+                elif periodo_91a == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
+                elif periodo_91a == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
+                elif periodo_91a == '1y': data_corte = data_atual - pd.DateOffset(years=1)
+                elif periodo_91a == '2y': data_corte = data_atual - pd.DateOffset(years=2)
+                elif periodo_91a == '5y': data_corte = data_atual - pd.DateOffset(years=5)
+                elif periodo_91a == '60d': data_corte = data_atual - pd.DateOffset(days=60)
+                else: data_corte = df_full.index[0]
+
+                df = df_full[df_full.index >= data_corte].copy()
+                if len(df) == 0: continue
+
+                trades = []
+                em_pos = False
+                setup_armado = False
+                saida_armada = False
+                gatilho_entrada = 0.0
+                gatilho_saida = 0.0
+                stop_loss = 0.0
+                vitorias, derrotas = 0, 0
+                
+                df_back = df.reset_index()
+                col_data = df_back.columns[0]
+
+                for i in range(2, len(df_back)):
+                    # A ENTRADA É SEMPRE PELA MME9
+                    mme9_virou_cima = (df_back['MME9_Prev1'].iloc[i] < df_back['MME9_Prev2'].iloc[i]) and (df_back['MME9'].iloc[i] > df_back['MME9_Prev1'].iloc[i])
+                    mme9_caindo = df_back['MME9'].iloc[i] < df_back['MME9_Prev1'].iloc[i]
+
+                    # A SAÍDA DEPENDE DA ESCOLHA DO UTILIZADOR
+                    if tipo_conducao == "MM9 (Aritmética)":
+                        ma_atual = df_back['MM9'].iloc[i]
+                        ma_prev1 = df_back['MM9_Prev1'].iloc[i]
+                        ma_prev2 = df_back['MM9_Prev2'].iloc[i]
+                    else:
+                        ma_atual = df_back['MME9'].iloc[i]
+                        ma_prev1 = df_back['MME9_Prev1'].iloc[i]
+                        ma_prev2 = df_back['MME9_Prev2'].iloc[i]
+                        
+                    media_saida_virou_baixo = (ma_prev1 > ma_prev2) and (ma_atual < ma_prev1)
+                    media_saida_subindo = ma_atual > ma_prev1
+
+                    if em_pos:
+                        # 1. Stop Loss Inicial
+                        if df_back['Low'].iloc[i] <= stop_loss:
+                            d_sai = df_back[col_data].iloc[i]
+                            duracao = (d_sai - d_ent).days
+                            lucro_rs = capital_91a * ((stop_loss / preco_entrada) - 1)
+                            trades.append({'Entrada': d_ent, 'Duração': duracao, 'Lucro (R$)': lucro_rs, 'Situação': 'Stop Acionado ❌'})
+                            if lucro_rs > 0: vitorias += 1 else: derrotas += 1
+                            em_pos, saida_armada = False, False
+                            continue
+                        
+                        # 2. Gatilho de Saída Técnica (Trailing Stop)
+                        if saida_armada:
+                            if df_back['Low'].iloc[i] < gatilho_saida:
+                                d_sai = df_back[col_data].iloc[i]
+                                duracao = (d_sai - d_ent).days
+                                lucro_rs = capital_91a * ((gatilho_saida / preco_entrada) - 1)
+                                trades.append({'Entrada': d_ent, 'Duração': duracao, 'Lucro (R$)': lucro_rs, 'Situação': 'Saída Técnica ✅' if lucro_rs > 0 else 'Saída Técnica ❌'})
+                                if lucro_rs > 0: vitorias += 1 else: derrotas += 1
+                                em_pos, saida_armada = False, False
+                                continue
+                            elif media_saida_subindo:
+                                # Se a média voltar a subir antes de perder a mínima, desarma a saída
+                                saida_armada = False
+
+                        # 3. Arma a saída se a média de condução escolhida virar para baixo
+                        if media_saida_virou_baixo and not saida_armada:
+                            saida_armada = True
+                            gatilho_saida = df_back['Low'].iloc[i]
+
+                    else:
+                        if setup_armado:
+                            if df_back['High'].iloc[i] > gatilho_entrada:
+                                em_pos = True
+                                setup_armado = False
+                                d_ent = df_back[col_data].iloc[i]
+                                preco_entrada = max(gatilho_entrada + 0.01, df_back['Open'].iloc[i])
+                            elif mme9_caindo:
+                                setup_armado = False
+
+                        if mme9_virou_cima:
+                            setup_armado = True
+                            gatilho_entrada = df_back['High'].iloc[i]
+                            # Define o Stop Inicial com base na escolha do utilizador
+                            if tipo_stop == "Fundo Anterior (Últimos 5 candles)":
+                                stop_loss = df_back['Fundo_5'].iloc[i] - 0.01
+                            else:
+                                stop_loss = df_back['Low'].iloc[i] - 0.01
+
+                if em_pos:
+                    resultado_atual = ((df_back['Close'].iloc[-1] / preco_entrada) - 1) * 100
+                    ls_abertos_a.append({
+                        'Ativo': ativo, 'Entrada': d_ent.strftime('%d/%m %H:%M') if tempo_91a in ['15m', '60m'] else d_ent.strftime('%d/%m/%Y'),
+                        'Dias': (df_back[col_data].iloc[-1] - d_ent).days, 'Preço Entrada': f"R$ {preco_entrada:.2f}",
+                        'Stop Inicial': f"R$ {stop_loss:.2f}",
+                        'Cotação Atual': f"R$ {df_back['Close'].iloc[-1]:.2f}",
+                        'Status': 'Aguardando Saída ⚠️' if saida_armada else 'Surfando Tendência 🌊',
+                        'Resultado Atual': f"+{resultado_atual:.2f}%" if resultado_atual > 0 else f"{resultado_atual:.2f}%"
+                    })
+                else:
+                    mme9_virou_cima_hoje = (df_full['MME9_Prev1'].iloc[-1] < df_full['MME9_Prev2'].iloc[-1]) and (df_full['MME9'].iloc[-1] > df_full['MME9_Prev1'].iloc[-1])
+                    if mme9_virou_cima_hoje:
+                        sl_hoje = df_full['Fundo_5'].iloc[-1] - 0.01 if tipo_stop == "Fundo Anterior (Últimos 5 candles)" else df_full['Low'].iloc[-1] - 0.01
+                        ls_armados_a.append({'Ativo': ativo, 'Preço Atual': f"R$ {df_full['Close'].iloc[-1]:.2f}", 'Gatilho Compra': f"R$ {(df_full['High'].iloc[-1] + 0.01):.2f}", 'Stop Indicado': f"R$ {sl_hoje:.2f}"})
+
+                if len(trades) > 0:
+                    df_t = pd.DataFrame(trades)
+                    taxa_acerto = (vitorias / len(df_t)) * 100
+                    ls_resumo_a.append({
+                        'Ativo': ativo, 'Total Trades': len(df_t), 'Acertos': vitorias, 'Stops': derrotas, 'Taxa de Acerto': f"{taxa_acerto:.1f}%", 'Lucro R$': df_t['Lucro (R$)'].sum()
+                    })
+
+            except Exception as e: pass
+            time.sleep(0.05)
+
+        s_text_a.empty()
+        p_bar_a.empty()
+
+        # --- EXIBIÇÃO DOS RESULTADOS ---
+        st.subheader("🔥 Setups 9.1 Armados Hoje (Compra Amanhã)")
+        if len(ls_armados_a) > 0: st.dataframe(pd.DataFrame(ls_armados_a), use_container_width=True, hide_index=True)
+        else: st.info("Nenhuma MME9 virou para cima no último candle.")
+
+        st.subheader(f"🌊 Operações em Andamento (Condução pela {tipo_conducao.split()[0]})")
+        if len(ls_abertos_a) > 0:
+            df_abertos = pd.DataFrame(ls_abertos_a).sort_values(by='Dias', ascending=False)
+            st.dataframe(df_abertos.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
+        else: st.success("Sua carteira está limpa.")
+
+        st.subheader(f"📊 Top 10 Histórico ({tradutor_periodo_nome.get(periodo_91a, periodo_91a)})")
+        if len(ls_resumo_a) > 0:
+            df_resumo = pd.DataFrame(ls_resumo_a).sort_values(by='Lucro R$', ascending=False).head(10)
+            df_resumo['Lucro R$'] = df_resumo['Lucro R$'].apply(lambda x: f"R$ {x:,.2f}")
+            st.dataframe(df_resumo, use_container_width=True, hide_index=True)
+        else: st.warning("Nenhuma operação finalizada.")
 with aba_individual: st.info("Em breve: Raio-X Individual do 9.1.")
 with aba_futuros: st.info("Em breve: Raio-X Futuros do 9.1.")
