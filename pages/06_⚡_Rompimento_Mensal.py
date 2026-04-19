@@ -25,71 +25,83 @@ aba_rad_p, aba_rad_pm, aba_alvo_st, aba_raio_x = st.tabs([
 ])
 
 # ==========================================
-# 1. RADAR (PADRÃO)
+# 1. RADAR (PADRÃO) - VERSÃO EVOLUÍDA
 # ==========================================
 with aba_rad_p:
-    st.subheader("📡 Varredura de Mercado")
-    
-    col_f1, col_f2, col_f3 = st.columns(3)
-    with col_f1: 
-        escolha_lista = st.selectbox("Escolha a Lista:", ["BDRs Elite", "IBrX Seleção", "Todos (BDR + IBrX)"], key="r_lista")
-    with col_f2:
-        tempo_grafico = st.selectbox("Tempo Gráfico:", ["60m", "Diário", "Mensal", "Anual"], index=3, key="r_tempo")
-    with col_f3:
-        cap_trade = st.number_input("Capital por Trade (R$):", value=5000, step=500, key="r_cap")
+    # ... (Mantenha os campos de seleção: lista, tempo e capital) ...
 
     if st.button("🚀 Iniciar Radar de Rompimento", type="primary", use_container_width=True):
-        # Seleção da Lista
         lista_ativos = bdrs_elite if escolha_lista == "BDRs Elite" else ibrx_selecao if escolha_lista == "IBrX Seleção" else bdrs_elite + ibrx_selecao
         
-        # Mapeamento do Tempo (O Anual exige n_bars de 12 meses agrupados se não houver 12M nativo)
-        mapa_tempo = {
-            "60m": Interval.in_1_hour,
-            "Diário": Interval.in_daily,
-            "Mensal": Interval.in_monthly,
-            "Anual": Interval.in_monthly # No anual pegamos 13 meses para comparar o ano anterior
-        }
+        mapa_tempo = {"60m": Interval.in_1_hour, "Diário": Interval.in_daily, "Mensal": Interval.in_monthly, "Anual": Interval.in_monthly}
         intervalo = mapa_tempo[tempo_grafico]
-        n_velas = 13 if tempo_grafico == "Anual" else 3 # Anual olha os últimos 12 meses (ano fechado)
+        
+        # Aumentamos n_bars para 100 para contar os dias de rompimento
+        n_velas = 100 
 
-        barra = st.progress(0, text="Sincronizando com B3...")
+        barra = st.progress(0, text="Sincronizando...")
         encontrados = []
 
         for idx, ativo in enumerate(lista_ativos):
             barra.progress((idx + 1) / len(lista_ativos), text=f"🔍 Analisando {ativo}...")
             try:
                 df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo, n_bars=n_velas)
-                if df is not None and len(df) >= 2:
+                if df is not None and len(df) >= 20:
                     df.columns = [c.capitalize() for c in df.columns]
                     
+                    # 1. Define a Máxima do Período Anterior
                     if tempo_grafico == "Anual":
-                        # Lógica Anual: Máxima dos últimos 12 meses (excluindo o atual)
-                        max_periodo_anterior = df['High'].iloc[:-1].max()
+                        # Aproximação: Máxima dos últimos 12 meses (excluindo o atual)
+                        max_referencia = df['High'].iloc[-13:-1].max()
                     else:
-                        # Lógica Padrão: Máxima da vela anterior
-                        max_periodo_anterior = df['High'].iloc[-2]
+                        max_referencia = df['High'].iloc[-2]
                         
                     preco_atual = df['Close'].iloc[-1]
                     
-                    if preco_atual > max_periodo_anterior:
-                        distancia = ((preco_atual / max_periodo_anterior) - 1) * 100
+                    # 2. Verifica se está rompido
+                    if preco_atual > max_referencia:
+                        # --- CÁLCULO DE DIAS/CANDLES ROMPIDOS ---
+                        # Conta quantos candles seguidos o Close ficou acima da máxima de referência
+                        contador = 0
+                        for v in range(len(df)-1, 0, -1):
+                            if df['Close'].iloc[v] > max_referencia:
+                                contador += 1
+                            else:
+                                break
+                        
+                        # --- CÁLCULO DE LUCRO/PREJUÍZO DO SINAL ---
+                        # Consideramos que a entrada foi no rompimento exato da máxima
+                        preco_entrada = max_referencia
+                        resultado_perc = ((preco_atual / preco_entrada) - 1) * 100
+                        status_financeiro = "🟢 LUCRO" if resultado_perc > 0 else "🔴 PREJUÍZO"
+                        
                         qtd_acoes = cap_trade // preco_atual
+                        
                         encontrados.append({
                             'Ativo': ativo,
                             'Preço': f"R$ {preco_atual:.2f}",
-                            'Máxima Anterior': f"R$ {max_periodo_anterior:.2f}",
-                            'Distância (%)': f"{distancia:.2f}%",
+                            'Ref. Rompida': f"R$ {max_referencia:.2f}",
+                            'Resultado': status_financeiro,
+                            'Lucro/Prej (%)': f"{resultado_perc:.2f}%",
+                            'Duração': f"{contador} barras",
                             'Lote (Ações)': int(qtd_acoes)
                         })
             except: pass
         
         barra.empty()
         if encontrados:
-            st.success(f"Encontrados {len(encontrados)} ativos rompendo no {tempo_grafico}!")
-            st.dataframe(pd.DataFrame(encontrados), use_container_width=True, hide_index=True)
-        else:
-            st.warning("Nenhum rompimento detectado com estes parâmetros.")
+            st.success(f"Encontrados {len(encontrados)} ativos rompidos no {tempo_grafico}!")
+            
+            # Formatação da tabela para destacar lucro/prejuízo
+            df_final = pd.DataFrame(encontrados)
+            
+            def colorir_financeiro(val):
+                color = '#d4edda' if 'LUCRO' in val else '#f8d7da'
+                return f'background-color: {color}'
 
+            st.dataframe(df_final.style.map(colorir_financeiro, subset=['Resultado']), use_container_width=True, hide_index=True)
+        else:
+            st.warning("Nenhum ativo rompido detectado.")
 # ==========================================
 # 2. RADAR (PM)
 # ==========================================
