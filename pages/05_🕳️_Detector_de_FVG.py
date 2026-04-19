@@ -512,30 +512,30 @@ with aba_sniper:
         barra.empty()
         if achados: st.success(f"🎯 Encontrados {len(achados)} Snipers!"); st.dataframe(pd.DataFrame(achados), use_container_width=True, hide_index=True)
         else: st.warning("Nenhum sinal completo encontrado.")
-            # ==========================================
+# ==========================================
 # ABA 8: 📊 BACKTEST SNIPER (CONFLUÊNCIA TOTAL)
 # ==========================================
 with aba_bk_sniper:
     st.subheader("📊 Simulador de Estratégia Sniper (Confluência Máxima)")
-    st.markdown("Simula o resultado financeiro de comprar **APENAS** quando o 9.1 aciona dentro do FVG, com preço acima da VWAP e Volume alto.")
+    st.markdown("Analisa o passado para ver se a união de 9.1 + FVG + VWAP + Volume realmente coloca dinheiro no bolso.")
     
     bs1, bs2, bs3, bs4 = st.columns(4)
-    with bs1: bksn_ativo = st.text_input("Ativo:", value="WEGE3", key="bksn_at").upper()
-    with bs2: bksn_tempo = st.selectbox("Tempo:", ['1d', '60m'], index=0, key="bksn_tm")
-    with bs3: bksn_velas = st.number_input("Histórico (Velas):", value=2000, step=500, key="bksn_vl")
-    with bs4: bksn_qtd = st.number_input("Qtd. Ações:", value=100, step=100, key="bksn_qt")
+    with bs1: bksn_ativo = st.text_input("Ativo para Teste:", value="WEGE3", key="bksn_at").upper()
+    with bs2: bksn_tempo = st.selectbox("Tempo Gráfico:", ['1d', '60m'], index=0, key="bksn_tm")
+    with bs3: bksn_velas = st.number_input("Histórico (Velas):", value=1500, step=500, key="bksn_vl")
+    with bs4: bksn_qtd = st.number_input("Qtd. Ações por Trade:", value=100, step=100, key="bksn_qt")
 
-    if st.button("⚙️ Rodar Backtest Sniper", type="primary", use_container_width=True):
+    if st.button("⚙️ Rodar Backtest Sniper", type="primary", use_container_width=True, key="btn_run_bksn"):
         ativo = bksn_ativo.strip().replace('.SA', '')
         interv = Interval.in_daily if bksn_tempo == '1d' else Interval.in_1_hour
         
-        with st.spinner(f"Processando 20 anos de dados para achar sinais Sniper em {ativo}..."):
+        with st.spinner(f"Vasculhando o histórico de {ativo}..."):
             try:
                 df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=interv, n_bars=bksn_velas)
                 if df is not None and len(df) > 50:
                     df.rename(columns={'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
                     
-                    # Indicadores base
+                    # Cálculo dos indicadores necessários
                     df.ta.ema(length=9, append=True)
                     df['vwap'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
                     df['vol_avg'] = df['Volume'].rolling(window=20).mean()
@@ -543,28 +543,28 @@ with aba_bk_sniper:
                     trades = []
                     em_trade = False
                     
-                    for i in range(20, len(df)-1):
+                    for i in range(20, len(df)-2):
                         if not em_trade:
-                            # 1. Filtro 9.1
+                            # 1. Filtro 9.1 de Compra
                             setup_91 = (df['EMA_9'].iloc[i-2] >= df['EMA_9'].iloc[i-1]) and (df['EMA_9'].iloc[i] > df['EMA_9'].iloc[i-1])
                             
                             if setup_91:
                                 # 2. Filtro VWAP e Volume
                                 if df['Close'].iloc[i] > df['vwap'].iloc[i] and df['Volume'].iloc[i] > df['vol_avg'].iloc[i]:
                                     
-                                    # 3. Filtro FVG (Procura gap aberto que o preço tocou)
-                                    fundo_fvg = 0
+                                    # 3. Filtro FVG Aberto com toque
                                     achou_fvg = False
+                                    fundo_fvg = 0
                                     for f in range(2, i):
-                                        if df['Low'].iloc[f] > df['High'].iloc[f-2]:
-                                            if df['Low'].iloc[f:i+1].min() > df['High'].iloc[f-2]:
-                                                if min(df['Low'].iloc[i], df['Low'].iloc[i-1]) <= df['Low'].iloc[f]:
+                                        if df['Low'].iloc[f] > df['High'].iloc[f-2]: # É um gap de alta
+                                            if df['Low'].iloc[f:i+1].min() > df['High'].iloc[f-2]: # Continua aberto
+                                                if min(df['Low'].iloc[i], df['Low'].iloc[i-1]) <= df['Low'].iloc[f]: # Houve toque
                                                     achou_fvg = True
                                                     fundo_fvg = df['High'].iloc[f-2]
                                                     break
                                     
                                     if achou_fvg:
-                                        # GATILHO DE COMPRA NO DIA SEGUINTE (Rompimento da Máxima)
+                                        # 4. Gatilho de entrada no rompimento da máxima
                                         gatilho = df['High'].iloc[i]
                                         if df['High'].iloc[i+1] > gatilho:
                                             em_trade = True
@@ -573,23 +573,30 @@ with aba_bk_sniper:
                                             p_alvo = p_entrada + (2 * (p_entrada - p_stop))
                                             data_ent = df.index[i+1]
                         else:
-                            # Monitoramento do Trade
+                            # Monitorando saída (Stop ou Alvo)
                             if df['Low'].iloc[i] <= p_stop:
-                                trades.append({'Data': data_ent.strftime('%d/%m/%Y'), 'Resultado': '🔴 LOSS', 'Valor': (p_stop - p_entrada) * bksn_qtd})
+                                trades.append({'Data': data_ent.strftime('%d/%m/%Y'), 'Resultado': '🔴 LOSS', 'Financeiro': (p_stop - p_entrada) * bksn_qtd})
                                 em_trade = False
                             elif df['High'].iloc[i] >= p_alvo:
-                                trades.append({'Data': data_ent.strftime('%d/%m/%Y'), 'Resultado': '🟢 GAIN', 'Valor': (p_alvo - p_entrada) * bksn_qtd})
+                                trades.append({'Data': data_ent.strftime('%d/%m/%Y'), 'Resultado': '🟢 GAIN', 'Financeiro': (p_alvo - p_entrada) * bksn_qtd})
                                 em_trade = False
 
                     if trades:
                         df_res = pd.DataFrame(trades)
-                        c1, c2, c3, c4 = st.columns(4)
-                        c1.metric("Total de Trades", len(df_res))
-                        c2.metric("Taxa de Acerto", f"{(len(df_res[df_res['Resultado'] == '🟢 GAIN']) / len(df_res)) * 100:.1f}%")
-                        c3.metric("Lucro Líquido", f"R$ {df_res['Valor'].sum():.2f}")
-                        c4.metric("Risco/Retorno", "2 : 1")
+                        lucro = df_res['Financeiro'].sum()
+                        acertos = len(df_res[df_res['Resultado'] == '🟢 GAIN'])
                         
-                        st.dataframe(df_res, use_container_width=True)
+                        st.markdown("---")
+                        c1, c2, c3, c4 = st.columns(4)
+                        c1.metric("Sinais Sniper", len(df_res))
+                        c2.metric("Taxa de Acerto", f"{(acertos/len(df_res))*100:.1f}%")
+                        c3.metric("Resultado Final", f"R$ {lucro:.2f}")
+                        c4.metric("Risco:Retorno", "2 : 1")
+                        
+                        def colorir(val):
+                            return 'background-color: #d4edda' if 'GAIN' in val else 'background-color: #f8d7da'
+                        st.dataframe(df_res.style.applymap(colorir, subset=['Resultado']), use_container_width=True)
                     else:
-                        st.warning("Estratégia tão filtrada que não houve sinais executados no período.")
-            except Exception as e: st.error(f"Erro: {e}")
+                        st.warning("Nenhum sinal 'Sniper' completo foi encontrado no histórico deste ativo com esses parâmetros.")
+            except Exception as e:
+                st.error(f"Erro no processamento: {e}")
