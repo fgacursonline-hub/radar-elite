@@ -490,133 +490,124 @@ with aba_stop:
 # ABA 4: RADAR individual
 # ==========================================
 with aba_individual:
-    st.subheader("🔬 Análise Detalhada de Ativo Único")
-    st.markdown("Faça o teste de estresse de um ativo específico e veja o status da operação atual.")
+    st.subheader("🔬 Raio-X Detalhado: Backtest & Status Atual")
+    st.markdown("Veja o histórico de acertos e se o ativo está com operação aberta agora.")
     
     col1, col2, col3 = st.columns(3)
     with col1:
         lupa_ativo = st.text_input("Ativo (Ex: TSLA34):", value="TSLA34", key="l2_ativo")
-        lupa_estrategia = st.selectbox("Estratégia a Testar:", ["Padrão (Sem PM)", "PM Dinâmico", "Alvo & Stop Loss"], key="l2_est")
-        lupa_periodo = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=2, key="l2_per")
+        lupa_estrategia = st.selectbox("Estratégia:", ["Padrão (Sem PM)", "PM Dinâmico", "Alvo & Stop Loss"], key="l2_est")
+        lupa_periodo = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="l2_per")
     with col2:
         lupa_alvo = st.number_input("Alvo (%):", value=3.0, step=0.5, key="l2_alvo")
         lupa_stop = st.number_input("Stop Loss (%):", value=5.0, step=0.5, key="l2_stop") if lupa_estrategia == "Alvo & Stop Loss" else 0.0
         lupa_capital = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="l2_cap")
     with col3:
         lupa_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk', '1mo'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x], key="l2_tmp")
-        lupa_ifr_periodo = st.number_input("Período do IFR:", min_value=2, max_value=50, value=8, step=1, key="l2_ifr")
+        lupa_ifr_periodo = st.number_input("Período IFR:", min_value=2, max_value=50, value=8, step=1, key="l2_ifr")
         
-    btn_raiox = st.button("🔍 Gerar Raio-X", type="primary", use_container_width=True, key="l2_btn")
+    btn_raiox = st.button("🔍 Rodar Análise Completa", type="primary", use_container_width=True, key="l2_btn")
 
     if btn_raiox:
-        ativo_input = lupa_ativo.strip().upper()
-        if not ativo_input:
-            st.error("Por favor, digite o código de um ativo.")
-        else:
-            ativo = ativo_input.replace('.SA', '')
-            intervalo_tv = tradutor_intervalo.get(lupa_tempo, Interval.in_daily)
+        ativo = lupa_ativo.strip().upper().replace('.SA', '')
+        intervalo_tv = tradutor_intervalo.get(lupa_tempo, Interval.in_daily)
 
-            with st.spinner(f'Processando {ativo}...'):
-                try:
-                    # Busca 5000 barras para garantir cálculo do IFR em qualquer tempo gráfico
-                    df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+        with st.spinner(f'Calculando dados de {ativo}...'):
+            try:
+                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                
+                if df_full is not None and len(df_full) > 50:
+                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                    df_full['IFR'] = ta.rsi(df_full['Close'], length=lupa_ifr_periodo)
+                    df_full['IFR_Prev'] = df_full['IFR'].shift(1)
+                    df_full = df_full.dropna()
+
+                    # Lógica de Corte de Tempo
+                    data_atual_dt = df_full.index[-1]
+                    offset_map = {'1mo': 1, '3mo': 3, '6mo': 6, '1y': 12, '2y': 24, '5y': 60}
+                    data_corte = data_atual_dt - pd.DateOffset(months=offset_map.get(lupa_periodo, 120)) if lupa_periodo != 'max' else df_full.index[0]
+
+                    df_back = df_full[df_full.index >= data_corte].copy().reset_index()
                     
-                    if df_full is None or len(df_full) < 50:
-                        st.error("Dados insuficientes no TradingView.")
+                    trades = []
+                    em_pos = False
+                    posicao_atual = None
+                    vitorias, derrotas = 0, 0
+
+                    for i in range(1, len(df_back)):
+                        # Cruzamento Matemático: Subiu de 25
+                        condicao_entrada = (df_back['IFR_Prev'].iloc[i] < 25) and (df_back['IFR'].iloc[i] >= 25)
+
+                        if not em_pos:
+                            if condicao_entrada:
+                                em_pos = True
+                                d_ent = df_back.iloc[i, 0]
+                                p_ent = df_back['Close'].iloc[i]
+                                min_na_op = df_back['Low'].iloc[i]
+                                cap_total = float(lupa_capital)
+                                pm = p_ent
+                                posicao_atual = {'Data': d_ent, 'PM': pm, 'Cap': cap_total, 'Cotação': df_back['Close'].iloc[-1]}
+                        else:
+                            if df_back['Low'].iloc[i] < min_na_op: min_na_op = df_back['Low'].iloc[i]
+                            
+                            alvo_p = pm * (1 + (lupa_alvo/100))
+                            stop_p = pm * (1 - (lupa_stop/100))
+                            
+                            saiu = False
+                            if df_back['High'].iloc[i] >= alvo_p:
+                                lucro = cap_total * (lupa_alvo/100)
+                                vitorias += 1; situacao = "Gain ✅"; saiu = True
+                            elif lupa_estrategia == "Alvo & Stop Loss" and df_back['Low'].iloc[i] <= stop_p:
+                                lucro = -(cap_total * (lupa_stop/100))
+                                derrotas += 1; situacao = "Stop ❌"; saiu = True
+
+                            if saiu:
+                                duracao = (df_back.iloc[i, 0] - d_ent).days
+                                dd = ((min_na_op / pm) - 1) * 100
+                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': df_back.iloc[i, 0].strftime('%d/%m/%Y'), 'Duração': duracao, 'Lucro (R$)': lucro, 'Queda Máx': dd, 'Situação': situacao})
+                                em_pos = False
+                                posicao_atual = None
+                            elif lupa_estrategia == "PM Dinâmico" and condicao_entrada:
+                                cap_total += float(lupa_capital)
+                                pm = (pm + df_back['Close'].iloc[i]) / 2
+                                posicao_atual['PM'] = pm
+
+                    # --- EXIBIÇÃO: STATUS ATUAL ---
+                    st.divider()
+                    if em_pos and posicao_atual:
+                        st.warning(f"⚠️ **OPERAÇÃO EM CURSO: {ativo}**")
+                        c1, c2, c3, c4 = st.columns(4)
+                        res_pct = ((df_back['Close'].iloc[-1] / posicao_atual['PM']) - 1) * 100
+                        c1.metric("Data Entrada", posicao_atual['Data'].strftime('%d/%m/%Y'))
+                        c2.metric("Preço Médio", f"R$ {posicao_atual['PM']:.2f}")
+                        c3.metric("Resultado Atual (%)", f"{res_pct:.2f}%")
+                        c4.metric("Resultado (R$)", f"R$ {(posicao_atual['Cap'] * res_pct/100):.2f}")
                     else:
-                        df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                        st.success(f"✅ **{ativo}: Aguardando Novo Sinal de Entrada**")
+
+                    # --- EXIBIÇÃO: MÉTRICAS DE RESUMO (O QUE TINHA SUMIDO) ---
+                    if trades:
+                        df_t = pd.DataFrame(trades)
+                        st.markdown(f"### 📊 Resultado Consolidado: {ativo}")
+                        m1, m2, m3, m4 = st.columns(4)
+                        m1.metric("Lucro Total", f"R$ {df_t['Lucro (R$)'].sum():,.2f}")
+                        m2.metric("Duração Média", f"{df_t['Duração'].mean():.1f} dias")
+                        m3.metric("Operações", len(df_t))
+                        if lupa_estrategia == "Alvo & Stop Loss":
+                            taxa = (vitorias/len(df_t))*100
+                            m4.metric("Taxa de Acerto", f"{taxa:.1f}%")
+                        else:
+                            m4.metric("Pior Queda", f"{df_t['Queda Máx'].min():.2f}%")
                         
-                        # Cálculo Matemático Puro do IFR (Independente do tempo gráfico)
-                        df_full['IFR'] = ta.rsi(df_full['Close'], length=lupa_ifr_periodo)
-                        df_full['IFR_Prev'] = df_full['IFR'].shift(1)
-                        df_full = df_full.dropna()
-
-                        # Filtro de Data para o Backtest
-                        data_atual_dt = df_full.index[-1]
-                        # Logica de corte simplificada
-                        offset_map = {'1mo': 1, '3mo': 3, '6mo': 6, '1y': 12, '2y': 24, '5y': 60}
-                        if lupa_periodo in offset_map:
-                            data_corte = data_atual_dt - pd.DateOffset(months=offset_map[lupa_periodo])
-                        else:
-                            data_corte = df_full.index[0]
-
-                        df_back = df_full[df_full.index >= data_corte].copy().reset_index()
-                        col_data = df_back.columns[0]
-                        
-                        trades = []
-                        em_pos = False
-                        vitorias, derrotas = 0, 0
-                        posicao_atual = None
-
-                        for i in range(1, len(df_back)):
-                            # REGRA DE OURO: Cruzou 25 pra cima
-                            condicao_entrada = (df_back['IFR_Prev'].iloc[i] < 25) and (df_back['IFR'].iloc[i] >= 25)
-
-                            if not em_pos:
-                                if condicao_entrada:
-                                    em_pos = True
-                                    d_ent = df_back[col_data].iloc[i]
-                                    p_ent = df_back['Close'].iloc[i]
-                                    min_na_op = df_back['Low'].iloc[i]
-                                    cap_total = float(lupa_capital)
-                                    pm = p_ent
-                                    
-                                    posicao_atual = {'Data': d_ent, 'PM': pm, 'Cap': cap_total}
-
-                            else:
-                                # Monitorar queda máxima enquanto estiver na operação
-                                if df_back['Low'].iloc[i] < min_na_op: min_na_op = df_back['Low'].iloc[i]
-                                
-                                alvo_p = pm * (1 + (lupa_alvo/100))
-                                stop_p = pm * (1 - (lupa_stop/100))
-                                
-                                saiu = False
-                                if df_back['High'].iloc[i] >= alvo_p:
-                                    lucro = cap_total * (lupa_alvo/100)
-                                    vitorias += 1; situacao = "Gain ✅"; saiu = True
-                                elif lupa_estrategia == "Alvo & Stop Loss" and df_back['Low'].iloc[i] <= stop_p:
-                                    lucro = -(cap_total * (lupa_stop/100))
-                                    derrotas += 1; situacao = "Stop ❌"; saiu = True
-
-                                if saiu:
-                                    duracao = (df_back[col_data].iloc[i] - d_ent).days
-                                    dd = ((min_na_op / pm) - 1) * 100
-                                    trades.append({
-                                        'Entrada': d_ent.strftime('%d/%m/%Y'),
-                                        'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y'),
-                                        'Duração': f"{duracao} d",
-                                        'Lucro (R$)': lucro,
-                                        'Queda Máx': f"{dd:.2f}%",
-                                        'Situação': situacao
-                                    })
-                                    em_pos = False
-                                    posicao_atual = None
-                                elif lupa_estrategia == "PM Dinâmico" and condicao_entrada:
-                                    # Novo aporte se der sinal de novo
-                                    cap_total += float(lupa_capital)
-                                    pm = (pm + df_back['Close'].iloc[i]) / 2
-                                    posicao_atual['PM'] = pm
-
-                        # --- INTERFACE DE RESULTADOS ---
-                        st.divider()
-                        if em_pos:
-                            st.warning(f"⚠️ **{ativo} em Operação no momento**")
-                            c1, c2, c3, c4 = st.columns(4)
-                            cotacao = df_back['Close'].iloc[-1]
-                            res_pct = ((cotacao / posicao_atual['PM']) - 1) * 100
-                            c1.metric("Entrada", posicao_atual['Data'].strftime('%d/%m/%Y'))
-                            c2.metric("PM", f"R$ {posicao_atual['PM']:.2f}")
-                            c3.metric("Resultado", f"{res_pct:.2f}%")
-                            c4.metric("Financeiro", f"R$ {(posicao_atual['Cap'] * res_pct/100):.2f}")
-                        else:
-                            st.success(f"✅ **{ativo}: Aguardando Sinal de Entrada**")
-
-                        if trades:
-                            st.dataframe(pd.DataFrame(trades), use_container_width=True, hide_index=True)
-                        else:
-                            st.info("Sem operações fechadas neste período.")
-                except Exception as e:
-                    st.error(f"Erro no processamento: {e}")
+                        # Tabela de Histórico
+                        df_t['Queda Máx'] = df_t['Queda Máx'].map("{:.2f}%".format)
+                        st.dataframe(df_t, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Nenhuma operação fechada no período de estudo.")
+                else:
+                    st.error("Ativo não encontrado ou base de dados vazia.")
+            except Exception as e:
+                st.error(f"Erro: {e}")
 # ==========================================
 # ABA 5: RAIO-X FUTUROS (VERSÃO FINAL) - SEU CÓDIGO ÍNTEGRO
 # ==========================================
