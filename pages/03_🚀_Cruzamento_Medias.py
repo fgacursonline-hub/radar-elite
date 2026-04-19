@@ -20,7 +20,15 @@ def get_tv_connection():
 tv = get_tv_connection()
 
 tradutor_intervalo = {'15m': Interval.in_15_minute, '60m': Interval.in_1_hour, '1d': Interval.in_daily, '1wk': Interval.in_weekly, '1mo': Interval.in_monthly}
-
+tradutor_periodo_nome = {
+    '1mo': '1 Mês',
+    '3mo': '3 Meses',
+    '6mo': '6 Meses',
+    '1y': '1 Ano',
+    '2y': '2 Anos',
+    '5y': '5 Anos',
+    'max': 'Máximo'
+}
 bdrs_elite = [
     'NVDC34.SA', 'P2LT34.SA', 'ROXO34.SA', 'INBR32.SA', 'M1TA34.SA', 'TSLA34.SA',
     'LILY34.SA', 'AMZO34.SA', 'AURA33.SA', 'GOGL34.SA', 'MSFT34.SA', 'MUTC34.SA',
