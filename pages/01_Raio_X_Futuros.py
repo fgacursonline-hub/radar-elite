@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 import pandas_ta as ta
-initial_sidebar_state="expanded"
 from tvDatafeed import TvDatafeed, Interval
+initial_sidebar_state="expanded"
 
 # --- CONFIGURAÇÃO INICIAL DA PÁGINA ---
 st.set_page_config(page_title="Raio-X Futuros", layout="wide")
