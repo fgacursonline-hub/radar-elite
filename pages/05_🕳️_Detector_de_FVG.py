@@ -23,13 +23,15 @@ with col_man:
 st.markdown("Identifique desequilíbrios de preço e opere nas zonas defendidas pelos grandes bancos.")
 st.divider()
 
-# --- CRIAÇÃO DAS 5 SUB-ABAS ---
-aba_individual, aba_radar, aba_backtest, aba_supremo, aba_backtest_supremo = st.tabs([
+# --- CRIAÇÃO DAS 7 SUB-ABAS (Agora com Sniper e Volume) ---
+aba_individual, aba_radar, aba_backtest, aba_supremo, aba_backtest_supremo, aba_volume, aba_sniper = st.tabs([
     "🔍 Raio-X Individual", 
     "📡 Radar de Oportunidades", 
     "📊 Backtest FVG Puro",
     "🔥 Radar Supremo (9.1 + FVG)",
-    "📈 Backtest Supremo (Confluência)"
+    "📈 Backtest Supremo (Confluência)",
+    "💎 Volume & VWAP",
+    "🦅 Filtro Sniper (Confluência Total)"
 ])
 
 # ==========================================
@@ -409,3 +411,100 @@ with aba_backtest_supremo:
                     else: st.info(f"O robô varreu todo o histórico de {ativo}, mas este setup supremo é muito raro e não gerou nenhum sinal cravado de entrada.")
                 else: st.error("Dados insuficientes para backtest.")
             except Exception as e: st.error(f"Erro no backtest: {e}")
+                # ==========================================
+# ABA 6: 💎 VOLUME & VWAP INSTITUCIONAL
+# ==========================================
+with aba_volume:
+    st.subheader("💎 Volume & VWAP Institucional")
+    st.markdown("Confirme se o movimento tem apoio do 'Dinheiro Grosso' ou se é apenas ruído.")
+    
+    v1, v2, v3 = st.columns(3)
+    with v1: vol_ativo = st.text_input("Ativo (Ex: PETR4):", value="PETR4", key="vol_at").upper()
+    with v2: vol_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d'], index=1, key="vol_tm")
+    with v3: vol_bars = st.number_input("Qtd. de Velas:", value=200, step=50, key="vol_vl")
+
+    if st.button("📊 Analisar Fluxo Financeiro", type="primary", use_container_width=True):
+        ativo = vol_ativo.strip().replace('.SA', '')
+        interv = {'15m': Interval.in_15_minute, '60m': Interval.in_1_hour, '1d': Interval.in_daily}[vol_tempo]
+        try:
+            df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=interv, n_bars=vol_bars)
+            if df is not None and len(df) > 20:
+                df.rename(columns={'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
+                df['vwap'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
+                df['vol_avg'] = df['Volume'].rolling(window=20).mean()
+                
+                pa = df['Close'].iloc[-1]
+                vwap = df['vwap'].iloc[-1]
+                vol_atual = df['Volume'].iloc[-1]
+                v_media = df['vol_avg'].iloc[-1]
+                
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Preço Atual", f"R$ {pa:.2f}")
+                c2.metric("VWAP (Preço Médio)", f"R$ {vwap:.2f}", delta=f"{((pa/vwap)-1)*100:.2f}%")
+                c3.metric("Volume Atual", f"{vol_atual:,.0f}", delta=f"{((vol_atual/v_media)-1)*100:.1f}% vs Média")
+                
+                st.divider()
+                col_veredito, col_dados = st.columns([1, 1])
+                with col_veredito:
+                    st.subheader("🕵️ Veredito do Dinheiro")
+                    if pa > vwap: st.success("✅ **TENDÊNCIA COMPRADORA:** Preço acima da VWAP.")
+                    else: st.error("❌ **TENDÊNCIA VENDEDORA:** Preço abaixo da VWAP.")
+                    
+                    if vol_atual > v_media * 1.2: st.warning("🚀 **VOLUME ALTO:** Atividade institucional confirmada.")
+                    else: st.info("😴 **VOLUME BAIXO:** Sem interesse institucional no momento.")
+                
+                with col_dados:
+                    st.subheader("Picos de Volume Recentes")
+                    st.dataframe(df[df['Volume'] > df['vol_avg'] * 1.5].tail(5)[['Close', 'Volume']].sort_index(ascending=False), use_container_width=True)
+        except Exception as e: st.error(f"Erro: {e}")
+
+# ==========================================
+# ABA 7: 🦅 FILTRO SNIPER (CONFLUÊNCIA TOTAL)
+# ==========================================
+with aba_sniper:
+    st.subheader("🦅 O Filtro Sniper: A Confluência de Elite")
+    st.markdown("Busca ativos que reúnem: **9.1 de Compra + Dentro de FVG + Acima da VWAP + Volume Alto.**")
+    
+    # Listas de ativos (IBrX e BDRs)
+    lista_sni = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Ambas as listas"], key="sni_lst")
+    
+    if st.button("🦅 Iniciar Varredura Sniper", type="primary", use_container_width=True):
+        ativos_sni = bdrs_elite if "BDRs" in lista_sni else ibrx_selecao if "IBrX" in lista_sni else bdrs_elite + ibrx_selecao
+        barra = st.progress(0, text="Iniciando caçada...")
+        achados = []
+
+        for idx, ativo in enumerate(ativos_sni):
+            barra.progress((idx + 1) / len(ativos_sni), text=f"🦅 Sniper analisando {ativo}...")
+            try:
+                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=150)
+                if df is not None and len(df) > 30:
+                    df.rename(columns={'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
+                    
+                    # 1. 9.1 de Compra (MME9 virou pra cima)
+                    df.ta.ema(length=9, append=True)
+                    mme9 = df['EMA_9']
+                    setup_91 = (mme9.iloc[-3] >= mme9.iloc[-2]) and (mme9.iloc[-1] > mme9.iloc[-2])
+                    
+                    if setup_91:
+                        # 2. VWAP
+                        df['vwap'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
+                        if df['Close'].iloc[-1] > df['vwap'].iloc[-1]:
+                            # 3. Volume acima da média
+                            v_med = df['Volume'].rolling(20).mean().iloc[-1]
+                            if df['Volume'].iloc[-1] > v_med:
+                                # 4. FVG Aberto
+                                for i in range(2, len(df)-2):
+                                    if df['Low'].iloc[i] > df['High'].iloc[i-2]:
+                                        if df['Low'].iloc[i:].min() > df['High'].iloc[i-2]: # Aberto
+                                            if min(df['Low'].iloc[-1], df['Low'].iloc[-2]) <= df['Low'].iloc[i]: # Preço na zona
+                                                achados.append({
+                                                    'Ativo': ativo, 'Preço': f"R$ {df['Close'].iloc[-1]:.2f}",
+                                                    'Volume': f"+{((df['Volume'].iloc[-1]/v_med)-1)*100:.0f}%",
+                                                    'Entrada': f"R$ {df['High'].iloc[-1]:.2f}",
+                                                    'Stop': f"R$ {df['High'].iloc[i-2]:.2f}"
+                                                })
+                                                break
+            except: pass
+        barra.empty()
+        if achados: st.success(f"🎯 Encontrados {len(achados)} Snipers!"); st.dataframe(pd.DataFrame(achados), use_container_width=True, hide_index=True)
+        else: st.warning("Nenhum sinal completo encontrado.")
