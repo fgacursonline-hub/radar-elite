@@ -16,7 +16,7 @@ if not st.session_state['autenticado']:
     col1, col_centro, col3 = st.columns([1, 1, 1])
     
     with col_centro:
-        st.markdown("<br><br>", unsafe_allow_stdio=True) # Espaçamento no topo
+        unsafe_allow_html=True
         st.markdown("### 🔐 Acesso Restrito")
         st.write("Plataforma Caçadores de Elite")
         
