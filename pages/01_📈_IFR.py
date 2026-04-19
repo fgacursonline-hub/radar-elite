@@ -491,7 +491,7 @@ with aba_stop:
 # ==========================================
 with aba_individual:
     st.subheader("🔬 Raio-X Detalhado: Backtest & Status Atual")
-    st.markdown("Veja o histórico de acertos e se o ativo está com operação aberta agora.")
+    st.markdown("Veja o histórico de acertos e o status completo se o ativo estiver com operação aberta agora.")
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -546,8 +546,9 @@ with aba_individual:
                                 min_na_op = df_back['Low'].iloc[i]
                                 cap_total = float(lupa_capital)
                                 pm = p_ent
-                                posicao_atual = {'Data': d_ent, 'PM': pm, 'Cap': cap_total, 'Cotação': df_back['Close'].iloc[-1]}
+                                posicao_atual = {'Data': d_ent, 'PM': pm, 'Cap': cap_total}
                         else:
+                            # Atualiza a mínima da operação atual para o cálculo de Queda Máx
                             if df_back['Low'].iloc[i] < min_na_op: min_na_op = df_back['Low'].iloc[i]
                             
                             alvo_p = pm * (1 + (lupa_alvo/100))
@@ -571,28 +572,46 @@ with aba_individual:
                                 cap_total += float(lupa_capital)
                                 pm = (pm + df_back['Close'].iloc[i]) / 2
                                 posicao_atual['PM'] = pm
+                                posicao_atual['Cap'] = cap_total
 
-                    # --- EXIBIÇÃO: STATUS ATUAL ---
+                    # --- EXIBIÇÃO: STATUS ATUAL (AGORA COMPLETO) ---
                     st.divider()
                     if em_pos and posicao_atual:
-                        st.warning(f"⚠️ **OPERAÇÃO EM CURSO: {ativo}**")
-                        c1, c2, c3, c4 = st.columns(4)
-                        res_pct = ((df_back['Close'].iloc[-1] / posicao_atual['PM']) - 1) * 100
+                        st.warning(f"⚠️ **OPERAÇÃO EM CURSO: {ativo} ({lupa_tempo})**")
+                        
+                        cotacao_atual = df_back['Close'].iloc[-1]
+                        ultima_data = df_back.iloc[-1, 0]
+                        
+                        dias_em_op = (ultima_data - posicao_atual['Data']).days
+                        res_pct = ((cotacao_atual / posicao_atual['PM']) - 1) * 100
+                        res_rs = posicao_atual['Cap'] * res_pct / 100
+                        prej_max = ((min_na_op / posicao_atual['PM']) - 1) * 100
+
+                        # Linha 1 de métricas
+                        c1, c2, c3 = st.columns(3)
                         c1.metric("Data Entrada", posicao_atual['Data'].strftime('%d/%m/%Y'))
-                        c2.metric("Preço Médio", f"R$ {posicao_atual['PM']:.2f}")
-                        c3.metric("Resultado Atual (%)", f"{res_pct:.2f}%")
-                        c4.metric("Resultado (R$)", f"R$ {(posicao_atual['Cap'] * res_pct/100):.2f}")
+                        c2.metric("Dias em Operação", f"{dias_em_op} dias")
+                        c3.metric("Cotação Atual", f"R$ {cotacao_atual:.2f}")
+                        
+                        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+                        
+                        # Linha 2 de métricas
+                        c4, c5, c6 = st.columns(3)
+                        c4.metric("Preço Médio (PM)", f"R$ {posicao_atual['PM']:.2f}")
+                        c5.metric("Prejuízo Máximo (DD)", f"{prej_max:.2f}%")
+                        c6.metric("Resultado Atual", f"{res_pct:.2f}%", delta=f"R$ {res_rs:.2f}")
+                        
                     else:
                         st.success(f"✅ **{ativo}: Aguardando Novo Sinal de Entrada**")
 
-                    # --- EXIBIÇÃO: MÉTRICAS DE RESUMO (O QUE TINHA SUMIDO) ---
+                    # --- EXIBIÇÃO: MÉTRICAS DE RESUMO DO HISTÓRICO ---
                     if trades:
                         df_t = pd.DataFrame(trades)
                         st.markdown(f"### 📊 Resultado Consolidado: {ativo}")
                         m1, m2, m3, m4 = st.columns(4)
                         m1.metric("Lucro Total", f"R$ {df_t['Lucro (R$)'].sum():,.2f}")
                         m2.metric("Duração Média", f"{df_t['Duração'].mean():.1f} dias")
-                        m3.metric("Operações", len(df_t))
+                        m3.metric("Operações Fechadas", len(df_t))
                         if lupa_estrategia == "Alvo & Stop Loss":
                             taxa = (vitorias/len(df_t))*100
                             m4.metric("Taxa de Acerto", f"{taxa:.1f}%")
@@ -607,7 +626,7 @@ with aba_individual:
                 else:
                     st.error("Ativo não encontrado ou base de dados vazia.")
             except Exception as e:
-                st.error(f"Erro: {e}")
+                st.error(f"Erro no processamento: {e}")
 # ==========================================
 # ABA 5: RAIO-X FUTUROS (VERSÃO FINAL) - SEU CÓDIGO ÍNTEGRO
 # ==========================================
