@@ -759,25 +759,26 @@ with aba_futuros:
     cf1, cf2, cf3 = st.columns(3)
     with cf1:
         mapa_fut = {"WINFUT (Mini Índice)": "WIN1!", "WDOFUT (Mini Dólar)": "WDO1!"}
-        f_selecionado = st.selectbox("Ativo:", options=list(mapa_fut.keys()), key="f_cm_ativo")
+        f_selecionado = st.selectbox("Selecione o Ativo:", options=list(mapa_fut.keys()), key="f_cm_ativo")
         f_ativo = mapa_fut[f_selecionado] 
-        f_dir = st.selectbox("Direção:", ["Ambas", "Apenas Compra", "Apenas Venda"], key="f_cm_dir")
+        f_dir = st.selectbox("Direção do Trade:", ["Ambas", "Apenas Compra", "Apenas Venda"], key="f_cm_dir")
     with cf2:
         f_tipo = st.selectbox("Tipo de Média:", ["Exponencial (EMA)", "Aritmética (SMA)", "Welles Wilder (RMA)"], key="f_cm_tipo")
+        
         c_f1, c_f2 = st.columns(2)
-        f_curta = c_f1.number_input("Curta:", value=16, key="f_cm_curta")
-        f_fcurta_pt = c_f2.selectbox("Fonte C:", ["Fechamento", "Máxima", "Mínima"], index=1, key="f_cm_fcurta")
+        f_curta = c_f1.number_input("Período Curta:", value=16, key="f_cm_curta")
+        f_fcurta_pt = c_f2.selectbox("Fonte (Curta):", ["Fechamento", "Máxima", "Mínima"], index=1, key="f_cm_fcurta")
         
         c_f3, c_f4 = st.columns(2)
-        f_longa = c_f3.number_input("Longa:", value=42, key="f_cm_longa")
-        f_flonga_pt = c_f4.selectbox("Fonte L:", ["Fechamento", "Máxima", "Mínima"], index=0, key="f_cm_flonga")
+        f_longa = c_f3.number_input("Período Longa:", value=42, key="f_cm_longa")
+        f_flonga_pt = c_f4.selectbox("Fonte (Longa):", ["Fechamento", "Máxima", "Mínima"], index=0, key="f_cm_flonga")
     with cf3:
         f_alvo = st.number_input("Alvo (Pontos):", value=300, step=50, key="f_cm_alvo")
         f_contratos = st.number_input("Contratos:", value=1, step=1, key="f_cm_cont")
-        f_multi = st.number_input("R$ por Ponto:", value=0.20 if "WIN" in f_selecionado else 10.0, key="f_cm_mult")
-        f_tmp = st.selectbox("Tempo:", ['15m', '60m'], key="f_cm_tmp")
+        f_multi = st.number_input("Valor R$ por Ponto:", value=0.20 if "WIN" in f_selecionado else 10.0, key="f_cm_mult")
+        f_tmp = st.selectbox("Tempo Gráfico:", ['15m', '60m'], key="f_cm_tmp")
 
-    f_zerar = st.checkbox("⏰ Zerar no Fim do Dia", value=True, key="f_cm_zerar")
+    f_zerar = st.checkbox("⏰ Zeragem Automática no Fim do Dia", value=True, key="f_cm_zerar")
     btn_fut = st.button("🚀 Gerar Raio-X Futuros", type="primary", use_container_width=True, key="f_cm_btn")
 
     if btn_fut:
@@ -790,6 +791,7 @@ with aba_futuros:
                 if df_full is not None:
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     
+                    # Cálculo das Médias
                     if f_tipo == "Exponencial (EMA)":
                         df_full['Curta'] = ta.ema(df_full[mapa_f[f_fcurta_pt]], length=f_curta)
                         df_full['Longa'] = ta.ema(df_full[mapa_f[f_flonga_pt]], length=f_longa)
@@ -808,7 +810,6 @@ with aba_futuros:
                     vits, derrs = 0, 0
                     df_b = df_full.reset_index()
                     col_dt = df_b.columns[0]
-                    offset = 5.0 if "WIN" in f_ativo else 0.5
 
                     for i in range(1, len(df_b)):
                         d_at, d_ant = df_b[col_dt].iloc[i], df_b[col_dt].iloc[i-1]
@@ -819,7 +820,7 @@ with aba_futuros:
                         if posicao != 0 and f_zerar and d_at.date() != d_ant.date():
                             p_sai = df_b['Close'].iloc[i-1]
                             luc = (p_sai - p_ent) * f_contratos * f_multi if posicao == 1 else (p_ent - p_sai) * f_contratos * f_multi
-                            trades.append({'Entrada': d_ent, 'Saída': d_ant, 'Tipo': 'Compra 🟢' if posicao == 1 else 'Venda 🔴', 'Lucro': luc, 'Status': 'Fim Dia'})
+                            trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_ant.strftime('%d/%m %H:%M'), 'Tipo': 'Compra 🟢' if posicao == 1 else 'Venda 🔴', 'Lucro (R$)': luc, 'Status': 'Zerad. Fim Dia'})
                             if luc > 0: vits += 1 
                             else: derrs += 1
                             posicao = 0
@@ -827,15 +828,15 @@ with aba_futuros:
                         if posicao == 1: # COMPRADO
                             if df_b['High'].iloc[i] >= take_p:
                                 luc = f_alvo * f_contratos * f_multi
-                                trades.append({'Entrada': d_ent, 'Saída': d_at, 'Tipo': 'Compra 🟢', 'Lucro': luc, 'Status': 'Gain ✅'})
+                                trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Tipo': 'Compra 🟢', 'Lucro (R$)': luc, 'Status': 'Gain ✅'})
                                 vits += 1; posicao = 0
                         elif posicao == -1: # VENDIDO
                             if df_b['Low'].iloc[i] <= take_p:
                                 luc = f_alvo * f_contratos * f_multi
-                                trades.append({'Entrada': d_ent, 'Saída': d_at, 'Tipo': 'Venda 🔴', 'Lucro': luc, 'Status': 'Gain ✅'})
+                                trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Tipo': 'Venda 🔴', 'Lucro (R$)': luc, 'Status': 'Gain ✅'})
                                 vits += 1; posicao = 0
                         
-                        # Entradas
+                        # Gatilhos de Entrada
                         if c_cima and posicao == 0 and f_dir != "Apenas Venda":
                             posicao, d_ent, p_ent = 1, d_at, df_b['Close'].iloc[i]
                             take_p = p_ent + f_alvo
@@ -847,9 +848,11 @@ with aba_futuros:
                     if trades:
                         df_res = pd.DataFrame(trades)
                         m1, m2, m3, m4 = st.columns(4)
-                        m1.metric("Lucro Total", f"R$ {df_res['Lucro'].sum():,.2f}")
+                        m1.metric("Lucro Total", f"R$ {df_res['Lucro (R$)'].sum():,.2f}")
                         m2.metric("Trades", len(df_res))
                         m3.metric("Taxa Acerto", f"{(vits/len(df_res)*100):.1f}%")
                         m4.metric("V / D", f"{vits} / {derrs}")
                         st.dataframe(df_res, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("Nenhuma operação concluída neste período.")
             except Exception as e: st.error(f"Erro: {e}")
