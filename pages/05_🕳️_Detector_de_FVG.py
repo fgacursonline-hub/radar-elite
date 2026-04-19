@@ -409,3 +409,31 @@ with aba_backtest_supremo:
                     else: st.info(f"O robô varreu todo o histórico de {ativo}, mas este setup supremo é muito raro e não gerou nenhum sinal cravado de entrada.")
                 else: st.error("Dados insuficientes para backtest.")
             except Exception as e: st.error(f"Erro no backtest: {e}")
+                # ==========================================
+# ABA 7: 🦅 FILTRO SNIPER (CONFLUÊNCIA TOTAL)
+# ==========================================
+with aba_sniper:
+    st.subheader("🦅 Filtro Sniper")
+    if st.button("🦅 Executar Varredura Sniper", type="primary", use_container_width=True):
+        barra = st.progress(0)
+        snipers = []
+        for i, at in enumerate(bdrs_elite + ibrx_selecao):
+            barra.progress((i+1)/(len(bdrs_elite)+len(ibrx_selecao)), text=f"Sniper em {at}")
+            try:
+                df = tv.get_hist(symbol=at, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=150)
+                if df is not None:
+                    df.rename(columns={'high':'High','low':'Low','close':'Close','volume':'Volume'}, inplace=True)
+                    df.ta.ema(length=9, append=True)
+                    # Condição 9.1 + VWAP + Volume + FVG
+                    if (df['EMA_9'].iloc[-2] <= df['EMA_9'].iloc[-3]) and (df['EMA_9'].iloc[-1] > df['EMA_9'].iloc[-2]):
+                        vwap = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
+                        if df['Close'].iloc[-1] > vwap.iloc[-1]:
+                            if df['Volume'].iloc[-1] > df['Volume'].rolling(20).mean().iloc[-1]:
+                                for j in range(2, len(df)-2):
+                                    if df['Low'].iloc[j] > df['High'].iloc[j-2] and df['Low'].iloc[j:].min() > df['High'].iloc[j-2]:
+                                        if min(df['Low'].iloc[-1], df['Low'].iloc[-2]) <= df['Low'].iloc[j]:
+                                            snipers.append({'Ativo': at, 'Preço': df['Close'].iloc[-1], 'Volume': '✅ ALTO', 'VWAP': '✅ ACIMA'})
+                                            break
+            except: pass
+        barra.empty()
+        st.dataframe(pd.DataFrame(snipers), use_container_width=True)
