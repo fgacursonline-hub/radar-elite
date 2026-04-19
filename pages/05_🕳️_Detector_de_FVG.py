@@ -7,7 +7,6 @@ from tvDatafeed import TvDatafeed, Interval
 st.set_page_config(page_title="Detector de FVG", layout="wide")
 
 # Inicializa o TradingView
-# (Certifique-se de que a instância 'tv' está acessível ou crie uma nova)
 if 'tv' not in st.session_state:
     st.session_state.tv = TvDatafeed()
 tv = st.session_state.tv
@@ -19,7 +18,7 @@ with col_tit:
 with col_man:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     # Substitua pelo seu link real quando tiver o manual do FVG
-    st.link_button("📖 Manual FVG", "https://seusite.com/manual_fvg")
+    st.link_button("📖 Manual FVG", "https://seusite.com/manual_fvg", use_container_width=True)
 
 st.markdown("---")
 
@@ -40,6 +39,7 @@ btn_fvg = st.button("🔍 Escanear Desequilíbrios", type="primary", use_contain
 if btn_fvg:
     ativo = lupa_ativo.strip()
     
+    # Mapeamento forçado para não dar erro de tempo gráfico
     mapa_intervalos = {
         '15m': Interval.in_15_minute, '60m': Interval.in_1_hour,
         '1d': Interval.in_daily, '1wk': Interval.in_weekly, '1mo': Interval.in_monthly
@@ -55,7 +55,7 @@ if btn_fvg:
                 
                 lista_gaps = []
                 preco_atual = df['Close'].iloc[-1]
-                alerta_oportunidade = False # Gatilho para disparar o aviso
+                alerta_oportunidade = False
                 
                 # Loop para calcular os limites de preço de cada Gap
                 for i in range(2, len(df)):
@@ -69,7 +69,7 @@ if btn_fvg:
                         aberto = df['Low'].iloc[i:].min() > fundo
                         status = "Aberto" if aberto else "Preenchido"
                         
-                        # Se estiver Aberto e o preço atual estiver DENTRO do Gap: Dispara Alerta!
+                        # Alerta se o preço atual estiver DENTRO do Gap Aberto
                         if aberto and (fundo <= preco_atual <= topo):
                             alerta_oportunidade = True
                             
@@ -91,7 +91,7 @@ if btn_fvg:
                         aberto = df['High'].iloc[i:].max() < topo
                         status = "Aberto" if aberto else "Preenchido"
                         
-                        # Se estiver Aberto e o preço atual estiver DENTRO do Gap: Dispara Alerta!
+                        # Alerta se o preço atual estiver DENTRO do Gap Aberto
                         if aberto and (fundo <= preco_atual <= topo):
                             alerta_oportunidade = True
                             
@@ -113,7 +113,7 @@ if btn_fvg:
                     st.error(f"🚨 **OPORTUNIDADE:** O preço atual de {ativo} está exatamente DENTRO de uma zona de Gap Institucional ABERTO! Fique atento a reações nesta faixa de preço.")
                 
                 if lista_gaps:
-                    # Filtra os Gaps que ainda estão abertos para destacar (se houver)
+                    # Filtra os Gaps abertos para dar destaque
                     gaps_abertos = [g for g in lista_gaps if g['Status'] == 'Aberto']
                     destaques = gaps_abertos[-3:] if gaps_abertos else lista_gaps[-3:]
                         
@@ -134,17 +134,13 @@ if btn_fvg:
                             "- **FVG de Alta:** Funciona como um ímã e uma zona de **Suporte (Demanda)**. O preço tende a cair até este buraco, atrair compradores institucionais e voltar a subir.\n"
                             "- **FVG de Baixa:** Funciona como um ímã e uma zona de **Resistência (Oferta)**. O preço tende a subir até este buraco, atrair vendedores e voltar a cair.")
                     
-                    # Tabela completa com histórico formatado
+                    # Tabela completa
                     df_final = pd.DataFrame(lista_gaps).sort_index(ascending=False)
                     df_final['Limite Superior'] = df_final['Limite Superior'].apply(lambda x: f"R$ {x:.2f}")
                     df_final['Limite Inferior'] = df_final['Limite Inferior'].apply(lambda x: f"R$ {x:.2f}")
                     st.dataframe(df_final, use_container_width=True, hide_index=True)
                 else:
                     st.success("Mercado em equilíbrio. Nenhum Gap relevante encontrado nas últimas velas.")
-            else:
-                st.error("Ativo não encontrado ou dados insuficientes.")
-        except Exception as e:
-            st.error(f"Erro no processamento: {e}")
             else:
                 st.error("Ativo não encontrado ou dados insuficientes.")
         except Exception as e:
