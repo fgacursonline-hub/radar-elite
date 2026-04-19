@@ -90,42 +90,78 @@ with aba_backtest:
     with bk2: alvo_bk = st.number_input("Alvo do Backtest (%):", value=50.0, step=10.0, key="alvo_bk")
     with bk3: hist_bk = st.number_input("Histórico (Velas Diárias):", value=1000, step=500)
 
-    if st.button("⚙️ Rodar Backtest de Rompimento", type="primary", use_container_width=True):
-        try:
-            df = tv.get_hist(symbol=at_bk, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=hist_bk)
-            if df is not None:
-                df.columns = [c.capitalize() for c in df.columns]
-                # Aqui definimos a máxima anual móvel (252 dias)
-                df['Max_Anual'] = df['High'].rolling(window=252).max().shift(1)
-                
-                trades = []
-                em_trade = False
-                
-                for i in range(252, len(df)):
-                    if not em_trade:
-                        # Gatilho: Preço cruza a máxima dos últimos 252 dias
-                        if df['Close'].iloc[i] > df['Max_Anual'].iloc[i]:
-                            em_trade = True
-                            p_entrada = df['Close'].iloc[i]
-                            p_alvo = p_entrada * (1 + (alvo_bk / 100))
-                            data_entrada = df.index[i]
-                    else:
-                        # Verifica se atingiu o alvo
-                        if df['High'].iloc[i] >= p_alvo:
-                            trades.append({
-                                'Data Entrada': data_entrada.strftime('%d/%m/%Y'),
-                                'Data Saída': df.index[i].strftime('%d/%m/%Y'),
-                                'Resultado': f"🟢 GAIN (+{alvo_bk}%)",
-                                'Preço Saída': f"R$ {p_alvo:.2f}"
-                            })
-                            em_trade = False
-                
-                if trades:
-                    st.success(f"Backtest concluído para {at_bk}!")
-                    st.dataframe(pd.DataFrame(trades), use_container_width=True)
-                else:
-                    st.warning("Nenhum trade finalizado (atingiu o alvo) encontrado no histórico.")
-        except Exception as e: st.error(f"Erro: {e}")
+   if st.button("🚀 Iniciar Radar de Rompimento", type="primary", use_container_width=True):
+        lista_ativos = bdrs_elite if escolha_lista == "BDRs Elite" else ibrx_selecao if escolha_lista == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        barra = st.progress(0)
+        encontrados = []
 
-with aba_raio_x:
-    st.write("🔬 Use para analisar o gráfico detalhado do ativo escolhido.")
+        for idx, ativo in enumerate(lista_ativos):
+            barra.progress((idx + 1) / len(lista_ativos), text=f"🔍 Analisando {ativo}...")
+            try:
+                # Puxamos 300 barras diárias para cobrir o ano anterior e contar duração
+                df_d = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=300)
+                
+                if df_d is not None and len(df_d) > 260:
+                    df_d.columns = [c.capitalize() for c in df_d.columns]
+                    pa = df_d['Close'].iloc[-1]
+                    col_ref = "High" if tipo_romp == "Máxima" else "Close"
+
+                    # DEFINIÇÃO DA REFERÊNCIA (Pega o período fechado anterior)
+                    if tempo_grafico == "Anual":
+                        ref_val = df_d[col_ref].iloc[-300:-76].max() 
+                    elif tempo_grafico == "Mensal":
+                        ref_val = df_d[col_ref].iloc[-45:-22].max()
+                    elif tempo_grafico == "60m":
+                        df_h = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_1_hour, n_bars=3)
+                        df_h.columns = [c.capitalize() for c in df_h.columns]
+                        ref_val = df_h[col_ref].iloc[-2]
+                    else:
+                        ref_val = df_d[col_ref].iloc[-2] # Ontem
+                        
+                    if pa > ref_val:
+                        # Contagem de dias úteis desde o rompimento inicial
+                        cont_dias = 0
+                        for v in range(len(df_d)-1, -1, -1):
+                            if df_d['High'].iloc[v] > ref_val:
+                                cont_dias += 1
+                            else:
+                                break
+                        
+                        lucro_real = ((pa / ref_val) - 1) * 100
+                        
+                        # --- LÓGICA DE STATUS DO ALVO (MELHORADA) ---
+                        if lucro_real >= alvo_escolhido:
+                            excedente = lucro_real - alvo_escolhido
+                            status_alvo = f"🎯 ATINGIDO (+{excedente:.2f}%)"
+                        else:
+                            falta = alvo_escolhido - lucro_real
+                            status_alvo = f"⏳ Falta {falta:.2f}%"
+                        
+                        encontrados.append({
+                            'Ativo': ativo,
+                            'Preço Atual': f"R$ {pa:.2f}",
+                            f'Ref. {tipo_romp}': f"R$ {ref_val:.2f}",
+                            'Lucro Real': f"{lucro_real:.2f}%",
+                            'Status p/ Alvo': status_alvo,
+                            'Duração': f"{cont_dias} dias úteis",
+                            'Lote': int(cap_trade // pa)
+                        })
+            except: pass
+        
+        barra.empty()
+        if encontrados:
+            st.success(f"Encontrados {len(encontrados)} ativos rompidos no {tempo_grafico}!")
+            df_final = pd.DataFrame(encontrados)
+            
+            # Estilização para destacar quem já atingiu o alvo
+            def destacar_alvo(val):
+                color = '#d4edda' if '🎯' in str(val) else 'transparent'
+                return f'background-color: {color}; color: black'
+
+            st.dataframe(
+                df_final.style.map(destacar_alvo, subset=['Status p/ Alvo']), 
+                use_container_width=True, 
+                hide_index=True
+            )
+        else:
+            st.warning(f"Nenhum rompimento de {tipo_romp} detectado no momento.")
