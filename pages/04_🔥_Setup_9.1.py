@@ -625,19 +625,20 @@ with aba_futuros:
         fut_periodo = st.selectbox("Período:", options=['3mo', '6mo', '1y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=1, key="f91_per")
         fut_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m'], index=0, key="f91_tmp")
     with cf2:
+        direcao_fut = st.selectbox("Direção do Trade:", ["Ambas (Compra e Venda)", "Apenas Compra", "Apenas Venda"], key="f91_dir")
         tipo_stop_fut = st.selectbox("Posição do Stop Inicial:", ["Extremo do Candle (Máx/Mín)", "Extremo Anterior (5 candles)"], key="f91_stop")
         tipo_cond_fut = st.selectbox("Média de Condução:", ["MME9 (Exponencial)", "MM9 (Aritmética)"], key="f91_cond")
-        fut_zerar_daytrade = st.checkbox("⏰ Zeragem Automática no Fim do Dia", value=True, key="f91_zerar")
     with cf3:
         fut_contratos = st.number_input("Contratos Iniciais:", value=1, step=1, key="f91_cont")
         valor_mult_padrao = 0.20 if "WIN" in fut_selecionado else 10.00
         fut_multiplicador = st.number_input("Multiplicador (R$):", value=valor_mult_padrao, step=0.10, format="%.2f", key="f91_mult")
-        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        fut_zerar_daytrade = st.checkbox("⏰ Zeragem Automática no Fim do Dia", value=True, key="f91_zerar")
+        st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)
         btn_raiox_futuros = st.button("🚀 Gerar Raio-X Futuros 9.1", type="primary", use_container_width=True, key="f91_btn")
 
     if btn_raiox_futuros:
         intervalo_tv = tradutor_intervalo.get(fut_tempo, Interval.in_15_minute)
-        with st.spinner(f'Testando o motor do 9.1 (Compra/Venda) em {fut_selecionado}...'):
+        with st.spinner(f'Testando o motor do 9.1 ({direcao_fut}) em {fut_selecionado}...'):
             try:
                 df_full = tv.get_hist(symbol=fut_ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=10000)
                 if df_full is not None and len(df_full) > 50:
@@ -786,14 +787,14 @@ with aba_futuros:
                                 elif mme9_subindo:
                                     setup_venda = False
 
-                            # ARMA O SETUP
-                            if mme9_virou_cima and posicao == 0:
+                            # ARMA O SETUP (COM TRAVA DE DIREÇÃO)
+                            if mme9_virou_cima and posicao == 0 and direcao_fut != "Apenas Venda":
                                 setup_compra = True
                                 setup_venda = False
                                 gatilho_entrada = df_back['High'].iloc[i]
                                 stop_loss = df_back['Fundo_5'].iloc[i] - offset if "Extremo Anterior" in tipo_stop_fut else df_back['Low'].iloc[i] - offset
                                 
-                            elif mme9_virou_baixo and posicao == 0:
+                            elif mme9_virou_baixo and posicao == 0 and direcao_fut != "Apenas Compra":
                                 setup_venda = True
                                 setup_compra = False
                                 gatilho_entrada = df_back['Low'].iloc[i]
@@ -803,7 +804,7 @@ with aba_futuros:
                     if trades:
                         df_t = pd.DataFrame(trades)
                         st.divider()
-                        st.markdown(f"### 📊 Resultado: {fut_selecionado} (9.1 Compra/Venda)")
+                        st.markdown(f"### 📊 Resultado: {fut_selecionado} (9.1 {direcao_fut})")
                         st.caption(f"📅 Período: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
                         
                         l_total = df_t['Lucro (R$)'].sum()
