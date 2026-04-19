@@ -699,7 +699,7 @@ else:
                     except Exception as e: st.error(f"Erro: {e}")
 
     # ==========================================
-    # ABA 5: RAIO-X FUTUROS (AGORA COM 5 MINUTOS)
+    # ABA 5: RAIO-X FUTUROS (VERSÃO FINAL DETALHADA)
     # ==========================================
     with aba_futuros:
         st.subheader("📈 Raio-X Mercado Futuro (WIN, WDO, etc)")
@@ -723,8 +723,6 @@ else:
         with cf3:
             valor_mult_padrao = 0.20 if "WIN" in fut_selecionado else 10.00
             fut_multiplicador = st.number_input("Multiplicador Financeiro (R$):", value=valor_mult_padrao, step=0.10, format="%.2f", key="f_mult")
-            
-            # ADICIONADO 5m AQUI:
             fut_tempo = st.selectbox("Tempo Gráfico:", ['5m', '15m', '60m', '1d', '1wk'], index=1, format_func=lambda x: {'5m': '5 min', '15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="f_tmp")
             fut_ifr = st.number_input("Período do IFR:", min_value=2, max_value=50, value=8, step=1, key="f_ifr")
             
@@ -732,14 +730,11 @@ else:
         btn_raiox_futuros = st.button("🚀 Gerar Raio-X Futuros", type="primary", use_container_width=True, key="f_btn")
 
         if btn_raiox_futuros:
-            # AJUSTE DE TRAVA PARA 5 MINUTOS (Evita erro de memória)
-            if fut_tempo == '5m':
-                fut_periodo = '1mo'
-            elif fut_tempo == '15m' and fut_periodo in ['1y', '2y', '5y', 'max']:
-                fut_periodo = '6mo'
+            if fut_tempo == '5m': fut_periodo = '1mo'
+            elif fut_tempo == '15m' and fut_periodo in ['1y', '2y', '5y', 'max']: fut_periodo = '6mo'
                 
             intervalo_tv = tradutor_intervalo.get(fut_tempo, Interval.in_daily)
-            with st.spinner(f'Analisando {fut_selecionado} em {fut_tempo}...'):
+            with st.spinner(f'Analisando {fut_selecionado}...'):
                 try:
                     df_full = tv.get_hist(symbol=fut_ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=10000)
                     if df_full is not None and len(df_full) > 50:
@@ -765,6 +760,8 @@ else:
                                 lucro_rs = (preco_saida - p_ent) * qtd * fut_multiplicador
                                 status = 'Ganho (17h) ✅' if lucro_rs > 0 else 'Perda (17h) ❌'
                                 trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': lucro_rs, 'Situação': status})
+                                if lucro_rs > 0: vitorias += 1
+                                else: derrotas += 1
                                 em_pos = False
                                 continue
 
@@ -801,24 +798,28 @@ else:
                         if trades:
                             df_t = pd.DataFrame(trades)
                             lucro_t = df_t['Lucro (R$)'].sum()
-                            vits = df_t[df_t['Lucro (R$)'] > 0]
-                            media_g = vits['Lucro (R$)'].mean() if not vits.empty else 0
+                            vits_df = df_t[df_t['Lucro (R$)'] > 0]
+                            media_g = vits_df['Lucro (R$)'].mean() if not vits_df.empty else 0
                             media_p = abs(df_t[df_t['Lucro (R$)'] <= 0]['Lucro (R$)'].mean()) if not df_t[df_t['Lucro (R$)'] <= 0].empty else 1
                             payoff = media_g / media_p
-                            t_acerto = (len(vits) / len(df_t)) * 100
+                            t_acerto = (len(vits_df) / len(df_t)) * 100
                             t_critica = (1 / (1 + (payoff if payoff > 0 else 0.01))) * 100
+                            margem = t_acerto - t_critica
                             
                             m1, m2, m3, m4, m5 = st.columns(5)
                             m1.metric("Lucro Total", f"R$ {lucro_t:,.2f}")
                             m2.metric("Operações", len(df_t))
                             m3.metric("Taxa Acerto", f"{t_acerto:.1f}%")
                             m4.metric("Payoff", f"{payoff:.2f}")
-                            m5.metric("V / D", f"{len(vits)} / {len(df_t)-len(vits)}")
+                            m5.metric("V / D", f"{len(vits_df)} / {len(df_t)-len(vits_df)}")
                             
-                            if t_acerto > t_critica:
-                                st.info(f"⚖️ **Gordura Operacional:** Você precisa de {t_critica:.1f}% de acerto. Está com {t_acerto:.1f}%.")
+                            if payoff > 1:
+                                st.success(f"🎯 **Expectativa Positiva:** Para cada R$ 1,00 arriscado, você ganha R$ {payoff:.2f}. Acerto mínimo necessário: {t_critica:.1f}%.")
+                            elif margem > 0:
+                                st.info(f"⚖️ **Alerta de Equilíbrio:** Seu Payoff é baixo ({payoff:.2f}), mas o acerto compensa. **Atenção:** Não deixe o acerto cair abaixo de **{t_critica:.1f}%**. Sua gordura é de {margem:.1f}%.")
                             else:
-                                st.error(f"🚨 **Zona de Perigo:** Acerto de {t_acerto:.1f}% abaixo do crítico ({t_critica:.1f}%).")
+                                st.error(f"🚨 **Expectativa Negativa:** Seu acerto de {t_acerto:.1f}% está abaixo do crítico ({t_critica:.1f}%) para este Payoff.")
+                            
                             st.dataframe(df_t, use_container_width=True, hide_index=True)
                         else: st.warning("Sem trades.")
                 except Exception as e: st.error(f"Erro: {e}")
