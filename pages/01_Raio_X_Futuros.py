@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import pandas_ta as ta
 from tvDatafeed import TvDatafeed, Interval
+
+st.set_page_config(page_title="Radar Elite", layout="wide", initial_sidebar_state="expanded")
 initial_sidebar_state="expanded"
 
 # --- CONFIGURAÇÃO INICIAL DA PÁGINA ---
