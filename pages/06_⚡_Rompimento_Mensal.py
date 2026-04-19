@@ -25,18 +25,27 @@ aba_rad_p, aba_rad_pm, aba_alvo_st, aba_raio_x = st.tabs([
 ])
 
 # ==========================================
-# 1. RADAR (PADRÃO) - VERSÃO EVOLUÍDA
+# 1. RADAR (PADRÃO) - REVISADO
 # ==========================================
 with aba_rad_p:
-    # ... (Mantenha os campos de seleção: lista, tempo e capital) ...
+    st.subheader("📡 Varredura de Mercado")
+    
+    # OS FILTROS PRECISAM ESTAR FORA DO BOTÃO PARA APARECEREM SEMPRE
+    col_f1, col_f2, col_f3 = st.columns(3)
+    with col_f1: 
+        escolha_lista = st.selectbox("Escolha a Lista:", ["BDRs Elite", "IBrX Seleção", "Todos (BDR + IBrX)"], key="r_lista_oficial")
+    with col_f2:
+        tempo_grafico = st.selectbox("Tempo Gráfico:", ["60m", "Diário", "Mensal", "Anual"], index=3, key="r_tempo_oficial")
+    with col_f3:
+        cap_trade = st.number_input("Capital por Trade (R$):", value=5000, step=500, key="r_cap_oficial")
 
-    if st.button("🚀 Iniciar Radar de Rompimento", type="primary", use_container_width=True):
+    # Botão de ação
+    if st.button("🚀 Iniciar Radar de Rompimento", type="primary", use_container_width=True, key="btn_radar_exec"):
         lista_ativos = bdrs_elite if escolha_lista == "BDRs Elite" else ibrx_selecao if escolha_lista == "IBrX Seleção" else bdrs_elite + ibrx_selecao
         
+        # Mapeamento do Tempo
         mapa_tempo = {"60m": Interval.in_1_hour, "Diário": Interval.in_daily, "Mensal": Interval.in_monthly, "Anual": Interval.in_monthly}
         intervalo = mapa_tempo[tempo_grafico]
-        
-        # Aumentamos n_bars para 100 para contar os dias de rompimento
         n_velas = 100 
 
         barra = st.progress(0, text="Sincronizando...")
@@ -49,19 +58,16 @@ with aba_rad_p:
                 if df is not None and len(df) >= 20:
                     df.columns = [c.capitalize() for c in df.columns]
                     
-                    # 1. Define a Máxima do Período Anterior
+                    # Lógica de Referência
                     if tempo_grafico == "Anual":
-                        # Aproximação: Máxima dos últimos 12 meses (excluindo o atual)
                         max_referencia = df['High'].iloc[-13:-1].max()
                     else:
                         max_referencia = df['High'].iloc[-2]
                         
                     preco_atual = df['Close'].iloc[-1]
                     
-                    # 2. Verifica se está rompido
                     if preco_atual > max_referencia:
-                        # --- CÁLCULO DE DIAS/CANDLES ROMPIDOS ---
-                        # Conta quantos candles seguidos o Close ficou acima da máxima de referência
+                        # Contador de barras
                         contador = 0
                         for v in range(len(df)-1, 0, -1):
                             if df['Close'].iloc[v] > max_referencia:
@@ -69,20 +75,16 @@ with aba_rad_p:
                             else:
                                 break
                         
-                        # --- CÁLCULO DE LUCRO/PREJUÍZO DO SINAL ---
-                        # Consideramos que a entrada foi no rompimento exato da máxima
-                        preco_entrada = max_referencia
-                        resultado_perc = ((preco_atual / preco_entrada) - 1) * 100
-                        status_financeiro = "🟢 LUCRO" if resultado_perc > 0 else "🔴 PREJUÍZO"
-                        
+                        resultado_perc = ((preco_atual / max_referencia) - 1) * 100
+                        status_fin = "🟢 LUCRO" if resultado_perc > 0 else "🔴 PREJUÍZO"
                         qtd_acoes = cap_trade // preco_atual
                         
                         encontrados.append({
                             'Ativo': ativo,
                             'Preço': f"R$ {preco_atual:.2f}",
-                            'Ref. Rompida': f"R$ {max_referencia:.2f}",
-                            'Resultado': status_financeiro,
-                            'Lucro/Prej (%)': f"{resultado_perc:.2f}%",
+                            'Máxima Rompida': f"R$ {max_referencia:.2f}",
+                            'Resultado': status_fin,
+                            'Lucro (%)': f"{resultado_perc:.2f}%",
                             'Duração': f"{contador} barras",
                             'Lote (Ações)': int(qtd_acoes)
                         })
@@ -91,17 +93,16 @@ with aba_rad_p:
         barra.empty()
         if encontrados:
             st.success(f"Encontrados {len(encontrados)} ativos rompidos no {tempo_grafico}!")
-            
-            # Formatação da tabela para destacar lucro/prejuízo
             df_final = pd.DataFrame(encontrados)
             
-            def colorir_financeiro(val):
+            # Estilização visual
+            def colorir_fin(val):
                 color = '#d4edda' if 'LUCRO' in val else '#f8d7da'
-                return f'background-color: {color}'
+                return f'background-color: {color}; color: black'
 
-            st.dataframe(df_final.style.map(colorir_financeiro, subset=['Resultado']), use_container_width=True, hide_index=True)
+            st.dataframe(df_final.style.map(colorir_fin, subset=['Resultado']), use_container_width=True, hide_index=True)
         else:
-            st.warning("Nenhum ativo rompido detectado.")
+            st.warning(f"Nenhum rompimento detectado no {tempo_grafico}.")
 # ==========================================
 # 2. RADAR (PM)
 # ==========================================
