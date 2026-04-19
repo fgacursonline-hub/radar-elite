@@ -68,7 +68,7 @@ def colorir_lucro(row):
 # 3. INTERFACE DE ABAS
 st.title("🔥 Setup 9.1 (Larry Williams)")
 aba_padrao, aba_avancado, aba_individual, aba_futuros = st.tabs([
-    "📡 Radar Clássico (MME9)", "⚙️ Radar Avançado (Opções)", "🔬 Raio-X Individual", "📉 Raio-X Futuros"
+    "📡 Radar Clássico (MME9)", "⚙️ Radar Avançado ", "🔬 Raio-X Individual", "📉 Raio-X Futuros"
 ])
 
 # ==========================================
