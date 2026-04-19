@@ -23,12 +23,13 @@ with col_man:
 st.markdown("Identifique desequilíbrios de preço e opere nas zonas defendidas pelos grandes bancos.")
 st.divider()
 
-# --- CRIAÇÃO DAS 4 SUB-ABAS ---
-aba_individual, aba_radar, aba_backtest, aba_supremo = st.tabs([
+# --- CRIAÇÃO DAS 5 SUB-ABAS ---
+aba_individual, aba_radar, aba_backtest, aba_supremo, aba_backtest_supremo = st.tabs([
     "🔍 Raio-X Individual", 
     "📡 Radar de Oportunidades", 
-    "📊 Backtest FVG (Estatísticas)",
-    "🔥 Radar Supremo (9.1 + FVG)"
+    "📊 Backtest FVG Puro",
+    "🔥 Radar Supremo (9.1 + FVG)",
+    "📈 Backtest Supremo (Confluência)"
 ])
 
 # ==========================================
@@ -133,19 +134,18 @@ with aba_radar:
         else: st.warning("Nenhum ativo tocando em Gap no momento.")
 
 # ==========================================
-# ABA 3: BACKTEST FINANCEIRO DE FVG
+# ABA 3: BACKTEST FVG PURO
 # ==========================================
 with aba_backtest:
-    st.subheader("Simulador de Estratégia FVG")
-    st.markdown("Veja o resultado financeiro operando a favor dos Gaps de Alta. Regra: Compra no toque, Alvo de 2x o Risco.")
+    st.subheader("Simulador FVG Puro (Sem Confluência)")
     
     b1, b2, b3, b4 = st.columns(4)
-    with b1: bk_ativo = st.text_input("Ativo para Backtest:", value="TSLA34").upper()
-    with b2: bk_tempo = st.selectbox("Tempo Gráfico:", ['60m', '1d', '1wk'], index=1, format_func=lambda x: {'60m':'60 min','1d':'Diário','1wk':'Semanal'}[x], key="bk_tempo")
-    with b3: bk_velas = st.number_input("Histórico (Velas):", value=500, step=100)
-    with b4: bk_qtd = st.number_input("Qtd. Ações:", value=100, step=100)
+    with b1: bk_ativo = st.text_input("Ativo para Backtest:", value="TSLA34", key="bk_fvg_ativo").upper()
+    with b2: bk_tempo = st.selectbox("Tempo Gráfico:", ['60m', '1d', '1wk'], index=1, format_func=lambda x: {'60m':'60 min','1d':'Diário','1wk':'Semanal'}[x], key="bk_fvg_tempo")
+    with b3: bk_velas = st.number_input("Histórico (Velas):", value=500, step=100, key="bk_fvg_velas")
+    with b4: bk_qtd = st.number_input("Qtd. Ações:", value=100, step=100, key="bk_fvg_qtd")
 
-    if st.button("⚙️ Rodar Backtest Financeiro", type="primary", use_container_width=True):
+    if st.button("⚙️ Rodar Backtest FVG Puro", type="primary", use_container_width=True, key="btn_bk_fvg"):
         ativo = bk_ativo.strip().replace('.SA', '')
         intervalo_tv = {'60m': Interval.in_1_hour, '1d': Interval.in_daily, '1wk': Interval.in_weekly}.get(bk_tempo, Interval.in_daily)
 
@@ -156,32 +156,39 @@ with aba_backtest:
                     df.rename(columns={'high': 'High', 'low': 'Low', 'close': 'Close', 'open': 'Open'}, inplace=True)
                     
                     trades_realizados = []
+                    em_operacao = False
                     
                     for i in range(2, len(df)-1):
-                        if df['Low'].iloc[i] > df['High'].iloc[i-2]:
-                            topo = df['Low'].iloc[i]
-                            fundo = df['High'].iloc[i-2]
-                            
-                            preco_entrada = topo 
-                            stop_loss = fundo * 0.995 
-                            take_profit = preco_entrada + (2 * (preco_entrada - stop_loss)) 
-                            
-                            entrou = False
-                            
-                            for j in range(i+1, len(df)):
-                                if not entrou:
+                        if not em_operacao:
+                            if df['Low'].iloc[i] > df['High'].iloc[i-2]:
+                                topo = df['Low'].iloc[i]
+                                fundo = df['High'].iloc[i-2]
+                                preco_entrada = topo 
+                                stop_loss = fundo * 0.995 
+                                take_profit = preco_entrada + (2 * (preco_entrada - stop_loss)) 
+                                
+                                for j in range(i+1, len(df)):
                                     if df['Low'].iloc[j] <= preco_entrada:
-                                        entrou = True
                                         data_entrada = df.index[j]
-                                else:
-                                    if df['Low'].iloc[j] <= stop_loss:
-                                        resultado_fin = (stop_loss - preco_entrada) * bk_qtd
-                                        trades_realizados.append({'Data': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🔴 LOSS', 'Entrada': f"R$ {preco_entrada:.2f}", 'Saída': f"R$ {stop_loss:.2f}", 'Financeiro (R$)': resultado_fin})
+                                        
+                                        if df['Low'].iloc[j] <= stop_loss:
+                                            resultado_fin = (stop_loss - preco_entrada) * bk_qtd
+                                            trades_realizados.append({'Data': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🔴 LOSS', 'Entrada': preco_entrada, 'Saída': stop_loss, 'Financeiro (R$)': resultado_fin})
+                                        elif df['High'].iloc[j] >= take_profit:
+                                            resultado_fin = (take_profit - preco_entrada) * bk_qtd
+                                            trades_realizados.append({'Data': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🟢 GAIN', 'Entrada': preco_entrada, 'Saída': take_profit, 'Financeiro (R$)': resultado_fin})
+                                        else:
+                                            em_operacao = True # Segue aberto
                                         break
-                                    elif df['High'].iloc[j] >= take_profit:
-                                        resultado_fin = (take_profit - preco_entrada) * bk_qtd
-                                        trades_realizados.append({'Data': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🟢 GAIN', 'Entrada': f"R$ {preco_entrada:.2f}", 'Saída': f"R$ {take_profit:.2f}", 'Financeiro (R$)': resultado_fin})
-                                        break
+                        else:
+                            if df['Low'].iloc[i] <= stop_loss:
+                                resultado_fin = (stop_loss - preco_entrada) * bk_qtd
+                                trades_realizados.append({'Data': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🔴 LOSS', 'Entrada': preco_entrada, 'Saída': stop_loss, 'Financeiro (R$)': resultado_fin})
+                                em_operacao = False
+                            elif df['High'].iloc[i] >= take_profit:
+                                resultado_fin = (take_profit - preco_entrada) * bk_qtd
+                                trades_realizados.append({'Data': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🟢 GAIN', 'Entrada': preco_entrada, 'Saída': take_profit, 'Financeiro (R$)': resultado_fin})
+                                em_operacao = False
 
                     if trades_realizados:
                         df_trades = pd.DataFrame(trades_realizados)
@@ -192,7 +199,6 @@ with aba_backtest:
                         
                         if total_trades > 0:
                             taxa_acerto = (gains / total_trades) * 100
-                            
                             st.markdown("---")
                             res1, res2, res3, res4, res5, res6 = st.columns(6)
                             res1.metric("Total de Trades", total_trades)
@@ -202,18 +208,13 @@ with aba_backtest:
                             res5.metric("Risco/Retorno", "2 para 1")
                             res6.metric("💰 Resultado Final", f"R$ {lucro_total:.2f}")
                             
-                            if lucro_total > 0: st.success(f"📈 **Estratégia Lucrativa!** Operando lotes de {bk_qtd} ações, o robô finalizou o período com lucro.")
-                            else: st.warning(f"⚠️ **Estratégia no Prejuízo.**")
-                            
-                            st.write("Histórico Financeiro das Operações:")
                             df_trades_show = df_trades.copy()
+                            df_trades_show['Entrada'] = df_trades_show['Entrada'].apply(lambda x: f"R$ {x:.2f}")
+                            df_trades_show['Saída'] = df_trades_show['Saída'].apply(lambda x: f"R$ {x:.2f}")
                             df_trades_show['Financeiro (R$)'] = df_trades_show['Financeiro (R$)'].apply(lambda x: f"R$ {x:.2f}")
                             
                             def colorir_resultado(val):
-                                color = '#d4edda' if 'GAIN' in val else '#f8d7da'
-                                text_color = '#155724' if 'GAIN' in val else '#721c24'
-                                return f'background-color: {color}; color: {text_color}'
-                                
+                                return 'background-color: #d4edda; color: #155724' if 'GAIN' in val else 'background-color: #f8d7da; color: #721c24'
                             st.dataframe(df_trades_show.style.map(colorir_resultado, subset=['Resultado']), use_container_width=True)
                     else: st.info("O robô não encontrou operações que foram fechadas no período.")
                 else: st.error("Dados insuficientes.")
@@ -246,7 +247,6 @@ with aba_supremo:
                 df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=interv_sup, n_bars=150)
                 if df is not None and len(df) > 15:
                     df.rename(columns={'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                    
                     df.ta.ema(length=9, append=True)
                     mme9 = df['EMA_9']
                     
@@ -262,10 +262,7 @@ with aba_supremo:
                                 
                                 if df['Low'].iloc[i:].min() > fundo:
                                     minima_recente = min(df['Low'].iloc[-1], df['Low'].iloc[-2])
-                                    
                                     if minima_recente <= topo and minima_recente >= fundo:
-                                        
-                                        # --- CÁLCULO DE RISCO E ALVO ADICIONADO AQUI ---
                                         entrada = df['High'].iloc[-1]
                                         risco = entrada - fundo
                                         alvo_2x = entrada + (2 * risco)
@@ -288,6 +285,127 @@ with aba_supremo:
         if achados_supremos:
             st.success(f"🎯 **BINGO!** Encontramos {len(achados_supremos)} ativo(s) com a confluência perfeita hoje.")
             st.dataframe(pd.DataFrame(achados_supremos), use_container_width=True, hide_index=True)
-            st.info("💡 **Como Operar:** Cadastre no Profit sua ordem de **Compra Start** em 'Entrada', posicione seu **Stop** em 'Stop', e pendure sua saída com lucro em **Alvo**.")
         else: 
-            st.warning("Nenhum ativo apresentou a confluência do 9.1 dentro de um FVG hoje. Esse é um setup raro de alta precisão, continue monitorando!")
+            st.warning("Nenhum ativo apresentou a confluência do 9.1 dentro de um FVG hoje.")
+
+# ==========================================
+# ABA 5: BACKTEST SUPREMO (A VERDADE MATEMÁTICA)
+# ==========================================
+with aba_backtest_supremo:
+    st.subheader("Simulador da Confluência Perfeita (9.1 + FVG)")
+    st.markdown("Descubra a sua real Taxa de Acerto e Retorno Financeiro operando **APENAS** quando o Setup 9.1 aciona dentro da zona de FVG. Alvo: 2x o Risco.")
+    
+    bs1, bs2, bs3, bs4 = st.columns(4)
+    with bs1: bks_ativo = st.text_input("Ativo para Backtest:", value="WEGE3", key="bks_ativo").upper()
+    with bs2: bks_tempo = st.selectbox("Tempo Gráfico:", ['60m', '1d', '1wk'], index=1, format_func=lambda x: {'60m':'60 min','1d':'Diário','1wk':'Semanal'}[x], key="bks_tempo")
+    with bs3: bks_velas = st.number_input("Histórico (Velas):", value=1500, step=100, key="bks_velas")
+    with bs4: bks_qtd = st.number_input("Qtd. Ações:", value=100, step=100, key="bks_qtd")
+
+    if st.button("⚙️ Rodar Backtest Supremo", type="primary", use_container_width=True, key="btn_bks_run"):
+        ativo = bks_ativo.strip().replace('.SA', '')
+        intervalo_tv = {'60m': Interval.in_1_hour, '1d': Interval.in_daily, '1wk': Interval.in_weekly}.get(bks_tempo, Interval.in_daily)
+
+        with st.spinner(f"Simulando emboscadas no passado de {ativo}... Isso pode levar uns segundos."):
+            try:
+                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=bks_velas)
+                if df is not None and len(df) > 50:
+                    df.rename(columns={'high': 'High', 'low': 'Low', 'close': 'Close', 'open': 'Open'}, inplace=True)
+                    
+                    df.ta.ema(length=9, append=True)
+                    mme9 = df['EMA_9']
+                    
+                    trades_realizados = []
+                    em_operacao = False
+                    
+                    # Vamos varrer o passado em busca da agulha no palheiro
+                    for i in range(15, len(df)-1):
+                        if not em_operacao:
+                            # 1. Checa se o 9.1 armou HOJE (Vela i)
+                            if (mme9.iloc[i-2] >= mme9.iloc[i-1]) and (mme9.iloc[i] > mme9.iloc[i-1]):
+                                
+                                # 2. Vamos checar os Gaps passados e ver se algum está aberto e a gente tocou nele
+                                gatilho_armado = False
+                                fundo_fvg = 0
+                                
+                                for f in range(2, i):
+                                    if df['Low'].iloc[f] > df['High'].iloc[f-2]:
+                                        topo_f = df['Low'].iloc[f]
+                                        fundo_f = df['High'].iloc[f-2]
+                                        
+                                        # Checa se esse Gap estava vivo até o dia do 9.1
+                                        if df['Low'].iloc[f:i+1].min() > fundo_f:
+                                            # Checa se tocamos no Gap ontem ou hoje
+                                            minima_recente = min(df['Low'].iloc[i], df['Low'].iloc[i-1])
+                                            if minima_recente <= topo_f and minima_recente >= fundo_f:
+                                                gatilho_armado = True
+                                                fundo_fvg = fundo_f
+                                                break
+                                                
+                                # 3. Se deu gatilho dentro do Gap, vamos entrar na próxima vela que romper!
+                                if gatilho_armado:
+                                    gatilho_compra = df['High'].iloc[i]
+                                    
+                                    # Se a vela de amanhã romper o gatilho, a gente entra no trade
+                                    if df['High'].iloc[i+1] > gatilho_compra:
+                                        em_operacao = True
+                                        preco_entrada = max(df['Open'].iloc[i+1], gatilho_compra)
+                                        stop_loss = fundo_fvg * 0.995 # Stop 0,5% abaixo do fundo do gap
+                                        
+                                        if preco_entrada > stop_loss: # Evita anomalias
+                                            take_profit = preco_entrada + (2 * (preco_entrada - stop_loss))
+                                            data_entrada = df.index[i+1]
+                                            
+                                            # Checa se na própria vela que rompeu, não nos deu Stop ou Gain direto
+                                            if df['Low'].iloc[i+1] <= stop_loss:
+                                                resultado_fin = (stop_loss - preco_entrada) * bks_qtd
+                                                trades_realizados.append({'Data': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🔴 LOSS', 'Entrada': preco_entrada, 'Saída': stop_loss, 'Financeiro (R$)': resultado_fin})
+                                                em_operacao = False
+                                            elif df['High'].iloc[i+1] >= take_profit:
+                                                resultado_fin = (take_profit - preco_entrada) * bks_qtd
+                                                trades_realizados.append({'Data': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🟢 GAIN', 'Entrada': preco_entrada, 'Saída': take_profit, 'Financeiro (R$)': resultado_fin})
+                                                em_operacao = False
+                        else:
+                            # 4. Já estamos no Trade, vamos monitorar os próximos dias
+                            if df['Low'].iloc[i] <= stop_loss:
+                                resultado_fin = (stop_loss - preco_entrada) * bks_qtd
+                                trades_realizados.append({'Data': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🔴 LOSS', 'Entrada': preco_entrada, 'Saída': stop_loss, 'Financeiro (R$)': resultado_fin})
+                                em_operacao = False
+                            elif df['High'].iloc[i] >= take_profit:
+                                resultado_fin = (take_profit - preco_entrada) * bks_qtd
+                                trades_realizados.append({'Data': data_entrada.strftime('%d/%m/%Y'), 'Resultado': '🟢 GAIN', 'Entrada': preco_entrada, 'Saída': take_profit, 'Financeiro (R$)': resultado_fin})
+                                em_operacao = False
+
+                    # ================================
+                    # RESULTADOS DO BACKTEST SUPREMO
+                    # ================================
+                    if trades_realizados:
+                        df_trades = pd.DataFrame(trades_realizados)
+                        gains = len(df_trades[df_trades['Resultado'] == '🟢 GAIN'])
+                        losses = len(df_trades[df_trades['Resultado'] == '🔴 LOSS'])
+                        total_trades = gains + losses
+                        lucro_total = df_trades['Financeiro (R$)'].sum()
+                        
+                        if total_trades > 0:
+                            taxa_acerto = (gains / total_trades) * 100
+                            st.markdown("---")
+                            res1, res2, res3, res4, res5, res6 = st.columns(6)
+                            res1.metric("Total de Sinais Fortes", total_trades)
+                            res2.metric("Acertos ✅", gains)
+                            res3.metric("Erros ❌", losses)
+                            res4.metric("Taxa de Acerto", f"{taxa_acerto:.1f}%")
+                            res5.metric("Risco/Retorno", "2 para 1")
+                            res6.metric("💰 Resultado Final", f"R$ {lucro_total:.2f}")
+                            
+                            st.info("💡 **Análise da Confluência:** Como este é um setup muito exigente (precisa do 9.1 bater cirurgicamente dentro do vácuo), você verá **muito menos trades** do que no Backtest Puro, porém a taxa de acerto e qualidade da operação tendem a ser muito superiores e te blindar de lateralizações falsas.")
+                            
+                            df_trades_show = df_trades.copy()
+                            df_trades_show['Entrada'] = df_trades_show['Entrada'].apply(lambda x: f"R$ {x:.2f}")
+                            df_trades_show['Saída'] = df_trades_show['Saída'].apply(lambda x: f"R$ {x:.2f}")
+                            df_trades_show['Financeiro (R$)'] = df_trades_show['Financeiro (R$)'].apply(lambda x: f"R$ {x:.2f}")
+                            
+                            def colorir_resultado(val):
+                                return 'background-color: #d4edda; color: #155724' if 'GAIN' in val else 'background-color: #f8d7da; color: #721c24'
+                            st.dataframe(df_trades_show.style.map(colorir_resultado, subset=['Resultado']), use_container_width=True)
+                    else: st.info(f"O robô varreu todo o histórico de {ativo}, mas este setup supremo é muito raro e não gerou nenhum sinal cravado de entrada.")
+                else: st.error("Dados insuficientes para backtest.")
+            except Exception as e: st.error(f"Erro no backtest: {e}")
