@@ -190,11 +190,14 @@ with aba_backtest:
                             taxa_acerto = (gains / total_trades) * 100
                             
                             st.markdown("---")
-                            res1, res2, res3, res4 = st.columns(4)
+                            # --- AQUI ESTÁ A MUDANÇA: AGORA SÃO 6 COLUNAS ---
+                            res1, res2, res3, res4, res5, res6 = st.columns(6)
                             res1.metric("Total de Trades", total_trades)
-                            res2.metric("Taxa de Acerto", f"{taxa_acerto:.1f}%")
-                            res3.metric("Risco/Retorno", "2 para 1")
-                            res4.metric("💰 Resultado Final", f"R$ {lucro_total:.2f}")
+                            res2.metric("Acertos ✅", gains)
+                            res3.metric("Erros ❌", losses)
+                            res4.metric("Taxa de Acerto", f"{taxa_acerto:.1f}%")
+                            res5.metric("Risco/Retorno", "2 para 1")
+                            res6.metric("💰 Resultado Final", f"R$ {lucro_total:.2f}")
                             
                             if lucro_total > 0:
                                 st.success(f"📈 **Estratégia Lucrativa!** Operando lotes de {bk_qtd} ações, o robô finalizou o período com lucro matemático.")
@@ -203,11 +206,9 @@ with aba_backtest:
                             
                             st.write("Histórico Financeiro das Operações:")
                             
-                            # Formata a coluna financeira para ficar bonita na tabela
                             df_trades_show = df_trades.copy()
                             df_trades_show['Financeiro (R$)'] = df_trades_show['Financeiro (R$)'].apply(lambda x: f"R$ {x:.2f}")
                             
-                            # Aplica cor no fundo
                             def colorir_resultado(val):
                                 color = '#d4edda' if 'GAIN' in val else '#f8d7da'
                                 text_color = '#155724' if 'GAIN' in val else '#721c24'
