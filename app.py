@@ -731,13 +731,14 @@ else:
                 st.error("Por favor, digite o código do ativo futuro.")
             else:
                 ativo = ativo_input
-                if fut_tempo == '15m' and fut_periodo not in ['1mo', '3mo']: fut_periodo = '60d'
+                if fut_tempo == '15m' and fut_periodo in ['1y', '2y', '5y', 'max']: fut_periodo = '6mo'
                 elif fut_tempo == '60m' and fut_periodo in ['5y', 'max']: fut_periodo = '2y'
                 intervalo_tv = tradutor_intervalo.get(fut_tempo, Interval.in_daily)
 
                 with st.spinner(f'Testando Backtest Futuro ({fut_estrategia}) em {ativo}...'):
                     try:
-                        df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                        # Aumentamos n_bars para 10000 para sugar o máximo de dados gratuitos
+                        df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=10000)
                         if df_full is None or len(df_full) < 50:
                             st.error("Dados insuficientes no TradingView para este ativo.")
                         else:
