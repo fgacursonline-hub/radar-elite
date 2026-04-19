@@ -11,84 +11,83 @@ if 'tv' not in st.session_state:
     st.session_state.tv = TvDatafeed()
 tv = st.session_state.tv
 
-# Listas Oficiais
+# Listas Oficiais (As mesmas que você usa no FVG e IFR)
 bdrs_elite = ['NVDC34', 'P2LT34', 'ROXO34', 'INBR32', 'M1TA34', 'TSLA34', 'LILY34', 'AMZO34', 'AURA33', 'GOGL34', 'MSFT34', 'MUTC34', 'MELI34', 'C2OI34', 'ORCL34', 'M2ST34', 'A1MD34', 'NFLX34', 'ITLC34', 'AVGO34', 'COCA34', 'JBSS32', 'AAPL34', 'XPBR31', 'STOC34']
 ibrx_selecao = ['PETR4', 'VALE3', 'ITUB4', 'BBDC4', 'BBAS3', 'B3SA3', 'ABEV3', 'WEGE3', 'AXIA3', 'SUZB3', 'RENT3', 'RADL3', 'EQTL3', 'LREN3', 'PRIO3', 'HAPV3', 'GGBR4', 'VBBR3', 'SBSP3', 'CMIG4', 'CPLE3', 'ENEV3', 'TIMS3', 'TOTS3', 'EGIE3', 'CSAN3', 'ALOS3', 'DIRR3', 'VIVT3', 'KLBN11', 'UGPA3', 'PSSA3', 'CYRE3', 'ASAI3', 'RAIL3', 'ISAE3', 'CSNA3', 'MGLU3', 'EMBJ3', 'TAEE11', 'BBSE3', 'FLRY3', 'MULT3', 'TFCO4', 'LEVE3', 'CPFE3', 'GOAU4', 'MRVE3', 'YDUQ3', 'SMTO3', 'SLCE3', 'CVCB3', 'USIM5', 'BRAP4', 'BRAV3', 'EZTC3', 'PCAR3', 'AUAU3', 'DXCO3', 'CASH3', 'VAMO3', 'AZZA3', 'AURE3', 'BEEF3', 'ECOR3', 'FESA4', 'POMO4', 'CURY3', 'INTB3', 'JHSF3', 'LIGT3', 'LOGG3', 'MDIA3', 'MBRF3', 'NEOE3', 'QUAL3', 'RAPT4', 'ROMI3', 'SANB11', 'SIMH3', 'TEND3', 'VULC3', 'PLPL3', 'CEAB3', 'UNIP6', 'LWSA3', 'BPAC11', 'GMAT3', 'CXSE3', 'ABCB4', 'CSMG3', 'SAPR11', 'GRND3', 'BRAP3', 'LAVV3', 'RANI3', 'ITSA3', 'ALUP11', 'FIQE3', 'COGN3', 'IRBR3', 'SEER3', 'ANIM3', 'JSLG3', 'POSI3', 'MYPK3', 'SOJA3', 'BLAU3', 'PGMN3', 'TUPY3', 'VVEO3', 'MELK3', 'SHUL4', 'BRSR6']
 
 st.title("⚡ Radar de Rompimento de Máximas")
-st.markdown("Estratégia baseada na superação da máxima do período anterior (Price Action Institucional).")
+st.markdown("Estratégia: Compra na superação da máxima anterior. **Duração** calculada em dias úteis reais.")
 st.divider()
 
-# --- Estrutura de Abas do Menu (Padrão IFR/Keltner) ---
+# --- Estrutura de Abas do Menu ---
 aba_rad_p, aba_rad_pm, aba_alvo_st, aba_raio_x = st.tabs([
     "📡 Radar (Padrão)", "📡 Radar (PM)", "🛡️ Alvo & Stop", "🔬 Raio-X Individual"
 ])
 
 # ==========================================
-# 1. RADAR (PADRÃO) - REVISADO
+# 1. RADAR (PADRÃO)
 # ==========================================
 with aba_rad_p:
     st.subheader("📡 Varredura de Mercado")
     
-    # OS FILTROS PRECISAM ESTAR FORA DO BOTÃO PARA APARECEREM SEMPRE
     col_f1, col_f2, col_f3 = st.columns(3)
     with col_f1: 
-        escolha_lista = st.selectbox("Escolha a Lista:", ["BDRs Elite", "IBrX Seleção", "Todos (BDR + IBrX)"], key="r_lista_oficial")
+        escolha_lista = st.selectbox("Escolha a Lista:", ["BDRs Elite", "IBrX Seleção", "Todos (BDR + IBrX)"], key="rad_lst_p")
     with col_f2:
-        tempo_grafico = st.selectbox("Tempo Gráfico:", ["60m", "Diário", "Mensal", "Anual"], index=3, key="r_tempo_oficial")
+        tempo_grafico = st.selectbox("Tempo Gráfico:", ["60m", "Diário", "Mensal", "Anual"], index=3, key="rad_tmp_p")
     with col_f3:
-        cap_trade = st.number_input("Capital por Trade (R$):", value=5000, step=500, key="r_cap_oficial")
+        cap_trade = st.number_input("Capital por Trade (R$):", value=5000, step=500, key="rad_cap_p")
 
-    # Botão de ação
-    if st.button("🚀 Iniciar Radar de Rompimento", type="primary", use_container_width=True, key="btn_radar_exec"):
+    if st.button("🚀 Iniciar Radar de Rompimento", type="primary", use_container_width=True):
         lista_ativos = bdrs_elite if escolha_lista == "BDRs Elite" else ibrx_selecao if escolha_lista == "IBrX Seleção" else bdrs_elite + ibrx_selecao
         
-        # Mapeamento do Tempo
-        mapa_tempo = {"60m": Interval.in_1_hour, "Diário": Interval.in_daily, "Mensal": Interval.in_monthly, "Anual": Interval.in_monthly}
-        intervalo = mapa_tempo[tempo_grafico]
-        n_velas = 100 
-
         barra = st.progress(0, text="Sincronizando...")
         encontrados = []
 
         for idx, ativo in enumerate(lista_ativos):
             barra.progress((idx + 1) / len(lista_ativos), text=f"🔍 Analisando {ativo}...")
             try:
-                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo, n_bars=n_velas)
-                if df is not None and len(df) >= 20:
-                    df.columns = [c.capitalize() for c in df.columns]
-                    
-                    # Lógica de Referência
+                # Puxamos 260 barras diárias para calcular a duração com precisão de dias úteis
+                df_d = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=260)
+                
+                if df_d is not None and len(df_d) > 30:
+                    df_d.columns = [c.capitalize() for c in df_d.columns]
+                    pa = df_d['Close'].iloc[-1]
+
+                    # Define a Máxima de Referência
                     if tempo_grafico == "Anual":
-                        max_referencia = df['High'].iloc[-13:-1].max()
+                        max_ref = df_d['High'].iloc[-255:-1].max() # Aprox. 1 ano
+                    elif tempo_grafico == "Mensal":
+                        max_ref = df_d['High'].iloc[-22:-1].max()  # Aprox. 1 mês
+                    elif tempo_grafico == "60m":
+                        # Para o 60m, puxamos o próprio intraday para ser fiel ao tempo
+                        df_60 = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_1_hour, n_bars=3)
+                        df_60.columns = [c.capitalize() for c in df_60.columns]
+                        max_ref = df_60['High'].iloc[-2]
                     else:
-                        max_referencia = df['High'].iloc[-2]
+                        max_ref = df_d['High'].iloc[-2] # Ontem
                         
-                    preco_atual = df['Close'].iloc[-1]
-                    
-                    if preco_atual > max_referencia:
-                        # --- CÁLCULO DE DURAÇÃO EM DIAS REAIS ---
-                        # Pega a data de início da barra atual (ex: 01/01/2026 para o Anual)
-                        data_inicio_rompimento = df.index[-1] 
-                        hoje = pd.Timestamp.now()
+                    if pa > max_ref:
+                        # Contador de Duração em Dias Úteis
+                        cont = 0
+                        for v in range(len(df_d)-1, -1, -1):
+                            if df_d['Close'].iloc[v] > max_ref:
+                                cont += 1
+                            else:
+                                break
                         
-                        # Calcula a diferença em dias corridos
-                        dias_corridos = (hoje - data_inicio_rompimento).days
-                        
-                        # --- CÁLCULO DE LUCRO/PREJUÍZO ---
-                        preco_entrada = max_referencia
-                        resultado_perc = ((preco_atual / preco_entrada) - 1) * 100
+                        resultado_perc = ((pa / max_ref) - 1) * 100
                         status_fin = "🟢 LUCRO" if resultado_perc > 0 else "🔴 PREJUÍZO"
-                        qtd_acoes = cap_trade // preco_atual
+                        qtd_lote = cap_trade // pa
                         
                         encontrados.append({
                             'Ativo': ativo,
-                            'Preço': f"R$ {preco_atual:.2f}",
-                            'Máxima Rompida': f"R$ {max_referencia:.2f}",
+                            'Preço': f"R$ {pa:.2f}",
+                            'Máxima Rompida': f"R$ {max_ref:.2f}",
                             'Resultado': status_fin,
                             'Lucro (%)': f"{resultado_perc:.2f}%",
-                            'Duração': f"{dias_corridos} dias", # Agora em dias reais
-                            'Lote (Ações)': int(qtd_acoes)
+                            'Duração': f"{cont} dias úteis",
+                            'Lote (Ações)': int(qtd_lote)
                         })
             except: pass
         
@@ -97,14 +96,15 @@ with aba_rad_p:
             st.success(f"Encontrados {len(encontrados)} ativos rompidos no {tempo_grafico}!")
             df_final = pd.DataFrame(encontrados)
             
-            # Estilização visual
-            def colorir_fin(val):
+            def colorir_res(val):
                 color = '#d4edda' if 'LUCRO' in val else '#f8d7da'
                 return f'background-color: {color}; color: black'
 
-            st.dataframe(df_final.style.map(colorir_fin, subset=['Resultado']), use_container_width=True, hide_index=True)
+            st.dataframe(df_final.style.map(colorir_res, subset=['Resultado']), use_container_width=True, hide_index=True)
         else:
-            st.warning(f"Nenhum rompimento detectado no {tempo_grafico}.")
+            st.warning(f"Nenhum rompimento detectado no {tempo_grafico} no momento.")
+
+# --- As demais abas (Radar PM, Alvo, Raio-X) seguem o mesmo padrão ---
 # ==========================================
 # 2. RADAR (PM)
 # ==========================================
