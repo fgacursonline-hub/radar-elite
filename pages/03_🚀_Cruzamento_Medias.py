@@ -81,6 +81,9 @@ with aba_padrao:
     cp1, cp2, cp3 = st.columns(3)
     with cp1:
         lista_cm = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="cm_lista")
+        # A LINHA QUE FALTAVA ESTÁ AQUI:
+        ativos_cm = bdrs_elite if lista_cm == "BDRs Elite" else ibrx_selecao if lista_cm == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        
         periodo_cm = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="cm_per")
         capital_cm = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="cm_cap")
     with cp2:
