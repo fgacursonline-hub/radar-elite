@@ -486,8 +486,9 @@ with aba_stop:
             df_resumo['Lucro R$'] = df_resumo['Lucro R$'].apply(lambda x: f"R$ {x:,.2f}")
             st.dataframe(df_resumo, use_container_width=True, hide_index=True)
         else: st.warning("Nenhuma operação finalizada.")
+
 # ==========================================
-# ABA 4: RADAR individual
+# ABA 4: RAIO-X DO ATIVO INDIVIDUAL
 # ==========================================
 with aba_individual:
     st.subheader("🔬 Raio-X Detalhado: Backtest & Status Atual")
@@ -514,6 +515,7 @@ with aba_individual:
 
         with st.spinner(f'Calculando dados de {ativo}...'):
             try:
+                # Busca 5000 barras para o IFR ser preciso e não distorcer o cálculo
                 df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
                 
                 if df_full is not None and len(df_full) > 50:
@@ -522,7 +524,7 @@ with aba_individual:
                     df_full['IFR_Prev'] = df_full['IFR'].shift(1)
                     df_full = df_full.dropna()
 
-                    # Lógica de Corte de Tempo
+                    # Lógica de Corte de Tempo exato para o Raio-X
                     data_atual_dt = df_full.index[-1]
                     offset_map = {'1mo': 1, '3mo': 3, '6mo': 6, '1y': 12, '2y': 24, '5y': 60}
                     data_corte = data_atual_dt - pd.DateOffset(months=offset_map.get(lupa_periodo, 120)) if lupa_periodo != 'max' else df_full.index[0]
@@ -535,7 +537,7 @@ with aba_individual:
                     vitorias, derrotas = 0, 0
 
                     for i in range(1, len(df_back)):
-                        # Cruzamento Matemático: Subiu de 25
+                        # Cruzamento Matemático: Subiu de 25 (Passou para cima)
                         condicao_entrada = (df_back['IFR_Prev'].iloc[i] < 25) and (df_back['IFR'].iloc[i] >= 25)
 
                         if not em_pos:
@@ -543,12 +545,15 @@ with aba_individual:
                                 em_pos = True
                                 d_ent = df_back.iloc[i, 0]
                                 p_ent = df_back['Close'].iloc[i]
-                                min_na_op = df_back['Low'].iloc[i]
+                                
+                                # CORREÇÃO: A mínima da operação começa no preço que você comprou (p_ent)
+                                min_na_op = p_ent
+                                
                                 cap_total = float(lupa_capital)
                                 pm = p_ent
                                 posicao_atual = {'Data': d_ent, 'PM': pm, 'Cap': cap_total}
                         else:
-                            # Atualiza a mínima da operação atual para o cálculo de Queda Máx
+                            # Atualiza a mínima se o preço cair ABAIXO da mínima anterior registrada na operação
                             if df_back['Low'].iloc[i] < min_na_op: min_na_op = df_back['Low'].iloc[i]
                             
                             alvo_p = pm * (1 + (lupa_alvo/100))
@@ -574,20 +579,21 @@ with aba_individual:
                                 posicao_atual['PM'] = pm
                                 posicao_atual['Cap'] = cap_total
 
-                    # --- EXIBIÇÃO: STATUS ATUAL (AGORA COMPLETO) ---
+                    # --- EXIBIÇÃO: STATUS ATUAL ---
                     st.divider()
                     if em_pos and posicao_atual:
                         st.warning(f"⚠️ **OPERAÇÃO EM CURSO: {ativo} ({lupa_tempo})**")
                         
                         cotacao_atual = df_back['Close'].iloc[-1]
-                        ultima_data = df_back.iloc[-1, 0]
                         
-                        dias_em_op = (ultima_data - posicao_atual['Data']).days
+                        # CORREÇÃO: Dias da operação baseados no calendário real (Hoje)
+                        hoje = pd.Timestamp.today().normalize()
+                        dias_em_op = (hoje - posicao_atual['Data']).days
+                        
                         res_pct = ((cotacao_atual / posicao_atual['PM']) - 1) * 100
                         res_rs = posicao_atual['Cap'] * res_pct / 100
                         prej_max = ((min_na_op / posicao_atual['PM']) - 1) * 100
 
-                        # Linha 1 de métricas
                         c1, c2, c3 = st.columns(3)
                         c1.metric("Data Entrada", posicao_atual['Data'].strftime('%d/%m/%Y'))
                         c2.metric("Dias em Operação", f"{dias_em_op} dias")
@@ -595,7 +601,6 @@ with aba_individual:
                         
                         st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
                         
-                        # Linha 2 de métricas
                         c4, c5, c6 = st.columns(3)
                         c4.metric("Preço Médio (PM)", f"R$ {posicao_atual['PM']:.2f}")
                         c5.metric("Prejuízo Máximo (DD)", f"{prej_max:.2f}%")
