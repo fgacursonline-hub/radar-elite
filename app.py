@@ -1,31 +1,42 @@
 import streamlit as st
 
-# 1. Configuração da Página (Primeira linha sempre)
-st.set_page_config(page_title="Radar Elite", layout="wide", initial_sidebar_state="collapsed")
+# Mantendo sua configuração original de página
+st.set_page_config(page_title="Caçadores de Elite", layout="wide", page_icon="🎯", initial_sidebar_state="collapsed")
 
-# 2. Controle de Sessão
 if 'autenticado' not in st.session_state:
     st.session_state['autenticado'] = False
 
-# 3. Tela de Login (Apenas se não estiver logado)
+# Seus alunos cadastrados originais
+alunos_cadastrados = {
+    "aluno": "elite123",
+    "joao": "senha123",
+    "maria": "bolsadevalores",
+    "admin": "suasenhaforte"
+}
+
 if not st.session_state['autenticado']:
-    # CSS para esconder o menu lateral antes do login
+    # CSS para esconder o menu antes do login
     st.markdown("<style>[data-testid='stSidebar'] {display: none;} [data-testid='stSidebarNav'] {display: none;}</style>", unsafe_allow_html=True)
     
-    _, col_login, _ = st.columns([1, 1, 1])
-    with col_login:
-        st.markdown("<br><br>🎯 Caçadores de Elite<br>", unsafe_allow_html=True)
-        usuario = st.text_input("Usuário").lower().strip()
-        senha = st.text_input("Senha", type="password")
-        if st.button("Entrar no Sistema", use_container_width=True):
-            # Verificação simples (adicione seus usuários aqui)
-            if usuario == "aluno" and senha == "1234":
-                st.session_state['autenticado'] = True
-                st.rerun()
-            else:
-                st.error("Usuário ou senha incorretos.")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("<br><br><h1 style='text-align: center;'>🎯 Caçadores de Elite</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center;'>Área Restrita do Radar Quantitativo</p>", unsafe_allow_html=True)
+        with st.form("form_login"):
+            usuario = st.text_input("Usuário").lower().strip()
+            senha = st.text_input("Senha", type="password")
+            if st.form_submit_button("Entrar no Sistema", use_container_width=True):
+                if usuario in alunos_cadastrados and alunos_cadastrados[usuario] == senha:
+                    st.session_state['autenticado'] = True
+                    st.rerun()
+                else:
+                    st.error("❌ Usuário ou senha incorretos.")
     st.stop()
 
-# 4. Conteúdo Pós-Login (Home)
-st.title("🎯 Bem-vindo, Caçador!")
-st.write("A plataforma está liberada. Escolha uma estratégia no menu lateral à esquerda.")
+# Tela de Boas-vindas após login
+st.title("🎯 Plataforma Caçadores de Elite")
+st.markdown("### Bem-vindo, Caçador!")
+st.info("Utilize o menu lateral para acessar as ferramentas de análise.")
+if st.button("🚪 Sair"):
+    st.session_state['autenticado'] = False
+    st.rerun()
