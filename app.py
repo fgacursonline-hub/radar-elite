@@ -802,15 +802,14 @@ else:
                                 contratos_atuais += fut_contratos
                                 take_profit = preco_medio + fut_alvo
 
-                        # --- PAINEL DE RESULTADOS ---
+                        # --- PAINEL DE RESULTADOS (VERSÃO INTELIGENTE) ---
                         if trades:
                             df_t = pd.DataFrame(trades)
                             st.divider()
                             st.markdown(f"### 📊 Resultado: {fut_selecionado}")
-                            
-                            # --- LINHA QUE VOLTOU: PERÍODO ANALISADO ---
                             st.caption(f"📅 Período: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
                             
+                            # --- CÁLCULOS ---
                             l_total = df_t['Lucro (R$)'].sum()
                             vits_df = df_t[df_t['Lucro (R$)'] > 0]
                             derrs_df = df_t[df_t['Lucro (R$)'] <= 0]
@@ -823,19 +822,23 @@ else:
                             t_critica = (1 / (1 + (p_off if p_off > 0 else 0.01))) * 100
                             margem = t_acerto - t_critica
 
+                            # --- CARDS DE MÉTRICAS ---
                             m1, m2, m3, m4, m5 = st.columns(5)
-                            m1.metric("Lucro Total", f"R$ {l_total:,.2f}")
+                            m1.metric("Lucro Total", f"R$ {l_total:,.2f}", delta=f"{l_total:,.2f}")
                             m2.metric("Operações", len(df_t))
                             m3.metric("Taxa Acerto", f"{t_acerto:.1f}%")
                             m4.metric("Payoff", f"{p_off:.2f}")
                             m5.metric("V / D", f"{len(vits_df)} / {len(derrs_df)}")
                             
-                            if p_off > 1:
-                                st.success(f"🎯 **Expectativa Positiva:** Para cada R$ 1,00 arriscado, você ganha R$ {p_off:.2f}. Acerto mínimo necessário: {t_critica:.1f}%.")
-                            elif margem > 0:
-                                st.info(f"⚖️ **Alerta de Equilíbrio:** Seu Payoff é baixo ({p_off:.2f}), mas o acerto compensa. Gordura de {margem:.1f}% acima do crítico.")
+                            # --- LÓGICA DE CORES E FRASES (O QUE FOI AJUSTADO) ---
+                            if l_total > 0:
+                                if p_off > 1:
+                                    st.success(f"🎯 **Expectativa Real Positiva:** Você está vencendo o mercado! Para cada R$ 1,00 arriscado, ganha R$ {p_off:.2f}. Margem de gordura: {margem:.1f}% acima do crítico.")
+                                else:
+                                    st.info(f"⚖️ **Alerta de Equilíbrio:** Saldo positivo, mas payoff baixo ({p_off:.2f}). Sua alta taxa de acerto é que está salvando a estratégia. Cuidado!")
                             else:
-                                st.error(f"🚨 **Expectativa Negativa:** Seu acerto de {t_acerto:.1f}% está abaixo do crítico ({t_critica:.1f}%).")
+                                # Se o lucro for negativo, SEMPRE mostra erro (vermelho)
+                                st.error(f"🚨 **Expectativa Negativa:** O saldo de R$ {l_total:,.2f} mostra que a conta não fecha. Você precisa acertar mais de {t_critica:.1f}% para este Payoff, ou aumentar seu alvo.")
 
                             st.dataframe(df_t, use_container_width=True, hide_index=True)
                         else:
