@@ -178,14 +178,33 @@ with aba_padrao:
             except: pass
             time.sleep(0.05)
 
+        # --- EXIBIÇÃO DOS RESULTADOS (TEXTOS RESTAURADOS) ---
         s_text_p.empty()
         p_bar_p.empty()
 
-        # Exibição das tabelas
-        st.subheader("🚀 Sinais e Operações")
-        if ls_sinais_p: st.dataframe(pd.DataFrame(ls_sinais_p), use_container_width=True, hide_index=True)
-        if ls_abertos_p: st.dataframe(pd.DataFrame(ls_abertos_p).style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
-        if ls_resumo_p: st.dataframe(pd.DataFrame(ls_resumo_p).sort_values(by='Lucro R$', ascending=False), use_container_width=True, hide_index=True)
+        # 1. Oportunidades Hoje
+        st.subheader(f"🚀 Oportunidades Hoje (Padrão | IFR {ifr_padrao})")
+        if len(ls_sinais_p) > 0: 
+            st.dataframe(pd.DataFrame(ls_sinais_p), use_container_width=True, hide_index=True)
+        else: 
+            st.info("Nenhum ativo deu sinal de entrada na última barra.")
+
+        # 2. Operações em Andamento
+        st.subheader("⏳ Operações em Andamento (Aguardando Alvo)")
+        if len(ls_abertos_p) > 0:
+            df_abertos = pd.DataFrame(ls_abertos_p).sort_values(by='Dias', ascending=False)
+            st.dataframe(df_abertos.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
+        else: 
+            st.success("Sua carteira está limpa.")
+
+        # 3. Top 10 Histórico
+        st.subheader(f"📊 Top 10 Histórico ({tradutor_periodo_nome.get(periodo_padrao, periodo_padrao)})")
+        if len(ls_resumo_p) > 0:
+            df_resumo = pd.DataFrame(ls_resumo_p).sort_values(by='Lucro R$', ascending=False).head(10)
+            df_resumo['Lucro R$'] = df_resumo['Lucro R$'].apply(lambda x: f"R$ {x:,.2f}")
+            st.dataframe(df_resumo, use_container_width=True, hide_index=True)
+        else: 
+            st.warning("Nenhuma operação finalizada.")
 
 # ESPAÇO PARA AS PRÓXIMAS ABAS
 with aba_pm: st.info("Pronto para receber o código da Aba 2.")
