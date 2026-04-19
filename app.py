@@ -752,8 +752,9 @@ else:
                         df_back = df.reset_index()
                         col_data = df_back.columns[0]
 
+                        # --- INÍCIO DO PROCESSAMENTO DOS TRADES ---
                         for i in range(1, len(df_back)):
-                            # Zeragem 17h
+                            # Lógica de Zeragem 17h (Day Trade)
                             if em_pos and fut_zerar_17h and df_back[col_data].iloc[i].hour >= 17:
                                 preco_saida = df_back['Close'].iloc[i]
                                 p_ent = preco_medio if fut_estrategia == "PM Dinâmico" else preco_entrada
@@ -761,8 +762,6 @@ else:
                                 lucro_rs = (preco_saida - p_ent) * qtd * fut_multiplicador
                                 status = 'Ganho (17h) ✅' if lucro_rs > 0 else 'Perda (17h) ❌'
                                 trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': lucro_rs, 'Situação': status})
-                                if lucro_rs > 0: vitorias += 1
-                                else: derrotas += 1
                                 em_pos = False
                                 continue
 
@@ -772,7 +771,7 @@ else:
                                 if em_pos and df_back['High'].iloc[i] >= take_profit:
                                     lucro = fut_alvo * contratos_atuais * fut_multiplicador
                                     trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': lucro, 'Situação': 'Ganho ✅'})
-                                    em_pos, vitorias = False, vitorias + 1
+                                    em_pos = False
                                     continue
                                 if cond_ent:
                                     if not em_pos:
@@ -785,24 +784,49 @@ else:
                                 if em_pos:
                                     if fut_estrategia == "Alvo & Stop Loss" and df_back['Low'].iloc[i] <= stop_p:
                                         trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': -(fut_stop * fut_contratos * fut_multiplicador), 'Situação': 'Perda ❌'})
-                                        em_pos, derrotas = False, derrotas + 1
+                                        em_pos = False
+                                        continue
                                     elif df_back['High'].iloc[i] >= take_p:
                                         trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': fut_alvo * fut_contratos * fut_multiplicador, 'Situação': 'Ganho ✅'})
-                                        em_pos, vitorias = False, vitorias + 1
+                                        em_pos = False
+                                        continue
                                 if cond_ent and not em_pos:
                                     em_pos, d_ent, preco_entrada = True, df_back[col_data].iloc[i], df_back['Close'].iloc[i]
                                     take_p, stop_p = preco_entrada + fut_alvo, preco_entrada - fut_stop
 
+                        # --- FIM DO PROCESSAMENTO / INÍCIO DA EXIBIÇÃO ---
                         st.divider()
-                        st.markdown(f"### 📊 Resultado: {fut_selecionado}")
-                        st.caption(f"📅 Período: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
+                        st.markdown(f"### 📊 Resultado: {fut_selecionado} ({fut_estrategia})")
+                        st.caption(f"📅 Período Real Analisado: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
+                        
                         if trades:
                             df_t = pd.DataFrame(trades)
-                            m1, m2, m3, m4 = st.columns(4)
-                            m1.metric("Lucro Total", f"R$ {df_t['Lucro (R$)'].sum():,.2f}")
+                            
+                            # CÁLCULOS FINANCEIROS
+                            lucro_total = df_t['Lucro (R$)'].sum()
+                            vitorias_df = df_t[df_t['Lucro (R$)'] > 0]
+                            derrotas_df = df_t[df_t['Lucro (R$)'] <= 0]
+                            
+                            media_ganho = vitorias_df['Lucro (R$)'].mean() if not vitorias_df.empty else 0
+                            media_perda = abs(derrotas_df['Lucro (R$)'].mean()) if not derrotas_df.empty else 1
+                            payoff = media_ganho / media_perda
+                            
+                            # CARDS DE MÉTRICAS
+                            m1, m2, m3, m4, m5 = st.columns(5)
+                            m1.metric("Lucro Total", f"R$ {lucro_total:,.2f}")
                             m2.metric("Operações", len(df_t))
-                            m3.metric("Vitórias/Derrotas", f"{vitorias}/{derrotas}")
-                            m4.metric("Taxa Acerto", f"{(vitorias/len(df_t))*100:.1f}%")
+                            m3.metric("Taxa Acerto", f"{(len(vitorias_df)/len(df_t))*100:.1f}%")
+                            m4.metric("Payoff", f"{payoff:.2f}")
+                            m5.metric("V / D", f"{len(vitorias_df)} / {len(derrotas_df)}")
+                            
+                            # EXPLICAÇÃO DO RISCO-RETORNO
+                            if payoff > 1:
+                                st.success(f"🎯 **Expectativa Positiva:** Para cada R$ 1,00 que você perde, você ganha em média R$ {payoff:.2f} quando acerta.")
+                            else:
+                                st.warning(f"⚠️ **Expectativa Negativa:** Você ganha apenas R$ {payoff:.2f} para cada R$ 1,00 que perde. Cuidado!")
+
                             st.dataframe(df_t, use_container_width=True, hide_index=True)
-                        else: st.warning("Sem operações.")
-                except Exception as e: st.error(f"Erro: {e}")
+                        else: 
+                            st.warning("Nenhuma operação concluída neste período.")
+                except Exception as e: 
+                    st.error(f"Erro no processamento: {e}")
