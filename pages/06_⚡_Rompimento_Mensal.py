@@ -152,11 +152,15 @@ with aba_backtest:
                     else:
                         # Monitora se bateu no alvo
                         if df['High'].iloc[i] >= p_alvo:
+                            # Calcula os dias corridos na operação
+                            dias_na_operacao = (df.index[i] - data_entrada).days
+                            
                             trades.append({
                                 'Data Entrada': data_entrada.strftime('%d/%m/%Y'),
                                 'Preço Entrada': f"R$ {p_entrada:.2f}",
                                 'Data Saída': df.index[i].strftime('%d/%m/%Y'),
                                 'Preço Saída': f"R$ {p_alvo:.2f}",
+                                'Duração': f"{dias_na_operacao} dias",
                                 'Resultado': f"🟢 GAIN (+{alvo_bk}%)"
                             })
                             em_trade = False
@@ -168,7 +172,6 @@ with aba_backtest:
                     st.warning("Nenhum trade finalizado (atingiu o alvo) encontrado no histórico recente.")
         except Exception as e: 
             st.error(f"Erro no Backtest: {e}")
-
 # ==========================================
 # 3. RAIO-X INDIVIDUAL
 # ==========================================
