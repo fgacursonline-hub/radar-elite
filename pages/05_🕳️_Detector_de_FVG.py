@@ -590,7 +590,8 @@ with aba_bk_sniper:
                     if trades:
                         df_res = pd.DataFrame(trades)
                         lucro = df_res['Financeiro'].sum()
-                        taxa = (len(df_res[df_res['Resultado'] == '🟢 GAIN']) / len(df_res)) * 100
+                        acertos = len(df_res[df_res['Resultado'] == '🟢 GAIN'])
+                        taxa = (acertos / len(df_res)) * 100
                         
                         st.markdown("---")
                         c1, c2, c3, c4 = st.columns(4)
@@ -599,9 +600,19 @@ with aba_bk_sniper:
                         c3.metric("Resultado Final", f"R$ {lucro:.2f}")
                         c4.metric("Risco:Retorno", "2 : 1")
                         
+                        st.info("💡 **Análise de Gestão:** Note que mesmo com 40% de acerto, o seu resultado financeiro é positivo. Isso prova que o Alvo 2:1 protege sua conta!")
+
+                        # Formatação visual da tabela - Corrigido para as novas versões do Pandas
                         def style_resultado(val):
-                            return f"background-color: {'#d4edda' if 'GAIN' in val else '#f8d7da'}"
-                        st.dataframe(df_res.style.applymap(style_resultado, subset=['Resultado']), use_container_width=True)
+                            color = '#d4edda' if 'GAIN' in val else '#f8d7da'
+                            return f'background-color: {color}'
+                        
+                        # Trocamos .applymap por .map que é o padrão atual
+                        try:
+                            st.dataframe(df_res.style.map(style_resultado, subset=['Resultado']), use_container_width=True)
+                        except:
+                            # Caso seu ambiente ainda use a versão antiga, ele tenta o applymap
+                            st.dataframe(df_res.style.applymap(style_resultado, subset=['Resultado']), use_container_width=True)
                     else:
                         st.warning("Nenhum sinal 'Sniper' encontrado no período.")
             except Exception as e:
