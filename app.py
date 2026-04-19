@@ -703,11 +703,15 @@ else:
     # ==========================================
     with aba_futuros:
         st.subheader("📈 Raio-X Mercado Futuro (WIN, WDO, etc)")
-        st.markdown("Especializado para contratos que operam por **Pontos** e não por porcentagem de preço.")
+        st.markdown("Especializado para contratos que operam por **Pontos**.")
         
         cf1, cf2, cf3 = st.columns(3)
         with cf1:
-            fut_ativo = st.text_input("Ativo Futuro (Ex: WIN1!, WDO1!):", value="WIN1!", key="f_ativo")
+            # Dicionário para mapear o nome comercial para o código do gráfico
+            mapa_futuros = {"WINFUT (Mini Índice)": "WIN1!", "WDOFUT (Mini Dólar)": "WDO1!"}
+            fut_selecionado = st.selectbox("Selecione o Ativo Futuro:", options=list(mapa_futuros.keys()), key="f_ativo_sel")
+            fut_ativo = mapa_futuros[fut_selecionado] # O sistema usa o código interno
+            
             fut_estrategia = st.selectbox("Estratégia a Testar:", ["Padrão (Sem PM)", "PM Dinâmico", "Alvo & Stop Loss"], key="f_est")
             fut_periodo = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=2, key="f_per")
         with cf2:
@@ -719,12 +723,14 @@ else:
                 st.markdown("<div style='height: 75px;'></div>", unsafe_allow_html=True) 
             fut_contratos = st.number_input("Qtd. Contratos por Entrada:", value=1, step=1, key="f_cont")
         with cf3:
-            fut_multiplicador = st.number_input("Multiplicador Financeiro por Ponto (R$):", value=0.20, step=0.10, format="%.2f", help="Ex: WIN1!=0.20 | WDO1!=10.00", key="f_mult")
+            # Ajuste automático do multiplicador financeiro baseado no ativo
+            valor_mult_padrao = 0.20 if "WIN" in fut_selecionado else 10.00
+            fut_multiplicador = st.number_input("Multiplicador Financeiro (R$):", value=valor_mult_padrao, step=0.10, format="%.2f", key="f_mult")
+            
             fut_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=0, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="f_tmp")
             fut_ifr = st.number_input("Período do IFR:", min_value=2, max_value=50, value=8, step=1, key="f_ifr")
             
-        btn_raiox_futuros = st.button("🔍 Gerar Raio-X Futuros", type="primary", use_container_width=True, key="f_btn")
-
+        fut_zerar_17h = st.checkbox("⏰ Forçar Zeragem Compulsória às 17h00", value=True, key="f_zerar")
         if btn_raiox_futuros:
             ativo_input = fut_ativo.strip().upper()
             if not ativo_input:
