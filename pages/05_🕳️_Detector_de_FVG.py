@@ -226,7 +226,6 @@ with aba_supremo:
     st.subheader("🔥 Radar de Confluência Institucional")
     st.markdown("O Santo Graal: Encontra ativos onde o **Setup 9.1 (MME9 virou para cima)** acabou de acionar **exatamente dentro** de uma zona de suporte institucional (FVG de Alta).")
     
-    # Listas
     bdrs_elite_sup = ['NVDC34', 'P2LT34', 'ROXO34', 'INBR32', 'M1TA34', 'TSLA34', 'LILY34', 'AMZO34', 'AURA33', 'GOGL34', 'MSFT34', 'MUTC34', 'MELI34', 'C2OI34', 'ORCL34', 'M2ST34', 'A1MD34', 'NFLX34', 'ITLC34', 'AVGO34', 'COCA34', 'JBSS32', 'AAPL34', 'XPBR31', 'STOC34']
     ibrx_selecao_sup = ['PETR4', 'VALE3', 'ITUB4', 'BBDC4', 'BBAS3', 'B3SA3', 'ABEV3', 'WEGE3', 'AXIA3', 'SUZB3', 'RENT3', 'RADL3', 'EQTL3', 'LREN3', 'PRIO3', 'HAPV3', 'GGBR4', 'VBBR3', 'SBSP3', 'CMIG4', 'CPLE3', 'ENEV3', 'TIMS3', 'TOTS3', 'EGIE3', 'CSAN3', 'ALOS3', 'DIRR3', 'VIVT3', 'KLBN11', 'UGPA3', 'PSSA3', 'CYRE3', 'ASAI3', 'RAIL3', 'ISAE3', 'CSNA3', 'MGLU3', 'EMBJ3', 'TAEE11', 'BBSE3', 'FLRY3', 'MULT3', 'TFCO4', 'LEVE3', 'CPFE3', 'GOAU4', 'MRVE3', 'YDUQ3', 'SMTO3', 'SLCE3', 'CVCB3', 'USIM5', 'BRAP4', 'BRAV3', 'EZTC3', 'PCAR3', 'AUAU3', 'DXCO3', 'CASH3', 'VAMO3', 'AZZA3', 'AURE3', 'BEEF3', 'ECOR3', 'FESA4', 'POMO4', 'CURY3', 'INTB3', 'JHSF3', 'LIGT3', 'LOGG3', 'MDIA3', 'MBRF3', 'NEOE3', 'QUAL3', 'RAPT4', 'ROMI3', 'SANB11', 'SIMH3', 'TEND3', 'VULC3', 'PLPL3', 'CEAB3', 'UNIP6', 'LWSA3', 'BPAC11', 'GMAT3', 'CXSE3', 'ABCB4', 'CSMG3', 'SAPR11', 'GRND3', 'BRAP3', 'LAVV3', 'RANI3', 'ITSA3', 'ALUP11', 'FIQE3', 'COGN3', 'IRBR3', 'SEER3', 'ANIM3', 'JSLG3', 'POSI3', 'MYPK3', 'SOJA3', 'BLAU3', 'PGMN3', 'TUPY3', 'VVEO3', 'MELK3', 'SHUL4', 'BRSR6']
 
@@ -248,41 +247,39 @@ with aba_supremo:
                 if df is not None and len(df) > 15:
                     df.rename(columns={'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     
-                    # 1. Calcula a Média de 9 (MME9)
                     df.ta.ema(length=9, append=True)
                     mme9 = df['EMA_9']
                     
-                    # 2. Verifica se a média virou para cima na última vela fechada (ou na atual)
-                    # mme9.iloc[-3] = Anteontem | mme9.iloc[-2] = Ontem | mme9.iloc[-1] = Hoje
                     setup_91_armado = False
-                    
-                    # Condição: Ontem a média estava caindo, e Hoje virou pra cima
                     if (mme9.iloc[-3] >= mme9.iloc[-2]) and (mme9.iloc[-1] > mme9.iloc[-2]):
                         setup_91_armado = True
                     
                     if setup_91_armado:
-                        # 3. Se tem 9.1 de Compra, vamos procurar os Gaps de Alta Abertos
                         for i in range(2, len(df)-2):
                             if df['Low'].iloc[i] > df['High'].iloc[i-2]:
                                 topo = df['Low'].iloc[i]
                                 fundo = df['High'].iloc[i-2]
                                 
-                                # Verifica se o Gap AINDA ESTÁ ABERTO
                                 if df['Low'].iloc[i:].min() > fundo:
-                                    
-                                    # 4. A MAGIA: O Preço mínimo de Hoje ou Ontem tocou/entrou na zona do FVG?
                                     minima_recente = min(df['Low'].iloc[-1], df['Low'].iloc[-2])
                                     
                                     if minima_recente <= topo and minima_recente >= fundo:
+                                        
+                                        # --- CÁLCULO DE RISCO E ALVO ADICIONADO AQUI ---
+                                        entrada = df['High'].iloc[-1]
+                                        risco = entrada - fundo
+                                        alvo_2x = entrada + (2 * risco)
+                                        
                                         achados_supremos.append({
                                             'Ativo': ativo, 
-                                            'Gatilho': '🔥 9.1 de COMPRA Acionado', 
+                                            'Gatilho': '🔥 9.1 de COMPRA', 
                                             'Defesa': '🛡️ Dentro do FVG',
                                             'Cotação Atual': f"R$ {df['Close'].iloc[-1]:.2f}",
-                                            'Rompimento da Máxima': f"R$ {df['High'].iloc[-1]:.2f}",
-                                            'Stop Sugerido (Fundo FVG)': f"R$ {fundo:.2f}"
+                                            'Entrada (Máxima)': f"R$ {entrada:.2f}",
+                                            'Stop (Fundo FVG)': f"R$ {fundo:.2f}",
+                                            '🎯 Alvo (2x Risco)': f"R$ {alvo_2x:.2f}"
                                         })
-                                        break # Já achou a confluência neste ativo, vai pro próximo
+                                        break
             except: pass 
             time.sleep(0.05) 
             
@@ -291,6 +288,6 @@ with aba_supremo:
         if achados_supremos:
             st.success(f"🎯 **BINGO!** Encontramos {len(achados_supremos)} ativo(s) com a confluência perfeita hoje.")
             st.dataframe(pd.DataFrame(achados_supremos), use_container_width=True, hide_index=True)
-            st.info("💡 **Como Operar:** Coloque uma ordem de Compra Start (Disparo) no valor indicado em 'Rompimento da Máxima'. O Stop Loss fica no 'Fundo FVG'.")
+            st.info("💡 **Como Operar:** Cadastre no Profit sua ordem de **Compra Start** em 'Entrada', posicione seu **Stop** em 'Stop', e pendure sua saída com lucro em **Alvo**.")
         else: 
             st.warning("Nenhum ativo apresentou a confluência do 9.1 dentro de um FVG hoje. Esse é um setup raro de alta precisão, continue monitorando!")
