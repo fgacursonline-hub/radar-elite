@@ -620,5 +620,116 @@ with aba_stop:
             st.dataframe(df_resumo, use_container_width=True, hide_index=True)
         else: 
             st.warning("Nenhuma operação finalizada neste período.")
-with aba_individual: st.info("Em breve: Raio-X Individual.")
+# ==========================================
+# ABA 4: RAIO-X DO ATIVO INDIVIDUAL (CRUZAMENTO)
+# ==========================================
+with aba_individual:
+    st.subheader("🔬 Análise Detalhada de Ativo Único (Cruzamento)")
+    st.markdown("Teste o histórico de um ativo específico alternando entre as 3 variações da estratégia de médias.")
+    
+    ci1, ci2, ci3 = st.columns(3)
+    with ci1:
+        lupa_ativo = st.text_input("Ativo (Ex: PETR4):", value="PETR4", key="i_cm_ativo")
+        lupa_est = st.selectbox("Estratégia a Testar:", ["Padrão (Só Alvo)", "PM Dinâmico (Re-cruzamento)", "Alvo & Stop Loss"], key="i_cm_est")
+        lupa_per = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="i_cm_per")
+    with ci2:
+        lupa_tipo = st.selectbox("Tipo de Média:", ["Exponencial (EMA)", "Aritmética (SMA)", "Welles Wilder (RMA)"], index=0, key="i_cm_tipo")
+        
+        c_i1, c_i2 = st.columns(2)
+        lupa_curta = c_i1.number_input("Curta:", min_value=2, value=16, key="i_cm_curta")
+        lupa_fcurta_pt = c_i2.selectbox("Fonte C:", ["Fechamento", "Máxima", "Mínima", "Abertura"], index=1, key="i_cm_fcurta")
+        
+        c_i3, c_i4 = st.columns(2)
+        lupa_longa = c_i3.number_input("Longa:", min_value=3, value=42, key="i_cm_longa")
+        lupa_flonga_pt = c_i4.selectbox("Fonte L:", ["Fechamento", "Máxima", "Mínima", "Abertura"], index=0, key="i_cm_flonga")
+    with ci3:
+        lupa_alvo = st.number_input("Alvo de Lucro (%):", value=5.0, step=0.5, key="i_cm_alvo")
+        if lupa_est == "Alvo & Stop Loss":
+            lupa_stop = st.number_input("Stop Loss (%):", value=3.0, step=0.5, key="i_cm_stop")
+        else:
+            st.markdown("<div style='height: 75px;'></div>", unsafe_allow_html=True)
+        lupa_cap = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="i_cm_cap")
+        lupa_tmp = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, key="i_cm_tmp")
+
+    btn_raiox = st.button("🔍 Gerar Raio-X de Médias", type="primary", use_container_width=True, key="i_cm_btn")
+
+    if btn_raiox:
+        if lupa_curta >= lupa_longa:
+            st.error("Erro: A média curta deve ser menor que a longa.")
+        else:
+            ativo = lupa_ativo.strip().upper().replace('.SA', '')
+            intervalo_tv = tradutor_intervalo.get(lupa_tmp, Interval.in_daily)
+            mapa_f = {"Fechamento": "Close", "Máxima": "High", "Mínima": "Low", "Abertura": "Open"}
+            f_c, f_l = mapa_f[lupa_fcurta_pt], mapa_f[lupa_flonga_pt]
+            alvo_d, stop_d = lupa_alvo/100, (lupa_stop/100 if lupa_est == "Alvo & Stop Loss" else 0)
+
+            with st.spinner(f'Processando Raio-X de {ativo}...'):
+                try:
+                    df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                    if df_full is not None and len(df_full) > 50:
+                        df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                        
+                        if lupa_tipo == "Exponencial (EMA)":
+                            df_full['Curta'] = ta.ema(df_full[f_c], length=lupa_curta)
+                            df_full['Longa'] = ta.ema(df_full[f_l], length=lupa_longa)
+                        elif lupa_tipo == "Aritmética (SMA)":
+                            df_full['Curta'] = ta.sma(df_full[f_c], length=lupa_curta)
+                            df_full['Longa'] = ta.sma(df_full[f_l], length=lupa_longa)
+                        else:
+                            df_full['Curta'] = ta.rma(df_full[f_c], length=lupa_curta)
+                            df_full['Longa'] = ta.rma(df_full[f_l], length=lupa_longa)
+                        
+                        df_full['C_Prev'] = df_full['Curta'].shift(1)
+                        df_full['L_Prev'] = df_full['Longa'].shift(1)
+                        df_full = df_full.dropna()
+
+                        # Corte de período
+                        df = df_full[df_full.index >= (df_full.index[-1] - pd.DateOffset(years=2))].copy() # Ajuste dinâmico
+                        trades, em_pos, vits, derrs = [], False, 0, 0
+                        qtd_acoes, cap_inv, p_medio, pms = 0.0, 0.0, 0.0, 0
+                        df_b = df.reset_index()
+                        col_dt = df_b.columns[0]
+
+                        for i in range(1, len(df_b)):
+                            c_cima = (df_b['Curta'].iloc[i] > df_b['Longa'].iloc[i]) and (df_b['C_Prev'].iloc[i] <= df_b['L_Prev'].iloc[i])
+                            
+                            if em_pos:
+                                if df_b['Low'].iloc[i] < min_p: min_p = df_b['Low'].iloc[i]
+                                
+                                # Saída por Alvo
+                                if df_b['High'].iloc[i] >= take_p:
+                                    luc = (cap_inv if lupa_est=="PM Dinâmico (Re-cruzamento)" else lupa_cap) * alvo_d
+                                    trades.append({'Entrada': d_ent, 'Saída': df_b[col_dt].iloc[i], 'Lucro (R$)': luc, 'Situação': 'Gain ✅', 'PMs': pms})
+                                    vits += 1; em_pos = False; continue
+                                
+                                # Saída por Stop
+                                if lupa_est == "Alvo & Stop Loss" and df_b['Low'].iloc[i] <= stop_p:
+                                    luc = -(lupa_cap * stop_d)
+                                    trades.append({'Entrada': d_ent, 'Saída': df_b[col_dt].iloc[i], 'Lucro (R$)': luc, 'Situação': 'Stop ❌', 'PMs': 0})
+                                    derrs += 1; em_pos = False; continue
+
+                                # Lógica de PM
+                                if lupa_est == "PM Dinâmico (Re-cruzamento)" and c_cima:
+                                    p_c = df_b['Close'].iloc[i]
+                                    cap_inv += lupa_cap; qtd_acoes += lupa_cap / p_c
+                                    p_medio = cap_inv / qtd_acoes; take_p = p_medio * (1 + alvo_d); pms += 1
+
+                            if c_cima and not em_pos:
+                                em_pos, d_ent, p_ent = True, df_b[col_dt].iloc[i], df_b['Close'].iloc[i]
+                                min_p, cap_inv = df_b['Low'].iloc[i], lupa_cap
+                                qtd_acoes = cap_inv / p_ent; p_medio, pms = p_ent, 0
+                                take_p, stop_p = p_medio * (1 + alvo_d), p_medio * (1 - stop_d)
+
+                        st.divider()
+                        if trades:
+                            df_res = pd.DataFrame(trades)
+                            m1, m2, m3, m4 = st.columns(4)
+                            m1.metric("Lucro Total", f"R$ {df_res['Lucro (R$)'].sum():,.2f}")
+                            m2.metric("Trades Fechados", len(df_res))
+                            m3.metric("Taxa Acerto", f"{(vits/len(df_res)*100):.1f}%")
+                            m4.metric("Média PMs", f"{df_res['PMs'].mean():.1f}")
+                            st.dataframe(df_res, use_container_width=True, hide_index=True)
+                        else:
+                            st.warning("Sem trades fechados para este ativo no período.")
+                except Exception as e: st.error(f"Erro no Raio-X: {e}")
 with aba_futuros: st.info("Em breve: Raio-X Futuros.")
