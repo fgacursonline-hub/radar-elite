@@ -54,52 +54,97 @@ if btn_fvg:
                 df.rename(columns={'high': 'High', 'low': 'Low', 'close': 'Close', 'open': 'Open'}, inplace=True)
                 
                 lista_gaps = []
+                preco_atual = df['Close'].iloc[-1]
+                alerta_oportunidade = False # Gatilho para disparar o aviso
+                
                 # Loop para calcular os limites de preço de cada Gap
                 for i in range(2, len(df)):
-                    # Lógica FVG Alta (Bullish)
+                    
+                    # Lógica FVG Alta (Bullish) - ZONA DE SUPORTE (DEMANDA)
                     if df['Low'].iloc[i] > df['High'].iloc[i-2]:
                         topo = df['Low'].iloc[i]
                         fundo = df['High'].iloc[i-2]
+                        
+                        # Verifica se o preço já fechou esse gap no futuro
+                        aberto = df['Low'].iloc[i:].min() > fundo
+                        status = "Aberto" if aberto else "Preenchido"
+                        
+                        # Se estiver Aberto e o preço atual estiver DENTRO do Gap: Dispara Alerta!
+                        if aberto and (fundo <= preco_atual <= topo):
+                            alerta_oportunidade = True
+                            
                         lista_gaps.append({
                             'Data': df.index[i].strftime('%d/%m %H:%M'),
-                            'Tipo': 'Alta (Bullish) 🟢',
+                            'Tipo': 'Alta 🟢',
+                            'Zona': 'Suporte (Demanda)',
                             'Limite Superior': topo,
                             'Limite Inferior': fundo,
-                            'Preço Atual': df['Close'].iloc[-1]
+                            'Status': status
                         })
 
-                    # Lógica FVG Baixa (Bearish)
+                    # Lógica FVG Baixa (Bearish) - ZONA DE RESISTÊNCIA (OFERTA)
                     if df['High'].iloc[i] < df['Low'].iloc[i-2]:
                         topo = df['Low'].iloc[i-2]
                         fundo = df['High'].iloc[i]
+                        
+                        # Verifica se o preço já fechou esse gap no futuro
+                        aberto = df['High'].iloc[i:].max() < topo
+                        status = "Aberto" if aberto else "Preenchido"
+                        
+                        # Se estiver Aberto e o preço atual estiver DENTRO do Gap: Dispara Alerta!
+                        if aberto and (fundo <= preco_atual <= topo):
+                            alerta_oportunidade = True
+                            
                         lista_gaps.append({
                             'Data': df.index[i].strftime('%d/%m %H:%M'),
-                            'Tipo': 'Baixa (Bearish) 🔴',
+                            'Tipo': 'Baixa 🔴',
+                            'Zona': 'Resistência (Oferta)',
                             'Limite Superior': topo,
                             'Limite Inferior': fundo,
-                            'Preço Atual': df['Close'].iloc[-1]
+                            'Status': status
                         })
 
                 # --- EXIBIÇÃO DOS RESULTADOS ---
                 st.subheader(f"📊 Zonas de Desequilíbrio: {ativo}")
+                st.markdown(f"**Cotação Atual:** R$ {preco_atual:.2f}")
+                
+                # O GRITO DE ALERTA!
+                if alerta_oportunidade:
+                    st.error(f"🚨 **OPORTUNIDADE:** O preço atual de {ativo} está exatamente DENTRO de uma zona de Gap Institucional ABERTO! Fique atento a reações nesta faixa de preço.")
                 
                 if lista_gaps:
-                    # Mostra os 3 Gaps mais recentes em cards de destaque
-                    cols = st.columns(len(lista_gaps[-3:]))
-                    for idx, gap in enumerate(lista_gaps[-3:]):
+                    # Filtra os Gaps que ainda estão abertos para destacar (se houver)
+                    gaps_abertos = [g for g in lista_gaps if g['Status'] == 'Aberto']
+                    destaques = gaps_abertos[-3:] if gaps_abertos else lista_gaps[-3:]
+                        
+                    # Mostra os 3 Gaps mais importantes em cards
+                    cols = st.columns(len(destaques))
+                    for idx, gap in enumerate(destaques):
                         with cols[idx]:
-                            cor = "green" if "Alta" in gap['Tipo'] else "red"
                             st.markdown(f"### {gap['Tipo']}")
+                            st.markdown(f"*{gap['Zona']}*")
                             st.metric("Topo da Zona", f"R$ {gap['Limite Superior']:.2f}")
                             st.metric("Fundo da Zona", f"R$ {gap['Limite Inferior']:.2f}")
-                            st.caption(f"Detectado em: {gap['Data']}")
+                            st.caption(f"Status: **{gap['Status']}** | Detectado: {gap['Data']}")
                     
                     st.divider()
-                    # Tabela completa com histórico
+                    
+                    # Explicação didática na tela
+                    st.info("💡 **Guia de Ação Institucional:** \n"
+                            "- **FVG de Alta:** Funciona como um ímã e uma zona de **Suporte (Demanda)**. O preço tende a cair até este buraco, atrair compradores institucionais e voltar a subir.\n"
+                            "- **FVG de Baixa:** Funciona como um ímã e uma zona de **Resistência (Oferta)**. O preço tende a subir até este buraco, atrair vendedores e voltar a cair.")
+                    
+                    # Tabela completa com histórico formatado
                     df_final = pd.DataFrame(lista_gaps).sort_index(ascending=False)
-                    st.dataframe(df_final, use_container_width=True)
+                    df_final['Limite Superior'] = df_final['Limite Superior'].apply(lambda x: f"R$ {x:.2f}")
+                    df_final['Limite Inferior'] = df_final['Limite Inferior'].apply(lambda x: f"R$ {x:.2f}")
+                    st.dataframe(df_final, use_container_width=True, hide_index=True)
                 else:
-                    st.success("Mercado em equilíbrio. Nenhum Gap relevante encontrado.")
+                    st.success("Mercado em equilíbrio. Nenhum Gap relevante encontrado nas últimas velas.")
+            else:
+                st.error("Ativo não encontrado ou dados insuficientes.")
+        except Exception as e:
+            st.error(f"Erro no processamento: {e}")
             else:
                 st.error("Ativo não encontrado ou dados insuficientes.")
         except Exception as e:
