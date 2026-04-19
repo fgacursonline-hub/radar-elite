@@ -23,17 +23,20 @@ with col_man:
 st.markdown("Identifique desequilíbrios de preço e opere nas zonas defendidas pelos grandes bancos.")
 st.divider()
 
-# --- CRIAÇÃO DAS 7 SUB-ABAS (Agora com Sniper e Volume) ---
-aba_individual, aba_radar, aba_backtest, aba_supremo, aba_backtest_supremo, aba_volume, aba_sniper = st.tabs([
+# --- CRIAÇÃO DAS 8 SUB-ABAS ---
+abas = st.tabs([
     "🔍 Raio-X Individual", 
-    "📡 Radar de Oportunidades", 
+    "📡 Radar Oportunidades", 
     "📊 Backtest FVG Puro",
-    "🔥 Radar Supremo (9.1 + FVG)",
-    "📈 Backtest Supremo (Confluência)",
+    "🔥 Radar Supremo",
+    "📈 Backtest Supremo",
     "💎 Volume & VWAP",
-    "🦅 Filtro Sniper (Confluência Total)"
+    "🦅 Filtro Sniper",
     "📊 Backtest Sniper (A Realidade)"
 ])
+
+# Aqui é onde o erro acontece se faltar um nome:
+aba_individual, aba_radar, aba_backtest, aba_supremo, aba_backtest_supremo, aba_volume, aba_sniper, aba_bk_sniper = abas
 
 # ==========================================
 # ABA 1: RAIO-X INDIVIDUAL
