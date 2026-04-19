@@ -750,3 +750,120 @@ with aba_individual:
                     else:
                         st.warning("Nenhum trade fechado no período.")
             except Exception as e: st.error(f"Erro no processamento: {e}")
+# ==========================================
+# ABA 5: RAIO-X FUTUROS (CRUZAMENTO DINÂMICO DAY TRADE)
+# ==========================================
+with aba_futuros:
+    st.subheader("📉 Raio-X Mercado Futuro (WIN, WDO) - Cruzamento")
+    st.markdown("Teste o desempenho em ativos alavancados. Entradas no cruzamento com alvo em **pontos** e saída obrigatória no fim do dia.")
+    
+    cf1, cf2, cf3 = st.columns(3)
+    with cf1:
+        mapa_fut = {"WINFUT (Mini Índice)": "WIN1!", "WDOFUT (Mini Dólar)": "WDO1!"}
+        f_selecionado = st.selectbox("Selecione o Ativo:", options=list(mapa_fut.keys()), key="f_cm_ativo")
+        f_ativo = mapa_fut[f_selecionado] 
+        f_dir = st.selectbox("Direção do Trade:", ["Ambas", "Apenas Compra", "Apenas Venda"], key="f_cm_dir")
+        f_tmp = st.selectbox("Tempo Gráfico:", ['15m', '60m'], key="f_cm_tmp")
+    with cf2:
+        f_tipo = st.selectbox("Tipo de Média:", ["Exponencial (EMA)", "Aritmética (SMA)", "Welles Wilder (RMA)"], key="f_cm_tipo")
+        
+        c_f1, c_f2 = st.columns(2)
+        f_curta = c_f1.number_input("Período Curta:", value=16, key="f_cm_curta")
+        f_fcurta_pt = c_f2.selectbox("Fonte (Curta):", ["Fechamento", "Máxima", "Mínima"], index=1, key="f_cm_fcurta")
+        
+        c_f3, c_f4 = st.columns(2)
+        f_longa = c_f3.number_input("Período Longa:", value=42, key="f_cm_longa")
+        f_flonga_pt = c_f4.selectbox("Fonte (Longa):", ["Fechamento", "Máxima", "Mínima"], index=0, key="f_cm_flonga")
+    with cf3:
+        f_alvo = st.number_input("Alvo (Pontos):", value=300, step=50, key="f_cm_alvo")
+        f_contratos = st.number_input("Contratos:", value=1, step=1, key="f_cm_cont")
+        f_multi = st.number_input("Valor R$ por Ponto:", value=0.20 if "WIN" in f_selecionado else 10.0, key="f_cm_mult")
+        f_zerar = st.checkbox("⏰ Zeragem Automática no Fim do Dia", value=True, key="f_cm_zerar")
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        btn_fut = st.button("🚀 Gerar Raio-X Futuros", type="primary", use_container_width=True, key="f_cm_btn")
+
+    if btn_fut:
+        mapa_f = {"Fechamento": "Close", "Máxima": "High", "Mínima": "Low"}
+        intervalo_tv = tradutor_intervalo.get(f_tmp, Interval.in_15_minute)
+        
+        with st.spinner(f'Testando cruzamento {f_curta}x{f_longa} no {f_selecionado}...'):
+            try:
+                # Puxamos um histórico maior para o robô ter contexto das médias
+                df_full = tv.get_hist(symbol=f_ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=10000)
+                if df_full is not None:
+                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                    
+                    # Cálculo das Médias Universais
+                    if f_tipo == "Exponencial (EMA)":
+                        df_full['Curta'] = ta.ema(df_full[mapa_f[f_fcurta_pt]], length=f_curta)
+                        df_full['Longa'] = ta.ema(df_full[mapa_f[f_flonga_pt]], length=f_longa)
+                    elif f_tipo == "Aritmética (SMA)":
+                        df_full['Curta'] = ta.sma(df_full[mapa_f[f_fcurta_pt]], length=f_curta)
+                        df_full['Longa'] = ta.sma(df_full[mapa_f[f_flonga_pt]], length=f_longa)
+                    else:
+                        df_full['Curta'] = ta.rma(df_full[mapa_f[f_fcurta_pt]], length=f_curta)
+                        df_full['Longa'] = ta.rma(df_full[mapa_f[f_flonga_pt]], length=f_longa)
+                    
+                    df_full['C_Prev'] = df_full['Curta'].shift(1)
+                    df_full['L_Prev'] = df_full['Longa'].shift(1)
+                    df_full = df_full.dropna()
+
+                    trades, posicao = [], 0 # 0: Fora, 1: Comprado, -1: Vendido
+                    vits, derrs = 0, 0
+                    df_b = df_full.reset_index()
+                    col_dt = df_b.columns[0]
+
+                    for i in range(1, len(df_b)):
+                        d_at, d_ant = df_b[col_dt].iloc[i], df_b[col_dt].iloc[i-1]
+                        c_cima = (df_b['Curta'].iloc[i] > df_b['Longa'].iloc[i]) and (df_b['C_Prev'].iloc[i] <= df_b['L_Prev'].iloc[i])
+                        c_baixo = (df_b['Curta'].iloc[i] < df_b['Longa'].iloc[i]) and (df_b['C_Prev'].iloc[i] >= df_b['L_Prev'].iloc[i])
+
+                        # REGRA DE DAY TRADE: Zeragem no Fim do Dia
+                        if posicao != 0 and f_zerar and d_at.date() != d_ant.date():
+                            p_sai = df_b['Close'].iloc[i-1]
+                            luc = (p_sai - p_ent) * f_contratos * f_multi if posicao == 1 else (p_ent - p_sai) * f_contratos * f_multi
+                            trades.append({
+                                'Entrada': d_ent.strftime('%d/%m %H:%M'), 
+                                'Saída': d_ant.strftime('%d/%m %H:%M'), 
+                                'Tipo': 'Compra 🟢' if posicao == 1 else 'Venda 🔴', 
+                                'Pontos': (p_sai - p_ent) if posicao == 1 else (p_ent - p_sai),
+                                'Lucro (R$)': luc, 
+                                'Status': 'Zerad. Fim Dia'
+                            })
+                            if luc > 0: vits += 1 
+                            else: derrs += 1
+                            posicao = 0
+
+                        # GESTÃO DA OPERAÇÃO ABERTA
+                        if posicao == 1: # COMPRADO
+                            if df_b['High'].iloc[i] >= take_p:
+                                luc = f_alvo * f_contratos * f_multi
+                                trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Tipo': 'Compra 🟢', 'Pontos': f_alvo, 'Lucro (R$)': luc, 'Status': 'Gain ✅'})
+                                vits += 1; posicao = 0
+                        elif posicao == -1: # VENDIDO
+                            if df_b['Low'].iloc[i] <= take_p:
+                                luc = f_alvo * f_contratos * f_multi
+                                trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Tipo': 'Venda 🔴', 'Pontos': f_alvo, 'Lucro (R$)': luc, 'Status': 'Gain ✅'})
+                                vits += 1; posicao = 0
+                        
+                        # GATILHOS DE ENTRADA
+                        if c_cima and posicao == 0 and f_dir != "Apenas Venda":
+                            posicao, d_ent, p_ent = 1, d_at, df_b['Close'].iloc[i]
+                            take_p = p_ent + f_alvo
+                        elif c_baixo and posicao == 0 and f_dir != "Apenas Compra":
+                            posicao, d_ent, p_ent = -1, d_at, df_b['Close'].iloc[i]
+                            take_p = p_ent - f_alvo
+
+                    st.divider()
+                    if trades:
+                        df_res = pd.DataFrame(trades)
+                        m1, m2, m3, m4 = st.columns(4)
+                        m1.metric("Lucro Total", f"R$ {df_res['Lucro (R$)'].sum():,.2f}")
+                        m2.metric("Quantidade de Operações", len(df_res))
+                        m3.metric("Taxa de Acerto", f"{(vits/len(df_res)*100):.1f}%")
+                        m4.metric("Saldo de Pontos", f"{df_res['Pontos'].sum():.0f}")
+                        
+                        st.dataframe(df_res, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("Nenhuma operação de cruzamento concluída no período.")
+            except Exception as e: st.error(f"Erro no processamento de Futuros: {e}")    
