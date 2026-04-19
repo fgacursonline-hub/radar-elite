@@ -87,14 +87,21 @@ with aba_padrao:
     with cp2:
         tipo_media_cm = st.selectbox("Tipo de Média:", ["Exponencial (EMA)", "Aritmética (SMA)", "Welles Wilder (RMA)"], index=0, key="cm_tipo")
         
-        # Colunas internas para organizar Período + Fonte lado a lado
+        # Colunas internas para organizar Período + Fonte lado a lado com Dicas
         c_curta1, c_curta2 = st.columns(2)
         curta_cm = c_curta1.number_input("Período Curta:", min_value=2, max_value=200, value=16, step=1, key="cm_curta")
-        fonte_curta = c_curta2.selectbox("Fonte (Curta):", ["Close", "High", "Low", "Open"], index=0, key="cm_fcurta")
+        fonte_curta_pt = c_curta2.selectbox("Fonte (Curta):", ["Fechamento", "Máxima", "Mínima", "Abertura"], index=1, key="cm_fcurta") # Index 1 = Máxima por padrão
+        c_curta2.caption("🎯 IDEAL: MÁXIMA")
         
         c_longa1, c_longa2 = st.columns(2)
         longa_cm = c_longa1.number_input("Período Longa:", min_value=3, max_value=200, value=42, step=1, key="cm_longa")
-        fonte_longa = c_longa2.selectbox("Fonte (Longa):", ["Close", "High", "Low", "Open"], index=0, key="cm_flonga")
+        fonte_longa_pt = c_longa2.selectbox("Fonte (Longa):", ["Fechamento", "Máxima", "Mínima", "Abertura"], index=0, key="cm_flonga") # Index 0 = Fechamento por padrão
+        c_longa2.caption("🎯 IDEAL: FECHAMENTO")
+        
+        # Tradutor interno para a biblioteca matemática
+        mapa_fontes = {"Fechamento": "Close", "Máxima": "High", "Mínima": "Low", "Abertura": "Open"}
+        fonte_curta = mapa_fontes[fonte_curta_pt]
+        fonte_longa = mapa_fontes[fonte_longa_pt]
         
     with cp3:
         alvo_cm = st.number_input("Alvo de Lucro (%):", value=5.0, step=0.5, key="cm_alvo")
@@ -195,8 +202,9 @@ with aba_padrao:
                     cruzou_hoje = (df_full['Curta'].iloc[-1] > df_full['Longa'].iloc[-1]) and (df_full['Curta_Prev'].iloc[-1] <= df_full['Longa_Prev'].iloc[-1])
                     if cruzou_hoje:
                         nome_m = tipo_media_cm.split()[0]
-                        col_curta = f"{nome_m} {curta_cm} ({fonte_curta[:1]})"
-                        col_longa = f"{nome_m} {longa_cm} ({fonte_longa[:1]})"
+                        # Mostra no cabeçalho qual foi a fonte usada (ex: EMA 16 (Máx))
+                        col_curta = f"{nome_m} {curta_cm} ({fonte_curta_pt[:3]})"
+                        col_longa = f"{nome_m} {longa_cm} ({fonte_longa_pt[:3]})"
                         ls_sinais.append({
                             'Ativo': ativo, 
                             'Preço Atual': f"R$ {df_full['Close'].iloc[-1]:.2f}", 
