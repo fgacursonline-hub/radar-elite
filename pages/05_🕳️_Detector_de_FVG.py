@@ -513,7 +513,7 @@ with aba_sniper:
         if achados: st.success(f"🎯 Encontrados {len(achados)} Snipers!"); st.dataframe(pd.DataFrame(achados), use_container_width=True, hide_index=True)
         else: st.warning("Nenhum sinal completo encontrado.")
 # ==========================================
-# ABA 8: 📊 BACKTEST SNIPER (CONFLUÊNCIA TOTAL)
+# ABA 8: 📊 BACKTEST SNIPER (SINCERO)
 # ==========================================
 with aba_bk_sniper:
     st.subheader("📊 Simulador de Estratégia Sniper (Confluência Máxima)")
@@ -532,19 +532,13 @@ with aba_bk_sniper:
         with st.spinner(f"Vasculhando o histórico de {ativo}..."):
             try:
                 df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=interv, n_bars=bksn_velas)
-                
                 if df is not None and len(df) > 50:
-                    # 1. Padronização de Colunas (Obrigatória)
                     df.columns = [c.capitalize() for c in df.columns]
-                    if 'Open' not in df.columns:
-                        df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
-                    
-                    # 2. Cálculo da Média e Identificação Automática da Coluna
                     df.ta.ema(length=9, append=True)
-                    # Procura qualquer coluna que tenha 'EMA' ou 'Ema' no nome
+                    
+                    # Identifica coluna EMA
                     col_ema = [c for c in df.columns if 'EMA' in c.upper()][0]
                     
-                    # 3. Cálculo VWAP e Volume Médio
                     df['vwap'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
                     df['vol_avg'] = df['Volume'].rolling(window=20).mean()
                     
@@ -553,14 +547,9 @@ with aba_bk_sniper:
                     
                     for i in range(20, len(df)-2):
                         if not em_trade:
-                            # Filtro 9.1 usando a coluna identificada automaticamente
                             setup_91 = (df[col_ema].iloc[i-2] >= df[col_ema].iloc[i-1]) and (df[col_ema].iloc[i] > df[col_ema].iloc[i-1])
-                            
                             if setup_91:
-                                # Filtro VWAP e Volume
                                 if df['Close'].iloc[i] > df['vwap'].iloc[i] and df['Volume'].iloc[i] > df['vol_avg'].iloc[i]:
-                                    
-                                    # Filtro FVG
                                     achou_fvg = False
                                     fundo_fvg = 0
                                     for f in range(2, i):
@@ -570,7 +559,6 @@ with aba_bk_sniper:
                                                     achou_fvg = True
                                                     fundo_fvg = df['High'].iloc[f-2]
                                                     break
-                                    
                                     if achou_fvg:
                                         gatilho = df['High'].iloc[i]
                                         if df['High'].iloc[i+1] > gatilho:
@@ -590,9 +578,7 @@ with aba_bk_sniper:
                     if trades:
                         df_res = pd.DataFrame(trades)
                         lucro = df_res['Financeiro'].sum()
-                        acertos = len(df_res[df_res['Resultado'] == '🟢 GAIN'])
-                        taxa = (acertos / len(df_res)) * 100
-                        
+                        taxa = (len(df_res[df_res['Resultado'] == '🟢 GAIN']) / len(df_res)) * 100
                         st.markdown("---")
                         c1, c2, c3, c4 = st.columns(4)
                         c1.metric("Sinais Sniper", len(df_res))
@@ -600,13 +586,19 @@ with aba_bk_sniper:
                         c3.metric("Resultado Final", f"R$ {lucro:.2f}", delta=f"{lucro:.2f}")
                         c4.metric("Risco:Retorno", "2 : 1")
                         
-                        # --- ANÁLISE INTELIGENTE (CORRIGIDA) ---
                         if lucro > 0:
-                            st.success(f"📈 **Análise de Gestão:** Resultado POSITIVO! Com {taxa:.1f}% de acerto, o Alvo 2:1 foi suficiente para cobrir os stops e dar lucro.")
+                            st.success(f"📈 **Análise:** Lucro real de R$ {lucro:.2f}. A estratégia funcionou aqui!")
                         else:
-                            st.error(f"📉 **Análise de Gestão:** Resultado NEGATIVO. Com apenas {taxa:.1f}% de acerto, o Alvo 2:1 não foi suficiente. Para lucrar com este payoff, você precisa de pelo menos 34% de acerto.")
+                            st.error(f"📉 **Análise:** Prejuízo de R$ {abs(lucro):.2f}. Filtre melhor ou mude o ativo.")
 
-                        def style_resultado(val):
+                        def style_res(val):
                             return f"background-color: {'#d4edda' if 'GAIN' in val else '#f8d7da'}"
                         
-                        st.dataframe(df_res.style.map(style_resultado, subset=['Resultado']), use_container_width=True)
+                        try:
+                            st.dataframe(df_res.style.map(style_res, subset=['Resultado']), use_container_width=True)
+                        except:
+                            st.dataframe(df_res.style.applymap(style_res, subset=['Resultado']), use_container_width=True)
+                    else:
+                        st.warning("Nenhum sinal 'Sniper' encontrado.")
+            except Exception as e:
+                st.error(f"Erro no processamento: {e}")
