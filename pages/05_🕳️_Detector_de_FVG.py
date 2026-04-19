@@ -597,23 +597,16 @@ with aba_bk_sniper:
                         c1, c2, c3, c4 = st.columns(4)
                         c1.metric("Sinais Sniper", len(df_res))
                         c2.metric("Taxa de Acerto", f"{taxa:.1f}%")
-                        c3.metric("Resultado Final", f"R$ {lucro:.2f}")
+                        c3.metric("Resultado Final", f"R$ {lucro:.2f}", delta=f"{lucro:.2f}")
                         c4.metric("Risco:Retorno", "2 : 1")
                         
-                        st.info("💡 **Análise de Gestão:** Note que mesmo com 40% de acerto, o seu resultado financeiro é positivo. Isso prova que o Alvo 2:1 protege sua conta!")
+                        # --- ANÁLISE INTELIGENTE (CORRIGIDA) ---
+                        if lucro > 0:
+                            st.success(f"📈 **Análise de Gestão:** Resultado POSITIVO! Com {taxa:.1f}% de acerto, o Alvo 2:1 foi suficiente para cobrir os stops e dar lucro.")
+                        else:
+                            st.error(f"📉 **Análise de Gestão:** Resultado NEGATIVO. Com apenas {taxa:.1f}% de acerto, o Alvo 2:1 não foi suficiente. Para lucrar com este payoff, você precisa de pelo menos 34% de acerto.")
 
-                        # Formatação visual da tabela - Corrigido para as novas versões do Pandas
                         def style_resultado(val):
-                            color = '#d4edda' if 'GAIN' in val else '#f8d7da'
-                            return f'background-color: {color}'
+                            return f"background-color: {'#d4edda' if 'GAIN' in val else '#f8d7da'}"
                         
-                        # Trocamos .applymap por .map que é o padrão atual
-                        try:
-                            st.dataframe(df_res.style.map(style_resultado, subset=['Resultado']), use_container_width=True)
-                        except:
-                            # Caso seu ambiente ainda use a versão antiga, ele tenta o applymap
-                            st.dataframe(df_res.style.applymap(style_resultado, subset=['Resultado']), use_container_width=True)
-                    else:
-                        st.warning("Nenhum sinal 'Sniper' encontrado no período.")
-            except Exception as e:
-                st.error(f"Erro no processamento: {e}")
+                        st.dataframe(df_res.style.map(style_resultado, subset=['Resultado']), use_container_width=True)
