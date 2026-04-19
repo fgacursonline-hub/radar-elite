@@ -890,6 +890,7 @@ else:
 
                             st.divider()
                             st.markdown(f"### 📊 Resultado: {ativo} ({fut_estrategia})")
+                            st.caption(f"📅 **Período Real Analisado:** {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
                             
                             if len(trades) > 0:
                                 df_t = pd.DataFrame(trades)
