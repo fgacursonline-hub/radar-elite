@@ -154,9 +154,10 @@ with aba_backtest:
                         if df['High'].iloc[i] >= p_alvo:
                             trades.append({
                                 'Data Entrada': data_entrada.strftime('%d/%m/%Y'),
+                                'Preço Entrada': f"R$ {p_entrada:.2f}",
                                 'Data Saída': df.index[i].strftime('%d/%m/%Y'),
-                                'Resultado': f"🟢 GAIN (+{alvo_bk}%)",
-                                'Preço Saída': f"R$ {p_alvo:.2f}"
+                                'Preço Saída': f"R$ {p_alvo:.2f}",
+                                'Resultado': f"🟢 GAIN (+{alvo_bk}%)"
                             })
                             em_trade = False
                 
