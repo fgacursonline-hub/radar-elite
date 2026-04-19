@@ -640,10 +640,12 @@ with aba_individual:
         c_i1, c_i2 = st.columns(2)
         lupa_curta = c_i1.number_input("Curta:", min_value=2, value=16, key="i_cm_curta")
         lupa_fcurta_pt = c_i2.selectbox("Fonte C:", ["Fechamento", "Máxima", "Mínima", "Abertura"], index=1, key="i_cm_fcurta")
+        c_i2.caption("🎯 IDEAL: MÁXIMA")
         
         c_i3, c_i4 = st.columns(2)
         lupa_longa = c_i3.number_input("Longa:", min_value=3, value=42, key="i_cm_longa")
         lupa_flonga_pt = c_i4.selectbox("Fonte L:", ["Fechamento", "Máxima", "Mínima", "Abertura"], index=0, key="i_cm_flonga")
+        c_i4.caption("🎯 IDEAL: FECHAMENTO")
     with ci3:
         lupa_alvo = st.number_input("Alvo de Lucro (%):", value=5.0, step=0.5, key="i_cm_alvo")
         if lupa_est == "Alvo & Stop Loss":
@@ -651,7 +653,14 @@ with aba_individual:
         else:
             st.markdown("<div style='height: 75px;'></div>", unsafe_allow_html=True)
         lupa_cap = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="i_cm_cap")
-        lupa_tmp = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, key="i_cm_tmp")
+        # VOLTANDO AO PADRÃO DE TEMPOS SOLICITADO
+        lupa_tmp = st.selectbox(
+            "Tempo Gráfico:", 
+            options=['15m', '60m', '1d', '1wk'], 
+            index=2, 
+            format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], 
+            key="i_cm_tmp"
+        )
 
     btn_raiox = st.button("🔍 Gerar Raio-X Individual", type="primary", use_container_width=True, key="i_cm_btn")
 
@@ -672,7 +681,7 @@ with aba_individual:
                 if inf and 'longName' in inf:
                     st.info(f"🏢 **Empresa:** {inf.get('longName')} | 📂 **Setor:** {inf.get('sector')}")
             except:
-                st.caption(f"Analisando ativo: {ativo_limpo} (Metadados Yahoo indisponíveis)")
+                st.caption(f"Analisando ativo: {ativo_limpo}")
 
             # --- PROCESSAMENTO DO BACKTEST ---
             intervalo_tv = tradutor_intervalo.get(lupa_tmp, Interval.in_daily)
@@ -686,14 +695,13 @@ with aba_individual:
                 if df_full is not None and len(df_full) > 50:
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     
-                    # Cálculo das Médias Dinâmicas
                     if lupa_tipo == "Exponencial (EMA)":
                         df_full['Curta'] = ta.ema(df_full[f_c], length=lupa_curta)
                         df_full['Longa'] = ta.ema(df_full[f_l], length=lupa_longa)
                     elif lupa_tipo == "Aritmética (SMA)":
                         df_full['Curta'] = ta.sma(df_full[f_c], length=lupa_curta)
                         df_full['Longa'] = ta.sma(df_full[f_l], length=lupa_longa)
-                    else: # Welles Wilder
+                    else:
                         df_full['Curta'] = ta.rma(df_full[f_c], length=lupa_curta)
                         df_full['Longa'] = ta.rma(df_full[f_l], length=lupa_longa)
                     
@@ -712,11 +720,11 @@ with aba_individual:
                         if em_pos:
                             if df_b['High'].iloc[i] >= take_p:
                                 luc = cap_inv * alvo_d if lupa_est=="PM Dinâmico (Re-cruzamento)" else lupa_cap * alvo_d
-                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': df_b[col_dt].iloc[i].strftime('%d/%m/%Y'), 'Lucro (R$)': luc, 'Situação': 'Gain ✅', 'PMs': pms})
+                                trades.append({'Entrada': df_b[col_dt].iloc[i-1].strftime('%d/%m/%Y'), 'Saída': df_b[col_dt].iloc[i].strftime('%d/%m/%Y'), 'Lucro (R$)': luc, 'Situação': 'Gain ✅', 'PMs': pms})
                                 vits += 1; em_pos = False; continue
                             
                             if lupa_est == "Alvo & Stop Loss" and df_b['Low'].iloc[i] <= stop_p:
-                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': df_b[col_dt].iloc[i].strftime('%d/%m/%Y'), 'Lucro (R$)': -(lupa_cap * stop_d), 'Situação': 'Stop ❌', 'PMs': 0})
+                                trades.append({'Entrada': df_b[col_dt].iloc[i-1].strftime('%d/%m/%Y'), 'Saída': df_b[col_dt].iloc[i].strftime('%d/%m/%Y'), 'Lucro (R$)': -(lupa_cap * stop_d), 'Situação': 'Stop ❌', 'PMs': 0})
                                 em_pos = False; continue
 
                             if lupa_est == "PM Dinâmico (Re-cruzamento)" and c_cima:
@@ -733,10 +741,11 @@ with aba_individual:
                     if trades:
                         df_res = pd.DataFrame(trades)
                         st.divider()
-                        m1, m2, m3 = st.columns(3)
+                        m1, m2, m3, m4 = st.columns(4)
                         m1.metric("Lucro Total", f"R$ {df_res['Lucro (R$)'].sum():,.2f}")
-                        m2.metric("Taxa Acerto", f"{(vits/len(df_res)*100):.1f}%")
-                        m3.metric("Média PMs", f"{df_res['PMs'].mean():.1f}")
+                        m2.metric("Quantidade de Operações", len(df_res)) # MÉTRICA ADICIONADA
+                        m3.metric("Taxa de Acerto", f"{(vits/len(df_res)*100):.1f}%")
+                        m4.metric("Média de PMs", f"{df_res['PMs'].mean():.1f}")
                         st.dataframe(df_res, use_container_width=True, hide_index=True)
                     else:
                         st.warning("Nenhum trade fechado no período.")
