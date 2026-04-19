@@ -643,12 +643,12 @@ with aba_individual:
         else:
             st.markdown("<div style='height: 75px;'></div>", unsafe_allow_html=True)
         lupa_cap = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="i_cm_cap")
-        # VOLTANDO AO PADRÃO DE TEMPOS SOLICITADO
+        # ALTERAÇÃO AQUI: Adicionado '1mo' nas options e 'Mensal' no format_func
         lupa_tmp = st.selectbox(
             "Tempo Gráfico:", 
-            options=['15m', '60m', '1d', '1wk'], 
+            options=['15m', '60m', '1d', '1wk', '1mo'], 
             index=2, 
-            format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], 
+            format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x], 
             key="i_cm_tmp"
         )
 
@@ -717,28 +717,28 @@ with aba_individual:
                                 trades.append({'Entrada': df_b[col_dt].iloc[i-1].strftime('%d/%m/%Y'), 'Saída': df_b[col_dt].iloc[i].strftime('%d/%m/%Y'), 'Lucro (R$)': -(lupa_cap * stop_d), 'Situação': 'Stop ❌', 'PMs': 0})
                                 em_pos = False; continue
 
-                            if lupa_est == "PM Dinâmico (Re-cruzamento)" and c_cima:
-                                p_c = df_b['Close'].iloc[i]
-                                cap_inv += lupa_cap; qtd_acoes += lupa_cap / p_c
-                                p_medio = cap_inv / qtd_acoes; take_p = p_medio * (1 + alvo_d); pms += 1
+                        if lupa_est == "PM Dinâmico (Re-cruzamento)" and c_cima:
+                            p_c = df_b['Close'].iloc[i]
+                            cap_inv += lupa_cap; qtd_acoes += lupa_cap / p_c
+                            p_medio = cap_inv / qtd_acoes; take_p = p_medio * (1 + alvo_d); pms += 1
 
-                        if c_cima and not em_pos:
-                            em_pos, d_ent, p_ent = True, df_b[col_dt].iloc[i], df_b['Close'].iloc[i]
-                            cap_inv, qtd_acoes = lupa_cap, lupa_cap / p_ent
-                            p_medio, pms = p_ent, 0
-                            take_p, stop_p = p_medio * (1 + alvo_d), p_medio * (1 - stop_d)
+                    if c_cima and not em_pos:
+                        em_pos, d_ent, p_ent = True, df_b[col_dt].iloc[i], df_b['Close'].iloc[i]
+                        cap_inv, qtd_acoes = lupa_cap, lupa_cap / p_ent
+                        p_medio, pms = p_ent, 0
+                        take_p, stop_p = p_medio * (1 + alvo_d), p_medio * (1 - stop_d)
 
-                    if trades:
-                        df_res = pd.DataFrame(trades)
-                        st.divider()
-                        m1, m2, m3, m4 = st.columns(4)
-                        m1.metric("Lucro Total", f"R$ {df_res['Lucro (R$)'].sum():,.2f}")
-                        m2.metric("Quantidade de Operações", len(df_res)) # MÉTRICA ADICIONADA
-                        m3.metric("Taxa de Acerto", f"{(vits/len(df_res)*100):.1f}%")
-                        m4.metric("Média de PMs", f"{df_res['PMs'].mean():.1f}")
-                        st.dataframe(df_res, use_container_width=True, hide_index=True)
-                    else:
-                        st.warning("Nenhum trade fechado no período.")
+                if trades:
+                    df_res = pd.DataFrame(trades)
+                    st.divider()
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("Lucro Total", f"R$ {df_res['Lucro (R$)'].sum():,.2f}")
+                    m2.metric("Quantidade de Operações", len(df_res)) # MÉTRICA ADICIONADA
+                    m3.metric("Taxa de Acerto", f"{(vits/len(df_res)*100):.1f}%")
+                    m4.metric("Média de PMs", f"{df_res['PMs'].mean():.1f}")
+                    st.dataframe(df_res, use_container_width=True, hide_index=True)
+                else:
+                    st.warning("Nenhum trade fechado no período.")
             except Exception as e: st.error(f"Erro no processamento: {e}")
 # ==========================================
 # ABA 5: RAIO-X FUTUROS (CRUZAMENTO DINÂMICO DAY TRADE)
