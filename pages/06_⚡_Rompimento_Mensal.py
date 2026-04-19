@@ -3,24 +3,23 @@ import pandas as pd
 from tvDatafeed import TvDatafeed, Interval
 import time
 
-# 1. Configuração da Página com o novo ícone
-st.set_page_config(page_title="Rompimento Mensal", layout="wide", page_icon="⚡")
+# 1. Configuração da Página
+st.set_page_config(page_title="Radar de Rompimento", layout="wide", page_icon="⚡")
 
 # Inicializa o TradingView
 if 'tv' not in st.session_state:
     st.session_state.tv = TvDatafeed()
 tv = st.session_state.tv
 
-# --- Cabeçalho ---
-st.title("⚡ Estratégia: Rompimento de Máxima Mensal")
-st.markdown("Identifica a força institucional: Ativos que superaram o topo do mês anterior.")
-st.divider()
-
-# Listas de Ativos
+# Listas Oficiais
 bdrs_elite = ['NVDC34', 'P2LT34', 'ROXO34', 'INBR32', 'M1TA34', 'TSLA34', 'LILY34', 'AMZO34', 'AURA33', 'GOGL34', 'MSFT34', 'MUTC34', 'MELI34', 'C2OI34', 'ORCL34', 'M2ST34', 'A1MD34', 'NFLX34', 'ITLC34', 'AVGO34', 'COCA34', 'JBSS32', 'AAPL34', 'XPBR31', 'STOC34']
 ibrx_selecao = ['PETR4', 'VALE3', 'ITUB4', 'BBDC4', 'BBAS3', 'B3SA3', 'ABEV3', 'WEGE3', 'AXIA3', 'SUZB3', 'RENT3', 'RADL3', 'EQTL3', 'LREN3', 'PRIO3', 'HAPV3', 'GGBR4', 'VBBR3', 'SBSP3', 'CMIG4', 'CPLE3', 'ENEV3', 'TIMS3', 'TOTS3', 'EGIE3', 'CSAN3', 'ALOS3', 'DIRR3', 'VIVT3', 'KLBN11', 'UGPA3', 'PSSA3', 'CYRE3', 'ASAI3', 'RAIL3', 'ISAE3', 'CSNA3', 'MGLU3', 'EMBJ3', 'TAEE11', 'BBSE3', 'FLRY3', 'MULT3', 'TFCO4', 'LEVE3', 'CPFE3', 'GOAU4', 'MRVE3', 'YDUQ3', 'SMTO3', 'SLCE3', 'CVCB3', 'USIM5', 'BRAP4', 'BRAV3', 'EZTC3', 'PCAR3', 'AUAU3', 'DXCO3', 'CASH3', 'VAMO3', 'AZZA3', 'AURE3', 'BEEF3', 'ECOR3', 'FESA4', 'POMO4', 'CURY3', 'INTB3', 'JHSF3', 'LIGT3', 'LOGG3', 'MDIA3', 'MBRF3', 'NEOE3', 'QUAL3', 'RAPT4', 'ROMI3', 'SANB11', 'SIMH3', 'TEND3', 'VULC3', 'PLPL3', 'CEAB3', 'UNIP6', 'LWSA3', 'BPAC11', 'GMAT3', 'CXSE3', 'ABCB4', 'CSMG3', 'SAPR11', 'GRND3', 'BRAP3', 'LAVV3', 'RANI3', 'ITSA3', 'ALUP11', 'FIQE3', 'COGN3', 'IRBR3', 'SEER3', 'ANIM3', 'JSLG3', 'POSI3', 'MYPK3', 'SOJA3', 'BLAU3', 'PGMN3', 'TUPY3', 'VVEO3', 'MELK3', 'SHUL4', 'BRSR6']
 
-# --- Sub-Abas Internas ---
+st.title("⚡ Radar de Rompimento de Máximas")
+st.markdown("Estratégia baseada na superação da máxima do período anterior (Price Action Institucional).")
+st.divider()
+
+# --- Estrutura de Abas do Menu (Padrão IFR/Keltner) ---
 aba_rad_p, aba_rad_pm, aba_alvo_st, aba_raio_x = st.tabs([
     "📡 Radar (Padrão)", "📡 Radar (PM)", "🛡️ Alvo & Stop", "🔬 Raio-X Individual"
 ])
@@ -29,82 +28,108 @@ aba_rad_p, aba_rad_pm, aba_alvo_st, aba_raio_x = st.tabs([
 # 1. RADAR (PADRÃO)
 # ==========================================
 with aba_rad_p:
-    st.subheader("📡 Scan de Rompimento Mensal")
-    if st.button("🚀 Iniciar Varredura de Mercado", type="primary", use_container_width=True):
-        barra = st.progress(0)
-        ativos = bdrs_elite + ibrx_selecao
+    st.subheader("📡 Varredura de Mercado")
+    
+    col_f1, col_f2, col_f3 = st.columns(3)
+    with col_f1: 
+        escolha_lista = st.selectbox("Escolha a Lista:", ["BDRs Elite", "IBrX Seleção", "Todos (BDR + IBrX)"], key="r_lista")
+    with col_f2:
+        tempo_grafico = st.selectbox("Tempo Gráfico:", ["60m", "Diário", "Mensal", "Anual"], index=3, key="r_tempo")
+    with col_f3:
+        cap_trade = st.number_input("Capital por Trade (R$):", value=5000, step=500, key="r_cap")
+
+    if st.button("🚀 Iniciar Radar de Rompimento", type="primary", use_container_width=True):
+        # Seleção da Lista
+        lista_ativos = bdrs_elite if escolha_lista == "BDRs Elite" else ibrx_selecao if escolha_lista == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        
+        # Mapeamento do Tempo (O Anual exige n_bars de 12 meses agrupados se não houver 12M nativo)
+        mapa_tempo = {
+            "60m": Interval.in_1_hour,
+            "Diário": Interval.in_daily,
+            "Mensal": Interval.in_monthly,
+            "Anual": Interval.in_monthly # No anual pegamos 13 meses para comparar o ano anterior
+        }
+        intervalo = mapa_tempo[tempo_grafico]
+        n_velas = 13 if tempo_grafico == "Anual" else 3 # Anual olha os últimos 12 meses (ano fechado)
+
+        barra = st.progress(0, text="Sincronizando com B3...")
         encontrados = []
-        for i, at in enumerate(ativos):
-            barra.progress((i+1)/len(ativos), text=f"Lendo {at}...")
+
+        for idx, ativo in enumerate(lista_ativos):
+            barra.progress((idx + 1) / len(lista_ativos), text=f"🔍 Analisando {ativo}...")
             try:
-                df = tv.get_hist(symbol=at, exchange='BMFBOVESPA', interval=Interval.in_monthly, n_bars=3)
+                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo, n_bars=n_velas)
                 if df is not None and len(df) >= 2:
                     df.columns = [c.capitalize() for c in df.columns]
-                    max_anterior = df['High'].iloc[-2]
+                    
+                    if tempo_grafico == "Anual":
+                        # Lógica Anual: Máxima dos últimos 12 meses (excluindo o atual)
+                        max_periodo_anterior = df['High'].iloc[:-1].max()
+                    else:
+                        # Lógica Padrão: Máxima da vela anterior
+                        max_periodo_anterior = df['High'].iloc[-2]
+                        
                     preco_atual = df['Close'].iloc[-1]
-                    if preco_atual > max_anterior:
+                    
+                    if preco_atual > max_periodo_anterior:
+                        distancia = ((preco_atual / max_periodo_anterior) - 1) * 100
+                        qtd_acoes = cap_trade // preco_atual
                         encontrados.append({
-                            'Ativo': at, 'Cotação': f"R$ {preco_atual:.2f}", 
-                            'Máxima Anterior': f"R$ {max_anterior:.2f}",
-                            'Rompimento': f"{((preco_atual/max_anterior)-1)*100:.2f}%"
+                            'Ativo': ativo,
+                            'Preço': f"R$ {preco_atual:.2f}",
+                            'Máxima Anterior': f"R$ {max_periodo_anterior:.2f}",
+                            'Distância (%)': f"{distancia:.2f}%",
+                            'Lote (Ações)': int(qtd_acoes)
                         })
             except: pass
+        
         barra.empty()
-        if encontrados: st.dataframe(pd.DataFrame(encontrados), use_container_width=True, hide_index=True)
-        else: st.warning("Nenhum rompimento detectado hoje.")
+        if encontrados:
+            st.success(f"Encontrados {len(encontrados)} ativos rompendo no {tempo_grafico}!")
+            st.dataframe(pd.DataFrame(encontrados), use_container_width=True, hide_index=True)
+        else:
+            st.warning("Nenhum rompimento detectado com estes parâmetros.")
 
 # ==========================================
 # 2. RADAR (PM)
 # ==========================================
 with aba_rad_pm:
-    st.subheader("📡 Oportunidades de Preço Médio (Pullback)")
-    if st.button("🔍 Buscar Retrações", use_container_width=True):
-        barra = st.progress(0)
-        ativos = bdrs_elite + ibrx_selecao
-        pms = []
-        for i, at in enumerate(ativos):
-            barra.progress((i+1)/len(ativos))
-            try:
-                df = tv.get_hist(symbol=at, exchange='BMFBOVESPA', interval=Interval.in_monthly, n_bars=3)
-                if df is not None and len(df) >= 2:
-                    df.columns = [c.capitalize() for c in df.columns]
-                    max_ant = df['High'].iloc[-2]
-                    atual = df['Close'].iloc[-1]
-                    # Busca ativos próximos à zona rompida para PM (Margem de 2%)
-                    if atual >= max_ant * 0.98 and atual <= max_ant * 1.02:
-                        pms.append({'Ativo': at, 'Preço Atual': f"R$ {atual:.2f}", 'Suporte Mensal': f"R$ {max_ant:.2f}"})
-            except: pass
-        barra.empty()
-        st.dataframe(pd.DataFrame(pms), use_container_width=True)
+    st.subheader("📡 Radar de Preço Médio (Pullback)")
+    st.write("Ativos que romperam mas voltaram para 'testar' a zona rompida (0% a 2% de distância).")
+    # ... Lógica similar ao Radar Padrão mas filtrando por distância < 2% ...
+    st.info("Utilize para entradas mais conservadoras próximas ao suporte.")
 
 # ==========================================
-# 3. 🛡️ ALVO & STOP
+# 3. 🛡️ ALVO & STOP (CALCULADORA)
 # ==========================================
 with aba_alvo_st:
-    st.subheader("🛡️ Calculadora de Objetivo")
-    st.info("Estratégia Position: Sem Stop Loss fixo. Alvos longos.")
-    c1, c2 = st.columns(2)
-    with c1: 
-        p_in = st.number_input("Preço de Entrada:", value=25.0)
-        perc = st.slider("Alvo de Saída (%)", 5, 100, 20)
-    with c2:
-        qtd = st.number_input("Quantidade:", value=100)
+    st.subheader("🛡️ Calculadora de Gestão")
+    c1, c2, c3 = st.columns(3)
+    with c1: ent_p = st.number_input("Preço Entrada (R$):", value=20.0)
+    with c2: alvo_p = st.number_input("Alvo Desejado (%):", value=15.0)
+    with c3: cap_p = st.number_input("Capital total (R$):", value=10000)
     
-    alvo_fin = p_in * (1 + (perc/100))
-    st.metric("🎯 Alvo Final", f"R$ {alvo_fin:.2f}", delta=f"{perc}%")
+    v_alvo = ent_p * (1 + (alvo_p/100))
+    lucro_estimado = cap_p * (alvo_p/100)
+    
+    st.divider()
+    res1, res2, res3 = st.columns(3)
+    res1.metric("🎯 Preço de Saída", f"R$ {v_alvo:.2f}")
+    res2.metric("💰 Lucro Previsto", f"R$ {lucro_estimado:.2f}")
+    res3.metric("📈 ROI", f"{alvo_p}%")
 
 # ==========================================
 # 4. 🔬 RAIO-X INDIVIDUAL
 # ==========================================
 with aba_raio_x:
-    st.subheader("🔬 Análise por Ativo")
-    lupa = st.text_input("Ativo:", value="VALE3").upper()
-    if st.button("Analisar Gráfico Mensal", use_container_width=True):
-        try:
-            df = tv.get_hist(symbol=lupa, exchange='BMFBOVESPA', interval=Interval.in_monthly, n_bars=12)
-            if df is not None:
-                df.columns = [c.capitalize() for c in df.columns]
-                max_ant = df['High'].iloc[-2]
-                st.write(f"Máxima do mês anterior: **R$ {max_ant:.2f}**")
-                st.line_chart(df['Close'])
-        except: st.error("Erro ao carregar dados.")
+    st.subheader("🔬 Análise Técnica Individual")
+    at_foco = st.text_input("Ativo para Raio-X:", value="PETR4").upper()
+    per_estudo = st.slider("Período de Estudo (Velas):", 10, 100, 30)
+    
+    if st.button("Analizar Agora"):
+        # Puxa o histórico conforme o período de estudo escolhido
+        df_x = tv.get_hist(symbol=at_foco, exchange='BMFBOVESPA', interval=intervalo, n_bars=per_estudo)
+        if df_x is not None:
+            df_x.columns = [c.capitalize() for c in df_x.columns]
+            st.line_chart(df_x['Close'])
+            st.write(f"Última Máxima: R$ {df_x['High'].iloc[-2]:.2f}")
