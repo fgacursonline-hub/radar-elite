@@ -76,20 +76,26 @@ aba_padrao, aba_pm, aba_stop, aba_individual, aba_futuros = st.tabs([
 # ==========================================
 with aba_padrao:
     st.subheader("📡 Radar Padrão (Cruzamento Universal & Alvo Fixo)")
-    st.markdown("O robô compra no exato momento em que a Média Curta cruza a Média Longa para cima, usando a configuração exata que você definir.")
+    st.markdown("O robô compra no exato momento em que a Média Curta cruza a Média Longa para cima, usando a configuração e os preços de referência que você definir.")
     
     cp1, cp2, cp3 = st.columns(3)
     with cp1:
         lista_cm = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="cm_lista")
-        # A LINHA QUE FALTAVA ESTÁ AQUI:
         ativos_cm = bdrs_elite if lista_cm == "BDRs Elite" else ibrx_selecao if lista_cm == "IBrX Seleção" else bdrs_elite + ibrx_selecao
-        
         periodo_cm = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="cm_per")
         capital_cm = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="cm_cap")
     with cp2:
         tipo_media_cm = st.selectbox("Tipo de Média:", ["Exponencial (EMA)", "Aritmética (SMA)", "Welles Wilder (RMA)"], index=0, key="cm_tipo")
-        curta_cm = st.number_input("Período da Média Curta:", min_value=2, max_value=200, value=8, step=1, key="cm_curta")
-        longa_cm = st.number_input("Período da Média Longa:", min_value=3, max_value=200, value=21, step=1, key="cm_longa")
+        
+        # Colunas internas para organizar Período + Fonte lado a lado
+        c_curta1, c_curta2 = st.columns(2)
+        curta_cm = c_curta1.number_input("Período Curta:", min_value=2, max_value=200, value=16, step=1, key="cm_curta")
+        fonte_curta = c_curta2.selectbox("Fonte (Curta):", ["Close", "High", "Low", "Open"], index=0, key="cm_fcurta")
+        
+        c_longa1, c_longa2 = st.columns(2)
+        longa_cm = c_longa1.number_input("Período Longa:", min_value=3, max_value=200, value=42, step=1, key="cm_longa")
+        fonte_longa = c_longa2.selectbox("Fonte (Longa):", ["Close", "High", "Low", "Open"], index=0, key="cm_flonga")
+        
     with cp3:
         alvo_cm = st.number_input("Alvo de Lucro (%):", value=5.0, step=0.5, key="cm_alvo")
         tempo_cm = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="cm_tmp")
@@ -123,15 +129,16 @@ with aba_padrao:
                 df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 df_full = df_full.dropna()
                 
+                # --- CÁLCULO DAS MÉDIAS COM FONTE DINÂMICA ---
                 if tipo_media_cm == "Exponencial (EMA)":
-                    df_full['Curta'] = ta.ema(df_full['Close'], length=curta_cm)
-                    df_full['Longa'] = ta.ema(df_full['Close'], length=longa_cm)
+                    df_full['Curta'] = ta.ema(df_full[fonte_curta], length=curta_cm)
+                    df_full['Longa'] = ta.ema(df_full[fonte_longa], length=longa_cm)
                 elif tipo_media_cm == "Aritmética (SMA)":
-                    df_full['Curta'] = ta.sma(df_full['Close'], length=curta_cm)
-                    df_full['Longa'] = ta.sma(df_full['Close'], length=longa_cm)
+                    df_full['Curta'] = ta.sma(df_full[fonte_curta], length=curta_cm)
+                    df_full['Longa'] = ta.sma(df_full[fonte_longa], length=longa_cm)
                 else: 
-                    df_full['Curta'] = ta.rma(df_full['Close'], length=curta_cm)
-                    df_full['Longa'] = ta.rma(df_full['Close'], length=longa_cm)
+                    df_full['Curta'] = ta.rma(df_full[fonte_curta], length=curta_cm)
+                    df_full['Longa'] = ta.rma(df_full[fonte_longa], length=longa_cm)
                 
                 df_full['Curta_Prev'] = df_full['Curta'].shift(1)
                 df_full['Longa_Prev'] = df_full['Longa'].shift(1)
@@ -188,8 +195,8 @@ with aba_padrao:
                     cruzou_hoje = (df_full['Curta'].iloc[-1] > df_full['Longa'].iloc[-1]) and (df_full['Curta_Prev'].iloc[-1] <= df_full['Longa_Prev'].iloc[-1])
                     if cruzou_hoje:
                         nome_m = tipo_media_cm.split()[0]
-                        col_curta = f"{nome_m} {curta_cm}"
-                        col_longa = f"{nome_m} {longa_cm}"
+                        col_curta = f"{nome_m} {curta_cm} ({fonte_curta[:1]})"
+                        col_longa = f"{nome_m} {longa_cm} ({fonte_longa[:1]})"
                         ls_sinais.append({
                             'Ativo': ativo, 
                             'Preço Atual': f"R$ {df_full['Close'].iloc[-1]:.2f}", 
@@ -229,7 +236,6 @@ with aba_padrao:
             st.dataframe(df_resumo, use_container_width=True, hide_index=True)
         else: 
             st.warning("Nenhuma operação finalizada.")
-
 # ESPAÇO PARA AS PRÓXIMAS ABAS
 with aba_pm: st.info("Em breve: Radar PM Dinâmico de Médias.")
 with aba_stop: st.info("Em breve: Radar Alvo & Stop de Médias.")
