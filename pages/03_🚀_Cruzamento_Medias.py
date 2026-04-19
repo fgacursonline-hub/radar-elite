@@ -88,8 +88,8 @@ with aba_padrao:
         capital_cm = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="cm_cap")
     with cp2:
         tipo_media_cm = st.selectbox("Tipo de Média:", ["Exponencial (EMA)", "Aritmética (SMA)", "Welles Wilder (RMA)"], index=0, key="cm_tipo")
-        curta_cm = st.number_input("Período da Média Curta:", min_value=2, max_value=200, value=16, step=1, key="cm_curta")
-        longa_cm = st.number_input("Período da Média Longa:", min_value=3, max_value=200, value=42, step=1, key="cm_longa")
+        curta_cm = st.number_input("Período da Média Curta:", min_value=2, max_value=200, value=8, step=1, key="cm_curta")
+        longa_cm = st.number_input("Período da Média Longa:", min_value=3, max_value=200, value=21, step=1, key="cm_longa")
     with cp3:
         alvo_cm = st.number_input("Alvo de Lucro (%):", value=5.0, step=0.5, key="cm_alvo")
         tempo_cm = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="cm_tmp")
