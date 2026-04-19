@@ -359,7 +359,13 @@ with aba_avancado:
                             duracao = (d_sai - d_ent).days
                             lucro_rs = capital_91a * ((stop_loss / preco_entrada) - 1)
                             trades.append({'Entrada': d_ent, 'Duração': duracao, 'Lucro (R$)': lucro_rs, 'Situação': 'Stop Acionado ❌'})
-                            if lucro_rs > 0: vitorias += 1 else: derrotas += 1
+                            
+                            # CORREÇÃO AQUI
+                            if lucro_rs > 0: 
+                                vitorias += 1 
+                            else: 
+                                derrotas += 1
+                                
                             em_pos, saida_armada = False, False
                             continue
                         
@@ -370,7 +376,13 @@ with aba_avancado:
                                 duracao = (d_sai - d_ent).days
                                 lucro_rs = capital_91a * ((gatilho_saida / preco_entrada) - 1)
                                 trades.append({'Entrada': d_ent, 'Duração': duracao, 'Lucro (R$)': lucro_rs, 'Situação': 'Saída Técnica ✅' if lucro_rs > 0 else 'Saída Técnica ❌'})
-                                if lucro_rs > 0: vitorias += 1 else: derrotas += 1
+                                
+                                # CORREÇÃO AQUI
+                                if lucro_rs > 0: 
+                                    vitorias += 1 
+                                else: 
+                                    derrotas += 1
+                                    
                                 em_pos, saida_armada = False, False
                                 continue
                             elif media_saida_subindo:
