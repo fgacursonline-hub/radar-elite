@@ -512,7 +512,7 @@ with aba_individual:
     if btn_raiox:
         ativo = lupa_ativo.strip().upper().replace('.SA', '')
         
-        # FORÇANDO O MAPEAMENTO CORRETO AQUI (Ignorando o tradutor_intervalo externo)
+        # MAPEAMENTO FORÇADO DO TEMPO GRÁFICO PARA RESOLVER O ERRO DO MENSAL
         mapa_intervalos = {
             '15m': Interval.in_15_minute,
             '60m': Interval.in_1_hour,
@@ -521,9 +521,6 @@ with aba_individual:
             '1mo': Interval.in_monthly
         }
         intervalo_tv = mapa_intervalos.get(lupa_tempo, Interval.in_daily)
-
-        with st.spinner(f'Calculando dados de {ativo}...'):
-            # (O resto do código daqui pra baixo continua exatamenteee igual)
 
         with st.spinner(f'Calculando dados de {ativo}...'):
             try:
@@ -549,7 +546,7 @@ with aba_individual:
                     vitorias, derrotas = 0, 0
 
                     for i in range(1, len(df_back)):
-                        # Cruzamento Matemático: Subiu de 25 (Passou para cima)
+                        # Cruzamento Matemático: Subiu de 25
                         condicao_entrada = (df_back['IFR_Prev'].iloc[i] < 25) and (df_back['IFR'].iloc[i] >= 25)
 
                         if not em_pos:
@@ -558,14 +555,12 @@ with aba_individual:
                                 d_ent = df_back.iloc[i, 0]
                                 p_ent = df_back['Close'].iloc[i]
                                 
-                                # CORREÇÃO: A mínima da operação começa no preço que você comprou (p_ent)
                                 min_na_op = p_ent
                                 
                                 cap_total = float(lupa_capital)
                                 pm = p_ent
                                 posicao_atual = {'Data': d_ent, 'PM': pm, 'Cap': cap_total}
                         else:
-                            # Atualiza a mínima se o preço cair ABAIXO da mínima anterior registrada na operação
                             if df_back['Low'].iloc[i] < min_na_op: min_na_op = df_back['Low'].iloc[i]
                             
                             alvo_p = pm * (1 + (lupa_alvo/100))
@@ -597,8 +592,6 @@ with aba_individual:
                         st.warning(f"⚠️ **OPERAÇÃO EM CURSO: {ativo} ({lupa_tempo})**")
                         
                         cotacao_atual = df_back['Close'].iloc[-1]
-                        
-                        # CORREÇÃO: Dias da operação baseados no calendário real (Hoje)
                         hoje = pd.Timestamp.today().normalize()
                         dias_em_op = (hoje - posicao_atual['Data']).days
                         
