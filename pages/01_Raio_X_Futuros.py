@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import pandas_ta as ta
+initial_sidebar_state="expanded"
 from tvDatafeed import TvDatafeed, Interval
 
 # --- CONFIGURAÇÃO INICIAL DA PÁGINA ---
