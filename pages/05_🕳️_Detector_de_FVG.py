@@ -32,6 +32,7 @@ aba_individual, aba_radar, aba_backtest, aba_supremo, aba_backtest_supremo, aba_
     "📈 Backtest Supremo (Confluência)",
     "💎 Volume & VWAP",
     "🦅 Filtro Sniper (Confluência Total)"
+    "📊 Backtest Sniper (A Realidade)"
 ])
 
 # ==========================================
@@ -508,3 +509,84 @@ with aba_sniper:
         barra.empty()
         if achados: st.success(f"🎯 Encontrados {len(achados)} Snipers!"); st.dataframe(pd.DataFrame(achados), use_container_width=True, hide_index=True)
         else: st.warning("Nenhum sinal completo encontrado.")
+            # ==========================================
+# ABA 8: 📊 BACKTEST SNIPER (CONFLUÊNCIA TOTAL)
+# ==========================================
+with aba_bk_sniper:
+    st.subheader("📊 Simulador de Estratégia Sniper (Confluência Máxima)")
+    st.markdown("Simula o resultado financeiro de comprar **APENAS** quando o 9.1 aciona dentro do FVG, com preço acima da VWAP e Volume alto.")
+    
+    bs1, bs2, bs3, bs4 = st.columns(4)
+    with bs1: bksn_ativo = st.text_input("Ativo:", value="WEGE3", key="bksn_at").upper()
+    with bs2: bksn_tempo = st.selectbox("Tempo:", ['1d', '60m'], index=0, key="bksn_tm")
+    with bs3: bksn_velas = st.number_input("Histórico (Velas):", value=2000, step=500, key="bksn_vl")
+    with bs4: bksn_qtd = st.number_input("Qtd. Ações:", value=100, step=100, key="bksn_qt")
+
+    if st.button("⚙️ Rodar Backtest Sniper", type="primary", use_container_width=True):
+        ativo = bksn_ativo.strip().replace('.SA', '')
+        interv = Interval.in_daily if bksn_tempo == '1d' else Interval.in_1_hour
+        
+        with st.spinner(f"Processando 20 anos de dados para achar sinais Sniper em {ativo}..."):
+            try:
+                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=interv, n_bars=bksn_velas)
+                if df is not None and len(df) > 50:
+                    df.rename(columns={'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
+                    
+                    # Indicadores base
+                    df.ta.ema(length=9, append=True)
+                    df['vwap'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
+                    df['vol_avg'] = df['Volume'].rolling(window=20).mean()
+                    
+                    trades = []
+                    em_trade = False
+                    
+                    for i in range(20, len(df)-1):
+                        if not em_trade:
+                            # 1. Filtro 9.1
+                            setup_91 = (df['EMA_9'].iloc[i-2] >= df['EMA_9'].iloc[i-1]) and (df['EMA_9'].iloc[i] > df['EMA_9'].iloc[i-1])
+                            
+                            if setup_91:
+                                # 2. Filtro VWAP e Volume
+                                if df['Close'].iloc[i] > df['vwap'].iloc[i] and df['Volume'].iloc[i] > df['vol_avg'].iloc[i]:
+                                    
+                                    # 3. Filtro FVG (Procura gap aberto que o preço tocou)
+                                    fundo_fvg = 0
+                                    achou_fvg = False
+                                    for f in range(2, i):
+                                        if df['Low'].iloc[f] > df['High'].iloc[f-2]:
+                                            if df['Low'].iloc[f:i+1].min() > df['High'].iloc[f-2]:
+                                                if min(df['Low'].iloc[i], df['Low'].iloc[i-1]) <= df['Low'].iloc[f]:
+                                                    achou_fvg = True
+                                                    fundo_fvg = df['High'].iloc[f-2]
+                                                    break
+                                    
+                                    if achou_fvg:
+                                        # GATILHO DE COMPRA NO DIA SEGUINTE (Rompimento da Máxima)
+                                        gatilho = df['High'].iloc[i]
+                                        if df['High'].iloc[i+1] > gatilho:
+                                            em_trade = True
+                                            p_entrada = max(df['Open'].iloc[i+1], gatilho)
+                                            p_stop = fundo_fvg * 0.995
+                                            p_alvo = p_entrada + (2 * (p_entrada - p_stop))
+                                            data_ent = df.index[i+1]
+                        else:
+                            # Monitoramento do Trade
+                            if df['Low'].iloc[i] <= p_stop:
+                                trades.append({'Data': data_ent.strftime('%d/%m/%Y'), 'Resultado': '🔴 LOSS', 'Valor': (p_stop - p_entrada) * bksn_qtd})
+                                em_trade = False
+                            elif df['High'].iloc[i] >= p_alvo:
+                                trades.append({'Data': data_ent.strftime('%d/%m/%Y'), 'Resultado': '🟢 GAIN', 'Valor': (p_alvo - p_entrada) * bksn_qtd})
+                                em_trade = False
+
+                    if trades:
+                        df_res = pd.DataFrame(trades)
+                        c1, c2, c3, c4 = st.columns(4)
+                        c1.metric("Total de Trades", len(df_res))
+                        c2.metric("Taxa de Acerto", f"{(len(df_res[df_res['Resultado'] == '🟢 GAIN']) / len(df_res)) * 100:.1f}%")
+                        c3.metric("Lucro Líquido", f"R$ {df_res['Valor'].sum():.2f}")
+                        c4.metric("Risco/Retorno", "2 : 1")
+                        
+                        st.dataframe(df_res, use_container_width=True)
+                    else:
+                        st.warning("Estratégia tão filtrada que não houve sinais executados no período.")
+            except Exception as e: st.error(f"Erro: {e}")
