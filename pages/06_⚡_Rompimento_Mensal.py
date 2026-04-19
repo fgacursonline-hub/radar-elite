@@ -46,7 +46,6 @@ with aba_rad_p:
         for idx, ativo in enumerate(lista_ativos):
             barra.progress((idx + 1) / len(lista_ativos), text=f"🔍 Analisando {ativo}...")
             try:
-                # Puxamos 300 barras diárias
                 df_d = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=300)
                 
                 if df_d is not None and len(df_d) > 260:
@@ -73,14 +72,11 @@ with aba_rad_p:
                     if pa > ref_val:
                         cont_dias = 0
                         for v in range(len(df_d)-1, -1, -1):
-                            if df_d['High'].iloc[v] > ref_val:
-                                cont_dias += 1
-                            else:
-                                break
+                            if df_d['High'].iloc[v] > ref_val: cont_dias += 1
+                            else: break
                         
                         lucro_real = ((pa / ref_val) - 1) * 100
                         
-                        # Lógica Visual do Alvo
                         if lucro_real >= alvo_escolhido:
                             excedente = lucro_real - alvo_escolhido
                             status_alvo = f"🎯 ATINGIDO (+{excedente:.2f}%)"
@@ -101,7 +97,6 @@ with aba_rad_p:
         
         barra.empty()
         
-        # RESULTADO FINAL NA TELA
         if encontrados:
             st.success(f"Varredura completa! {len(encontrados)} ativos rompidos no {tempo_grafico}.")
             df_final = pd.DataFrame(encontrados)
@@ -113,26 +108,32 @@ with aba_rad_p:
             try:
                 st.dataframe(df_final.style.map(destacar_alvo, subset=['Status p/ Alvo']), use_container_width=True, hide_index=True)
             except:
-                # Fallback para versões mais antigas do pandas
                 st.dataframe(df_final.style.applymap(destacar_alvo, subset=['Status p/ Alvo']), use_container_width=True, hide_index=True)
         else:
             st.warning(f"Nenhum rompimento de {tipo_romp} detectado no momento.")
 
 # ==========================================
-# 2. BACKTEST
+# 2. BACKTEST (Aguardando Regras)
 # ==========================================
 with aba_backtest:
-    st.subheader("📊 Simulador de Resultados Históricos")
-    st.markdown("Testa o que aconteceria se você tivesse entrado em todos os rompimentos passados deste ativo.")
-    
-    bk1, bk2, bk3 = st.columns(3)
-    with bk1: at_bk = st.text_input("Ativo para Teste:", value="AURA33", key="bk_ativo").upper()
-    with bk2: alvo_bk = st.number_input("Alvo do Backtest (%):", value=50.0, step=10.0, key="alvo_bk")
-    with bk3: hist_bk = st.number_input("Histórico (Velas Diárias):", value=1000, step=500, key="bk_hist")
+    st.subheader("📊 Backtest da Estratégia")
+    st.info("Aba pronta e limpa. Aguardando a lógica de como você quer rodar o backtest do portfólio...")
 
-    if st.button("⚙️ Rodar Backtest de Rompimento", type="primary", use_container_width=True, key="btn_bk"):
+# ==========================================
+# 3. RAIO-X INDIVIDUAL (Simulador Histórico)
+# ==========================================
+with aba_raio_x:
+    st.subheader("🔬 Simulador de Resultados Históricos (Individual)")
+    st.markdown("Testa o que aconteceria se você tivesse entrado em todos os rompimentos passados deste ativo específico.")
+    
+    rx1, rx2, rx3 = st.columns(3)
+    with rx1: at_rx = st.text_input("Ativo para Teste:", value="AURA33", key="rx_ativo").upper()
+    with rx2: alvo_rx = st.number_input("Alvo da Simulação (%):", value=50.0, step=10.0, key="alvo_rx")
+    with rx3: hist_rx = st.number_input("Histórico (Velas Diárias):", value=1000, step=500, key="rx_hist")
+
+    if st.button("⚙️ Rodar Simulação do Ativo", type="primary", use_container_width=True, key="btn_rx"):
         try:
-            df = tv.get_hist(symbol=at_bk, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=hist_bk)
+            df = tv.get_hist(symbol=at_rx, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=hist_rx)
             if df is not None:
                 df.columns = [c.capitalize() for c in df.columns]
                 # Define a máxima anual móvel (252 dias úteis = 1 ano)
@@ -147,7 +148,7 @@ with aba_backtest:
                         if df['Close'].iloc[i] > df['Max_Anual'].iloc[i]:
                             em_trade = True
                             p_entrada = df['Close'].iloc[i]
-                            p_alvo = p_entrada * (1 + (alvo_bk / 100))
+                            p_alvo = p_entrada * (1 + (alvo_rx / 100))
                             data_entrada = df.index[i]
                     else:
                         # Monitora se bateu no alvo
@@ -161,19 +162,14 @@ with aba_backtest:
                                 'Data Saída': df.index[i].strftime('%d/%m/%Y'),
                                 'Preço Saída': f"R$ {p_alvo:.2f}",
                                 'Duração': f"{dias_na_operacao} dias",
-                                'Resultado': f"🟢 GAIN (+{alvo_bk}%)"
+                                'Resultado': f"🟢 GAIN (+{alvo_rx}%)"
                             })
                             em_trade = False
                 
                 if trades:
-                    st.success(f"Backtest concluído para {at_bk}!")
+                    st.success(f"Simulação concluída para {at_rx}!")
                     st.dataframe(pd.DataFrame(trades), use_container_width=True)
                 else:
                     st.warning("Nenhum trade finalizado (atingiu o alvo) encontrado no histórico recente.")
         except Exception as e: 
-            st.error(f"Erro no Backtest: {e}")
-# ==========================================
-# 3. RAIO-X INDIVIDUAL
-# ==========================================
-with aba_raio_x:
-    st.write("🔬 Use para analisar o gráfico detalhado do ativo escolhido.")
+            st.error(f"Erro na Simulação: {e}")
