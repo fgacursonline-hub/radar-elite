@@ -25,12 +25,7 @@ tradutor_periodo_nome = {
     'max': 'Máximo', '60d': '60 Dias'
 }
 
-tradutor_intervalo = {
-    '15m': Interval.in_15_minute,
-    '60m': Interval.in_1_hour,
-    '1d': Interval.in_daily,
-    '1wk': Interval.in_weekly
-}
+tradutor_intervalo = {'15m': Interval.in_15_minute, '60m': Interval.in_1_hour, '1d': Interval.in_daily, '1wk': Interval.in_weekly, '1mo': Interval.in_monthly}
 
 bdrs_elite = [
     'NVDC34.SA', 'P2LT34.SA', 'ROXO34.SA', 'INBR32.SA', 'M1TA34.SA', 'TSLA34.SA',
@@ -105,7 +100,8 @@ with aba_padrao:
         
     with cp3:
         alvo_cm = st.number_input("Alvo de Lucro (%):", value=5.0, step=0.5, key="cm_alvo")
-        tempo_cm = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="cm_tmp")
+        # ALTERAÇÃO AQUI: Adicionado '1mo' na lista e 'Mensal' no dicionário
+        tempo_cm = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk', '1mo'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x], key="cm_tmp")
         st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True) 
 
     if curta_cm >= longa_cm:
