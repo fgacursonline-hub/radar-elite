@@ -14,85 +14,118 @@ tv = st.session_state.tv
 bdrs_elite = ['NVDC34', 'P2LT34', 'ROXO34', 'INBR32', 'M1TA34', 'TSLA34', 'LILY34', 'AMZO34', 'AURA33', 'GOGL34', 'MSFT34', 'MUTC34', 'MELI34', 'C2OI34', 'ORCL34', 'M2ST34', 'A1MD34', 'NFLX34', 'ITLC34', 'AVGO34', 'COCA34', 'JBSS32', 'AAPL34', 'XPBR31', 'STOC34']
 ibrx_selecao = ['PETR4', 'VALE3', 'ITUB4', 'BBDC4', 'BBAS3', 'B3SA3', 'ABEV3', 'WEGE3', 'AXIA3', 'SUZB3', 'RENT3', 'RADL3', 'EQTL3', 'LREN3', 'PRIO3', 'HAPV3', 'GGBR4', 'VBBR3', 'SBSP3', 'CMIG4', 'CPLE3', 'ENEV3', 'TIMS3', 'TOTS3', 'EGIE3', 'CSAN3', 'ALOS3', 'DIRR3', 'VIVT3', 'KLBN11', 'UGPA3', 'PSSA3', 'CYRE3', 'ASAI3', 'RAIL3', 'ISAE3', 'CSNA3', 'MGLU3', 'EMBJ3', 'TAEE11', 'BBSE3', 'FLRY3', 'MULT3', 'TFCO4', 'LEVE3', 'CPFE3', 'GOAU4', 'MRVE3', 'YDUQ3', 'SMTO3', 'SLCE3', 'CVCB3', 'USIM5', 'BRAP4', 'BRAV3', 'EZTC3', 'PCAR3', 'AUAU3', 'DXCO3', 'CASH3', 'VAMO3', 'AZZA3', 'AURE3', 'BEEF3', 'ECOR3', 'FESA4', 'POMO4', 'CURY3', 'INTB3', 'JHSF3', 'LIGT3', 'LOGG3', 'MDIA3', 'MBRF3', 'NEOE3', 'QUAL3', 'RAPT4', 'ROMI3', 'SANB11', 'SIMH3', 'TEND3', 'VULC3', 'PLPL3', 'CEAB3', 'UNIP6', 'LWSA3', 'BPAC11', 'GMAT3', 'CXSE3', 'ABCB4', 'CSMG3', 'SAPR11', 'GRND3', 'BRAP3', 'LAVV3', 'RANI3', 'ITSA3', 'ALUP11', 'FIQE3', 'COGN3', 'IRBR3', 'SEER3', 'ANIM3', 'JSLG3', 'POSI3', 'MYPK3', 'SOJA3', 'BLAU3', 'PGMN3', 'TUPY3', 'VVEO3', 'MELK3', 'SHUL4', 'BRSR6']
 
-st.title("⚡ Radar de Rompimento de Máximas/Fechamentos")
-st.markdown("Estratégia: Identificação de fluxo institucional por superação de níveis de períodos anteriores.")
+st.title("⚡ Radar & Backtest de Rompimento")
+st.markdown("Identifique e valide rompimentos históricos de Máximas e Fechamentos.")
 st.divider()
 
-aba_rad_p, aba_raio_x = st.tabs(["📡 Radar (Padrão)", "🔬 Raio-X Individual"])
+aba_rad_p, aba_backtest, aba_raio_x = st.tabs(["📡 Radar (Padrão)", "📊 Backtest", "🔬 Raio-X Individual"])
 
+# ==========================================
+# 1. RADAR (PADRÃO)
+# ==========================================
 with aba_rad_p:
-    # FILTROS DE ENTRADA
     c1, c2, c3 = st.columns(3)
     with c1: 
         escolha_lista = st.selectbox("Escolha a Lista:", ["BDRs Elite", "IBrX Seleção", "Todos (BDR + IBrX)"], key="r_lst")
-        tipo_romp = st.radio("Romper por:", ["Máxima", "Fechamento"], horizontal=True, help="Máxima considera o pavio. Fechamento considera o corpo do candle anterior.")
+        tipo_romp = st.radio("Romper por:", ["Máxima", "Fechamento"], horizontal=True)
     with c2:
         tempo_grafico = st.selectbox("Tempo Gráfico:", ["60m", "Diário", "Mensal", "Anual"], index=3, key="r_tmp")
-        cap_trade = st.number_input("Capital por Trade (R$):", value=5000, step=500, key="r_cap")
+        cap_trade = st.number_input("Capital por Trade (R$):", value=5000, step=500)
     with c3:
-        st.info(f"Critério: Preço Atual > {tipo_romp} do período anterior.")
+        alvo_escolhido = st.number_input("Alvo de Lucro (%):", value=20.0, step=5.0)
+        st.caption(f"O Radar mostrará o progresso em relação ao alvo de {alvo_escolhido}%.")
 
     if st.button("🚀 Iniciar Radar de Rompimento", type="primary", use_container_width=True):
         lista_ativos = bdrs_elite if escolha_lista == "BDRs Elite" else ibrx_selecao if escolha_lista == "IBrX Seleção" else bdrs_elite + ibrx_selecao
-        
         barra = st.progress(0)
         encontrados = []
 
         for idx, ativo in enumerate(lista_ativos):
             barra.progress((idx + 1) / len(lista_ativos), text=f"🔍 Analisando {ativo}...")
             try:
-                # Puxamos dados suficientes para identificar o período anterior fechado
                 df_d = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=300)
-                
                 if df_d is not None and len(df_d) > 260:
                     df_d.columns = [c.capitalize() for c in df_d.columns]
                     pa = df_d['Close'].iloc[-1]
                     col_ref = "High" if tipo_romp == "Máxima" else "Close"
 
-                    # DEFINIÇÃO DA REFERÊNCIA (PERÍODO ANTERIOR FECHADO)
                     if tempo_grafico == "Anual":
-                        # Máxima ou Fechamento do ano de 2025 (Excluindo 2026)
                         ref_val = df_d[col_ref].iloc[-300:-76].max() 
                     elif tempo_grafico == "Mensal":
-                        # Máxima ou Fechamento do mês passado
                         ref_val = df_d[col_ref].iloc[-45:-22].max()
-                    elif tempo_grafico == "60m":
-                        df_h = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_1_hour, n_bars=3)
-                        df_h.columns = [c.capitalize() for c in df_h.columns]
-                        ref_val = df_h[col_ref].iloc[-2]
                     else:
-                        ref_val = df_d[col_ref].iloc[-2] # Ontem
+                        ref_val = df_d[col_ref].iloc[-2]
                         
                     if pa > ref_val:
-                        # Contagem de dias úteis desde o rompimento
                         cont_dias = 0
                         for v in range(len(df_d)-1, -1, -1):
-                            if df_d['High'].iloc[v] > ref_val:
-                                cont_dias += 1
-                            else:
-                                break
+                            if df_d['High'].iloc[v] > ref_val: cont_dias += 1
+                            else: break
                         
                         lucro_real = ((pa / ref_val) - 1) * 100
-                        qtd_lote = cap_trade // pa
+                        distancia_alvo = alvo_escolhido - lucro_real
                         
                         encontrados.append({
                             'Ativo': ativo,
                             'Preço Atual': f"R$ {pa:.2f}",
                             f'Ref. {tipo_romp}': f"R$ {ref_val:.2f}",
-                            'Resultado': "🟢 LUCRO",
                             'Lucro Real (%)': f"{lucro_real:.2f}%",
+                            'Falta p/ Alvo': f"{distancia_alvo:.2f}%",
                             'Duração': f"{cont_dias} dias úteis",
-                            'Lote (Ações)': int(qtd_lote)
+                            'Lote': int(cap_trade // pa)
                         })
             except: pass
-        
         barra.empty()
-        if encontrados:
-            st.success(f"Encontrados {len(encontrados)} ativos rompidos ({tipo_romp}) no {tempo_grafico}!")
-            st.dataframe(pd.DataFrame(encontrados), use_container_width=True, hide_index=True)
-        else:
-            st.warning(f"Nenhum rompimento de {tipo_romp} detectado.")
+        if encontrados: st.dataframe(pd.DataFrame(encontrados), use_container_width=True, hide_index=True)
+
+# ==========================================
+# 2. 📊 BACKTEST (NOVA ABA)
+# ==========================================
+with aba_backtest:
+    st.subheader("📊 Simulador de Resultados Históricos")
+    st.markdown("Testa o que aconteceria se você tivesse entrado em todos os rompimentos passados deste ativo.")
+    
+    bk1, bk2, bk3 = st.columns(3)
+    with bk1: at_bk = st.text_input("Ativo para Teste:", value="AURA33").upper()
+    with bk2: alvo_bk = st.number_input("Alvo do Backtest (%):", value=50.0, step=10.0, key="alvo_bk")
+    with bk3: hist_bk = st.number_input("Histórico (Velas Diárias):", value=1000, step=500)
+
+    if st.button("⚙️ Rodar Backtest de Rompimento", type="primary", use_container_width=True):
+        try:
+            df = tv.get_hist(symbol=at_bk, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=hist_bk)
+            if df is not None:
+                df.columns = [c.capitalize() for c in df.columns]
+                # Aqui definimos a máxima anual móvel (252 dias)
+                df['Max_Anual'] = df['High'].rolling(window=252).max().shift(1)
+                
+                trades = []
+                em_trade = False
+                
+                for i in range(252, len(df)):
+                    if not em_trade:
+                        # Gatilho: Preço cruza a máxima dos últimos 252 dias
+                        if df['Close'].iloc[i] > df['Max_Anual'].iloc[i]:
+                            em_trade = True
+                            p_entrada = df['Close'].iloc[i]
+                            p_alvo = p_entrada * (1 + (alvo_bk / 100))
+                            data_entrada = df.index[i]
+                    else:
+                        # Verifica se atingiu o alvo
+                        if df['High'].iloc[i] >= p_alvo:
+                            trades.append({
+                                'Data Entrada': data_entrada.strftime('%d/%m/%Y'),
+                                'Data Saída': df.index[i].strftime('%d/%m/%Y'),
+                                'Resultado': f"🟢 GAIN (+{alvo_bk}%)",
+                                'Preço Saída': f"R$ {p_alvo:.2f}"
+                            })
+                            em_trade = False
+                
+                if trades:
+                    st.success(f"Backtest concluído para {at_bk}!")
+                    st.dataframe(pd.DataFrame(trades), use_container_width=True)
+                else:
+                    st.warning("Nenhum trade finalizado (atingiu o alvo) encontrado no histórico.")
+        except Exception as e: st.error(f"Erro: {e}")
 
 with aba_raio_x:
-    st.subheader("🔬 Raio-X Individual")
-    # ... Lógica do Raio-X aqui ...
+    st.write("🔬 Use para analisar o gráfico detalhado do ativo escolhido.")
