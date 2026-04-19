@@ -527,7 +527,7 @@ with aba_individual:
         # --- LÓGICA DINÂMICA DA INTERFACE ---
         if lupa_estrategia == "Alvo & Stop Loss":
             lupa_stop = st.number_input("Stop Loss (%):", value=5.0, step=0.5, key="l2k_stop")
-            lupa_pm_drop = 10.0 # Valor neutro (não será usado)
+            lupa_pm_drop = 10.0
         elif lupa_estrategia == "PM Dinâmico":
             lupa_pm_drop = st.number_input("Queda para novo PM (%):", value=10.0, step=1.0, key="l2k_drop")
             lupa_stop = 0.0
@@ -644,6 +644,7 @@ with aba_individual:
                                     min_price_in_trade = df_back['Low'].iloc[i]
                                     qtd_pms = 0
                                     capital_total = float(lupa_capital)
+                                    qtd_acoes = capital_total / preco_entrada_inicial # CORREÇÃO FEITA AQUI! ✅
                                     preco_medio = preco_entrada_inicial
                                     take_profit = preco_medio * (1 + alvo_decimal)
                                     next_pm_price = preco_entrada_inicial * (1 - pm_drop_decimal)
