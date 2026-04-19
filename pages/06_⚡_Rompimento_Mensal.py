@@ -21,21 +21,22 @@ st.divider()
 aba_rad_p, aba_backtest, aba_raio_x = st.tabs(["📡 Radar (Padrão)", "📊 Backtest", "🔬 Raio-X Individual"])
 
 # ==========================================
-# 1. RADAR (PADRÃO)
+# 1. RADAR (PADRÃO) - BLOCO COMPLETO REVISADO
 # ==========================================
 with aba_rad_p:
+    # FILTROS DE ENTRADA
     c1, c2, c3 = st.columns(3)
     with c1: 
-        escolha_lista = st.selectbox("Escolha a Lista:", ["BDRs Elite", "IBrX Seleção", "Todos (BDR + IBrX)"], key="r_lst")
-        tipo_romp = st.radio("Romper por:", ["Máxima", "Fechamento"], horizontal=True)
+        escolha_lista = st.selectbox("Escolha a Lista:", ["BDRs Elite", "IBrX Seleção", "Todos (BDR + IBrX)"], key="r_lst_p")
+        tipo_romp = st.radio("Romper por:", ["Máxima", "Fechamento"], horizontal=True, key="r_tipo_p")
     with c2:
-        tempo_grafico = st.selectbox("Tempo Gráfico:", ["60m", "Diário", "Mensal", "Anual"], index=3, key="r_tmp")
-        cap_trade = st.number_input("Capital por Trade (R$):", value=5000, step=500)
+        tempo_grafico = st.selectbox("Tempo Gráfico:", ["60m", "Diário", "Mensal", "Anual"], index=3, key="r_tmp_p")
+        cap_trade = st.number_input("Capital por Trade (R$):", value=5000, step=500, key="r_cap_p")
     with c3:
-        alvo_escolhido = st.number_input("Alvo de Lucro (%):", value=20.0, step=5.0)
-        st.caption(f"O Radar mostrará o progresso em relação ao alvo de {alvo_escolhido}%.")
+        alvo_escolhido = st.number_input("Alvo de Lucro (%):", value=20.0, step=5.0, key="r_alvo_p")
+        st.caption(f"O Radar monitora o progresso até {alvo_escolhido}%.")
 
-    if st.button("🚀 Iniciar Radar de Rompimento", type="primary", use_container_width=True):
+    if st.button("🚀 Iniciar Radar de Rompimento", type="primary", use_container_width=True, key="btn_radar_p"):
         lista_ativos = bdrs_elite if escolha_lista == "BDRs Elite" else ibrx_selecao if escolha_lista == "IBrX Seleção" else bdrs_elite + ibrx_selecao
         barra = st.progress(0)
         encontrados = []
@@ -43,40 +44,75 @@ with aba_rad_p:
         for idx, ativo in enumerate(lista_ativos):
             barra.progress((idx + 1) / len(lista_ativos), text=f"🔍 Analisando {ativo}...")
             try:
+                # Puxamos 300 barras diárias para cobrir o histórico necessário
                 df_d = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=300)
+                
                 if df_d is not None and len(df_d) > 260:
                     df_d.columns = [c.capitalize() for c in df_d.columns]
                     pa = df_d['Close'].iloc[-1]
                     col_ref = "High" if tipo_romp == "Máxima" else "Close"
 
+                    # DEFINIÇÃO DA REFERÊNCIA (Período anterior fechado)
                     if tempo_grafico == "Anual":
+                        # Referência do topo do ano passado (2025)
                         ref_val = df_d[col_ref].iloc[-300:-76].max() 
                     elif tempo_grafico == "Mensal":
+                        # Referência do mês passado fechado
                         ref_val = df_d[col_ref].iloc[-45:-22].max()
+                    elif tempo_grafico == "60m":
+                        df_h = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_1_hour, n_bars=3)
+                        df_h.columns = [c.capitalize() for c in df_h.columns]
+                        ref_val = df_h[col_ref].iloc[-2]
                     else:
-                        ref_val = df_d[col_ref].iloc[-2]
+                        ref_val = df_d[col_ref].iloc[-2] # Ontem
                         
                     if pa > ref_val:
+                        # Contagem de dias úteis desde o rompimento
                         cont_dias = 0
                         for v in range(len(df_d)-1, -1, -1):
-                            if df_d['High'].iloc[v] > ref_val: cont_dias += 1
-                            else: break
+                            if df_d['High'].iloc[v] > ref_val:
+                                cont_dias += 1
+                            else:
+                                break
                         
                         lucro_real = ((pa / ref_val) - 1) * 100
-                        distancia_alvo = alvo_escolhido - lucro_real
+                        
+                        # Lógica de Status do Alvo (Visualmente limpa)
+                        if lucro_real >= alvo_escolhido:
+                            excedente = lucro_real - alvo_escolhido
+                            status_alvo = f"🎯 ATINGIDO (+{excedente:.2f}%)"
+                        else:
+                            falta = alvo_escolhido - lucro_real
+                            status_alvo = f"⏳ Falta {falta:.2f}%"
                         
                         encontrados.append({
                             'Ativo': ativo,
                             'Preço Atual': f"R$ {pa:.2f}",
                             f'Ref. {tipo_romp}': f"R$ {ref_val:.2f}",
-                            'Lucro Real (%)': f"{lucro_real:.2f}%",
-                            'Falta p/ Alvo': f"{distancia_alvo:.2f}%",
+                            'Lucro Real': f"{lucro_real:.2f}%",
+                            'Status p/ Alvo': status_alvo,
                             'Duração': f"{cont_dias} dias úteis",
                             'Lote': int(cap_trade // pa)
                         })
             except: pass
+        
         barra.empty()
-        if encontrados: st.dataframe(pd.DataFrame(encontrados), use_container_width=True, hide_index=True)
+        if encontrados:
+            st.success(f"Varredura completa! {len(encontrados)} ativos rompidos no {tempo_grafico}.")
+            df_final = pd.DataFrame(encontrados)
+            
+            # Função para colorir apenas quem atingiu o alvo
+            def destacar_alvo(val):
+                color = '#d4edda' if '🎯' in str(val) else 'transparent'
+                return f'background-color: {color}; color: black'
+
+            st.dataframe(
+                df_final.style.map(destacar_alvo, subset=['Status p/ Alvo']), 
+                use_container_width=True, 
+                hide_index=True
+            )
+        else:
+            st.warning(f"Nenhum rompimento de {tipo_romp} detectado no momento."))
 
 # ==========================================
 # 2. 📊 BACKTEST (NOVA ABA)
