@@ -66,7 +66,17 @@ def colorir_lucro(row):
     return [''] * len(row)
 
 # 3. INTERFACE DE ABAS
-st.title("📊 Estratégia: Canais de Keltner")
+# Criamos duas colunas: a primeira bem larga (para o título) e a segunda mais estreita (para o botão)
+col_titulo, col_botao = st.columns([4, 1])
+
+with col_titulo:
+    st.title("📊 Estratégia: Canais de Keltner")
+
+with col_botao:
+    # Esse espaço em branco alinha o botão mais para baixo, para ficar na mesma altura do texto do título
+    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+    st.link_button("📖 Ler Manual", "https://seusite.com/manual_ifr", use_container_width=True)
+
 aba_padrao, aba_pm, aba_stop, aba_individual, aba_futuros = st.tabs([
     "📡 Radar (Padrão)", "📡 Radar (PM)", "🛡️ Alvo & Stop", "🔬 Raio-X Individual", "📉 Raio-X Futuros"
 ])
