@@ -112,8 +112,7 @@ with aba_rad_p:
                 hide_index=True
             )
         else:
-            st.warning(f"Nenhum rompimento de {tipo_romp} detectado no momento."))
-
+            st.warning(f"Nenhum rompimento de {tipo_romp} detectado no momento.")
 # ==========================================
 # 2. 📊 BACKTEST (NOVA ABA)
 # ==========================================
