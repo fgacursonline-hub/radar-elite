@@ -53,3 +53,24 @@ with col_info:
 with col_img:
     # Espaço para o seu Logo (Coloque o link da sua imagem se quiser)
     st.write("Versão 2.0 - 2026")
+    import os
+
+# --- BLOCO DE DIAGNÓSTICO (COLE NO FINAL DO APP.PY) ---
+st.sidebar.markdown("---")
+st.sidebar.write("### 🛠️ Raio-X do Servidor")
+
+# Verifica se a pasta existe
+if os.path.exists("pages"):
+    st.sidebar.success("✅ Pasta 'pages' existe!")
+    arquivos = os.listdir("pages")
+    if arquivos:
+        st.sidebar.write("📄 Arquivos encontrados:")
+        for arq in arquivos:
+            st.sidebar.code(arq)
+    else:
+        st.sidebar.warning("⚠️ Pasta 'pages' está VAZIA.")
+else:
+    st.sidebar.error("❌ Pasta 'pages' NÃO FOI DETECTADA.")
+
+# Mostra o diretório atual
+st.sidebar.write(f"📍 Local atual: `{os.getcwd()}`")
