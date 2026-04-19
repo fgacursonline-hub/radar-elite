@@ -67,15 +67,17 @@ with aba_rad_p:
                     preco_atual = df['Close'].iloc[-1]
                     
                     if preco_atual > max_referencia:
-                        # Contador de barras
-                        contador = 0
-                        for v in range(len(df)-1, 0, -1):
-                            if df['Close'].iloc[v] > max_referencia:
-                                contador += 1
-                            else:
-                                break
+                        # --- CÁLCULO DE DURAÇÃO EM DIAS REAIS ---
+                        # Pega a data de início da barra atual (ex: 01/01/2026 para o Anual)
+                        data_inicio_rompimento = df.index[-1] 
+                        hoje = pd.Timestamp.now()
                         
-                        resultado_perc = ((preco_atual / max_referencia) - 1) * 100
+                        # Calcula a diferença em dias corridos
+                        dias_corridos = (hoje - data_inicio_rompimento).days
+                        
+                        # --- CÁLCULO DE LUCRO/PREJUÍZO ---
+                        preco_entrada = max_referencia
+                        resultado_perc = ((preco_atual / preco_entrada) - 1) * 100
                         status_fin = "🟢 LUCRO" if resultado_perc > 0 else "🔴 PREJUÍZO"
                         qtd_acoes = cap_trade // preco_atual
                         
@@ -85,7 +87,7 @@ with aba_rad_p:
                             'Máxima Rompida': f"R$ {max_referencia:.2f}",
                             'Resultado': status_fin,
                             'Lucro (%)': f"{resultado_perc:.2f}%",
-                            'Duração': f"{contador} barras",
+                            'Duração': f"{dias_corridos} dias", # Agora em dias reais
                             'Lote (Ações)': int(qtd_acoes)
                         })
             except: pass
