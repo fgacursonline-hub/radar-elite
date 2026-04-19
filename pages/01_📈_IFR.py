@@ -507,7 +507,8 @@ with aba_individual:
             st.markdown("<div style='height: 75px;'></div>", unsafe_allow_html=True) 
         lupa_capital = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="l2_cap")
     with col3:
-        lupa_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="l2_tmp")
+        # ALTERAÇÃO AQUI: Adicionado '1mo' na lista e 'Mensal' no format_func
+        lupa_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk', '1mo'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x], key="l2_tmp")
         lupa_ifr = st.number_input("Período do IFR:", min_value=2, max_value=50, value=8, step=1, key="l2_ifr")
         
     btn_raiox = st.button("🔍 Gerar Raio-X", type="primary", use_container_width=True, key="l2_btn")
