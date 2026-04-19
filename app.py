@@ -1,76 +1,38 @@
-import streamlit as st
-
-# 1. CONFIGURAÇÃO INICIAL (FORÇA O MENU LATERAL A EXPANDIR)
-st.set_page_config(
-    page_title="Radar Elite", 
-    layout="wide", 
-    initial_sidebar_state="expanded"
-)
-
-# 2. SISTEMA DE LOGIN (PORTA DE ENTRADA)
+# --- SISTEMA DE LOGIN COM MENU OCULTO ---
 if 'autenticado' not in st.session_state:
     st.session_state['autenticado'] = False
 
 if not st.session_state['autenticado']:
-    # Cria colunas para centralizar o campo de senha
-    col1, col_centro, col3 = st.columns([1, 1, 1])
+    # CSS para esconder o menu lateral completamente
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] {display: none;}
+            [data-testid="stSidebarNav"] {display: none;}
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Centraliza o formulário de login
+    _, col_login, _ = st.columns([1, 1, 1])
     
-    with col_centro:
-        unsafe_allow_html=True
-        st.markdown("### 🔐 Acesso Restrito")
-        st.write("Plataforma Caçadores de Elite")
+    with col_login:
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        st.markdown("### 🔐 Radar Elite")
+        st.caption("Acesso restrito para alunos.")
         
-        senha = st.text_input("Digite sua senha:", type="password", placeholder="Senha de aluno...")
+        senha = st.text_input("Senha de acesso:", type="password", placeholder="Digite sua senha...")
         
-        if st.button("Entrar no Sistema", use_container_width=True):
-            # AJUSTE AQUI: Coloque a sua senha real entre as aspas
-            if senha == "1234": 
+        if st.button("Acessar Plataforma", use_container_width=True):
+            # AJUSTE AQUI: Coloque a sua senha real
+            if senha == "SUA_SENHA_AQUI":
                 st.session_state['autenticado'] = True
                 st.rerun()
             else:
-                st.error("Senha incorreta. Verifique e tente novamente.")
+                st.error("Senha incorreta.")
     
-    st.stop() # Bloqueia o resto da página se não estiver logado
+    st.stop() # Interrompe aqui. Nada abaixo será lido sem a senha.
 
-# 3. O QUE APARECE APÓS O LOGIN (PAINEL PRINCIPAL)
-st.title("🎯 Plataforma Caçadores de Elite")
+# --- TUDO ABAIXO SÓ APARECE APÓS O LOGIN ---
+# O menu lateral volta a aparecer automaticamente aqui
+st.title("🎯 Bem-vindo ao Radar Elite")
 st.markdown("---")
-
-col_info, col_img = st.columns([2, 1])
-
-with col_info:
-    st.subheader("Bem-vindo, Caçador!")
-    st.markdown("""
-    Sua estrutura **Multipage** está ativa! 
-    
-    👈 **Olhe para o menu ao lado:** Lá você encontrará todas as ferramentas organizadas:
-    * **01 Raio-X Futuros:** Backtests de WIN e WDO.
-    * **02 Caçador de Elite:** Seus radares e varreduras.
-    """)
-    
-    st.info("💡 Se o menu lateral não aparecer, clique na pequena seta **( > )** no canto superior esquerdo da tela.")
-
-with col_img:
-    # Espaço para o seu Logo (Coloque o link da sua imagem se quiser)
-    st.write("Versão 2.0 - 2026")
-    import os
-
-# --- BLOCO DE DIAGNÓSTICO (COLE NO FINAL DO APP.PY) ---
-st.sidebar.markdown("---")
-st.sidebar.write("### 🛠️ Raio-X do Servidor")
-
-# Verifica se a pasta existe
-if os.path.exists("pages"):
-    st.sidebar.success("✅ Pasta 'pages' existe!")
-    arquivos = os.listdir("pages")
-    if arquivos:
-        st.sidebar.write("📄 Arquivos encontrados:")
-        for arq in arquivos:
-            st.sidebar.code(arq)
-    else:
-        st.sidebar.warning("⚠️ Pasta 'pages' está VAZIA.")
-else:
-    st.sidebar.error("❌ Pasta 'pages' NÃO FOI DETECTADA.")
-
-# Mostra o diretório atual
-st.sidebar.write(f"📍 Local atual: `{os.getcwd()}`")
+# ... resto do seu código de boas-vindas ...
