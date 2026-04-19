@@ -511,7 +511,19 @@ with aba_individual:
 
     if btn_raiox:
         ativo = lupa_ativo.strip().upper().replace('.SA', '')
-        intervalo_tv = tradutor_intervalo.get(lupa_tempo, Interval.in_daily)
+        
+        # FORÇANDO O MAPEAMENTO CORRETO AQUI (Ignorando o tradutor_intervalo externo)
+        mapa_intervalos = {
+            '15m': Interval.in_15_minute,
+            '60m': Interval.in_1_hour,
+            '1d': Interval.in_daily,
+            '1wk': Interval.in_weekly,
+            '1mo': Interval.in_monthly
+        }
+        intervalo_tv = mapa_intervalos.get(lupa_tempo, Interval.in_daily)
+
+        with st.spinner(f'Calculando dados de {ativo}...'):
+            # (O resto do código daqui pra baixo continua exatamenteee igual)
 
         with st.spinner(f'Calculando dados de {ativo}...'):
             try:
