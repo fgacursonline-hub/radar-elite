@@ -19,12 +19,6 @@ def get_tv_connection():
 
 tv = get_tv_connection()
 
-tradutor_periodo_nome = {
-    '1mo': '1 Mês', '3mo': '3 Meses', '6mo': '6 Meses',
-    '1y': '1 Ano', '2y': '2 Anos', '5y': '5 Anos',
-    'max': 'Máximo', '60d': '60 Dias'
-}
-
 tradutor_intervalo = {'15m': Interval.in_15_minute, '60m': Interval.in_1_hour, '1d': Interval.in_daily, '1wk': Interval.in_weekly, '1mo': Interval.in_monthly}
 
 bdrs_elite = [
