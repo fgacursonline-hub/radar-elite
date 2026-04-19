@@ -7,12 +7,12 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-# SEGURANÇA: Impede acesso direto pela URL sem login
+# 1. SEGURANÇA (Verifica se logou no app.py)
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
-    st.error("Faça login na Home.")
+    st.error("🚫 Por favor, faça login na página inicial (Home).")
     st.stop()
 
-# --- COPIANDO SUAS FUNÇÕES E LISTAS INTEGRAIS ---
+# 2. CONEXÃO E LISTAS (Seu código íntegro)
 @st.cache_resource
 def get_tv_connection():
     return TvDatafeed()
@@ -56,7 +56,7 @@ ibrx_selecao = [
     'UNIP6.SA', 'LWSA3.SA', 'BPAC11.SA', 'GMAT3.SA', 'CXSE3.SA', 'ABCB4.SA', 'CSMG3.SA',
     'SAPR11.SA', 'GRND3.SA', 'BRAP3.SA', 'LAVV3.SA', 'RANI3.SA', 'ITSA3.SA', 'ALUP11.SA',
     'FIQE3.SA', 'COGN3.SA', 'IRBR3.SA', 'SEER3.SA', 'ANIM3.SA', 'JSLG3.SA', 'POSI3.SA',
-    'MYPK3.MY', 'SOJA3.SA', 'BLAU3.SA', 'PGMN3.SA', 'TUPY3.SA', 'VVEO3.SA', 'MELK3.SA',
+    'MYPK3.SA', 'SOJA3.SA', 'BLAU3.SA', 'PGMN3.SA', 'TUPY3.SA', 'VVEO3.SA', 'MELK3.SA',
     'SHUL4.SA', 'BRSR6.SA',
 ]
 
@@ -65,18 +65,17 @@ def colorir_lucro(row):
         return ['color: #00FF00; font-weight: bold'] * len(row)
     return [''] * len(row)
 
-# --- INTERFACE ---
+# 3. INTERFACE DE ABAS
 st.title("📈 Estratégia: IFR")
 aba_padrao, aba_pm, aba_stop, aba_individual, aba_futuros = st.tabs([
     "📡 Radar (Padrão)", "📡 Radar (PM)", "🛡️ Alvo & Stop", "🔬 Raio-X Individual", "📉 Raio-X Futuros"
 ])
 
 # ==========================================
-# ABA 1: RADAR EM MASSA (PADRÃO) - SEU CÓDIGO ÍNTEGRO
+# ABA 1: RADAR PADRÃO (SEU CÓDIGO ÍNTEGRO)
 # ==========================================
 with aba_padrao:
     st.subheader("📡 Radar Padrão (Entrada Única & Alvo Fixo)")
-    st.markdown("O robô faz apenas uma entrada no cruzamento do IFR e aguarda o alvo ser atingido.")
     
     cp1, cp2, cp3 = st.columns(3)
     with cp1:
@@ -88,11 +87,12 @@ with aba_padrao:
         ifr_padrao = st.number_input("Período do IFR:", min_value=2, max_value=50, value=8, step=1, key="p_ifr")
     with cp3:
         capital_padrao = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="p_cap")
-        # AQUI VOLTOU O SEMANAL ('1wk')
         tempo_padrao = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="p_tmp")
 
-    if st.button("🚀 Iniciar Varredura Padrão", type="primary", use_container_width=True, key="p_btn"):
-        # COLOQUE AQUI TODA A SUA LÓGICA DE PROCESSAMENTO (O LOOP FOR) EXATAMENTE COMO ESTAVA
+    btn_iniciar_padrao = st.button("🚀 Iniciar Varredura Padrão", type="primary", use_container_width=True, key="p_btn")
+
+    if btn_iniciar_padrao:
+        # Lógica de ajuste de período automática do seu código original
         if tempo_padrao == '15m' and periodo_padrao not in ['1mo', '3mo']: periodo_padrao = '60d'
         elif tempo_padrao == '60m' and periodo_padrao in ['5y', 'max']: periodo_padrao = '2y'
 
@@ -119,5 +119,76 @@ with aba_padrao:
                 df_full['IFR_Prev'] = df_full['IFR'].shift(1)
                 df_full = df_full.dropna()
 
-                # ... (CONTINUE COM TODA A SUA LÓGICA DE CÁLCULO DE DATA_CORTE, TRADES E EM_POS EXATAMENTE COMO VOCÊ POSTOU)
-                # Para economizar espaço aqui, estou indicando que você deve manter o bloco idêntico.
+                # Cálculo da data de corte
+                data_atual = df_full.index[-1]
+                if periodo_padrao == '1mo': data_corte = data_atual - pd.DateOffset(months=1)
+                elif periodo_padrao == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
+                elif periodo_padrao == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
+                elif periodo_padrao == '1y': data_corte = data_atual - pd.DateOffset(years=1)
+                elif periodo_padrao == '2y': data_corte = data_atual - pd.DateOffset(years=2)
+                elif periodo_padrao == '5y': data_corte = data_atual - pd.DateOffset(years=5)
+                elif periodo_padrao == '60d': data_corte = data_atual - pd.DateOffset(days=60)
+                else: data_corte = df_full.index[0]
+
+                df = df_full[df_full.index >= data_corte].copy()
+                if len(df) == 0: continue
+
+                # Backtest do Radar Padrão
+                trades, em_pos = [], False
+                df_back = df.reset_index()
+                col_data = df_back.columns[0]
+
+                for i in range(1, len(df_back)):
+                    if em_pos:
+                        if df_back['Low'].iloc[i] < min_price_in_trade:
+                            min_price_in_trade = df_back['Low'].iloc[i]
+                        if df_back['High'].iloc[i] >= take_profit:
+                            trades.append({'Lucro (R$)': float(capital_padrao) * alvo_dec, 'Drawdown_Raw': ((min_price_in_trade / preco_entrada) - 1) * 100})
+                            em_pos = False
+                            continue
+
+                    condicao_entrada = (df_back['IFR_Prev'].iloc[i] < 25) and (df_back['IFR'].iloc[i] >= 25)
+                    if condicao_entrada and not em_pos:
+                        em_pos = True
+                        d_ent = df_back[col_data].iloc[i]
+                        preco_entrada = df_back['Close'].iloc[i]
+                        min_price_in_trade = df_back['Low'].iloc[i]
+                        take_profit = preco_entrada * (1 + alvo_dec)
+
+                # Coleta de resultados
+                if em_pos:
+                    res_atual = ((df_back['Close'].iloc[-1] / preco_entrada) - 1) * 100
+                    q_max = ((min_price_in_trade / preco_entrada) - 1) * 100
+                    ls_abertos_p.append({
+                        'Ativo': ativo, 'Entrada': d_ent.strftime('%d/%m %H:%M') if tempo_padrao in ['15m', '60m'] else d_ent.strftime('%d/%m/%Y'),
+                        'Dias': (df_back[col_data].iloc[-1] - d_ent).days, 'PM': f"R$ {preco_entrada:.2f}",
+                        'Cotação Atual': f"R$ {df_back['Close'].iloc[-1]:.2f}",
+                        'Prej. Máx': f"{q_max:.2f}%",
+                        'Resultado Atual': f"+{res_atual:.2f}%" if res_atual > 0 else f"{res_atual:.2f}%"
+                    })
+                else:
+                    tem_sinal = (df_full['IFR_Prev'].iloc[-1] < 25) and (df_full['IFR'].iloc[-1] >= 25)
+                    if tem_sinal: ls_sinais_p.append({'Ativo': ativo, 'Preço Atual': f"R$ {df_full['Close'].iloc[-1]:.2f}"})
+
+                if len(trades) > 0:
+                    df_t = pd.DataFrame(trades)
+                    ls_resumo_p.append({
+                        'Ativo': ativo, 'Trades': len(df_t), 'Pior Queda': f"{df_t['Drawdown_Raw'].min():.2f}%", 'Lucro R$': df_t['Lucro (R$)'].sum()
+                    })
+            except: pass
+            time.sleep(0.05)
+
+        s_text_p.empty()
+        p_bar_p.empty()
+
+        # Exibição das tabelas
+        st.subheader("🚀 Sinais e Operações")
+        if ls_sinais_p: st.dataframe(pd.DataFrame(ls_sinais_p), use_container_width=True, hide_index=True)
+        if ls_abertos_p: st.dataframe(pd.DataFrame(ls_abertos_p).style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
+        if ls_resumo_p: st.dataframe(pd.DataFrame(ls_resumo_p).sort_values(by='Lucro R$', ascending=False), use_container_width=True, hide_index=True)
+
+# ESPAÇO PARA AS PRÓXIMAS ABAS
+with aba_pm: st.info("Pronto para receber o código da Aba 2.")
+with aba_stop: st.info("Pronto para receber o código da Aba 3.")
+with aba_individual: st.info("Pronto para receber o código da Aba 4.")
+with aba_futuros: st.info("Pronto para receber o código da Aba 5.")
