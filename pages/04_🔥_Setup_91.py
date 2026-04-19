@@ -459,5 +459,155 @@ with aba_avancado:
             df_resumo['Lucro R$'] = df_resumo['Lucro R$'].apply(lambda x: f"R$ {x:,.2f}")
             st.dataframe(df_resumo, use_container_width=True, hide_index=True)
         else: st.warning("Nenhuma operação finalizada.")
-with aba_individual: st.info("Em breve: Raio-X Individual do 9.1.")
+# ==========================================
+# ABA 3: RAIO-X DO ATIVO INDIVIDUAL (SETUP 9.1)
+# ==========================================
+with aba_individual:
+    st.subheader("🔬 Análise Detalhada de Ativo Único (Setup 9.1)")
+    st.markdown("Faça o teste de estresse de um ativo específico validando as variações de Stop Inicial e Médias de Condução.")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        lupa_ativo = st.text_input("Ativo (Ex: TSLA34):", value="TSLA34", key="i91_ativo")
+        lupa_stop = st.selectbox("Posição do Stop Inicial:", ["Mínima do Candle", "Fundo Anterior (5 candles)"], key="i91_stop")
+        lupa_periodo = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=2, key="i91_per")
+    with col2:
+        lupa_cond = st.selectbox("Média de Condução (Trailing):", ["MME9 (Exponencial)", "MM9 (Aritmética)"], key="i91_cond")
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True) 
+        lupa_capital = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="i91_cap")
+    with col3:
+        lupa_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="i91_tmp")
+        
+    btn_raiox = st.button("🔍 Gerar Raio-X 9.1", type="primary", use_container_width=True, key="i91_btn")
+
+    if btn_raiox:
+        ativo_input = lupa_ativo.strip().upper()
+        if not ativo_input:
+            st.error("Por favor, digite o código de um ativo.")
+        else:
+            ativo = ativo_input.replace('.SA', '')
+            if lupa_tempo == '15m' and lupa_periodo not in ['1mo', '3mo']: lupa_periodo = '60d'
+            elif lupa_tempo == '60m' and lupa_periodo in ['5y', 'max']: lupa_periodo = '2y'
+            intervalo_tv = tradutor_intervalo.get(lupa_tempo, Interval.in_daily)
+
+            with st.spinner(f'Testando Backtest 9.1 em {ativo}...'):
+                try:
+                    df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                    if df_full is None or len(df_full) < 50:
+                        st.error("Dados insuficientes no TradingView para este ativo.")
+                    else:
+                        df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                        df_full = df_full.dropna()
+                        
+                        # --- CÁLCULO DAS MÉDIAS E FUNDOS ---
+                        df_full['MME9'] = ta.ema(df_full['Close'], length=9)
+                        df_full['MME9_Prev1'] = df_full['MME9'].shift(1)
+                        df_full['MME9_Prev2'] = df_full['MME9'].shift(2)
+                        
+                        df_full['MM9'] = ta.sma(df_full['Close'], length=9)
+                        df_full['MM9_Prev1'] = df_full['MM9'].shift(1)
+                        df_full['MM9_Prev2'] = df_full['MM9'].shift(2)
+                        
+                        df_full['Fundo_5'] = df_full['Low'].rolling(window=5).min()
+                        df_full = df_full.dropna()
+
+                        data_atual = df_full.index[-1]
+                        if lupa_periodo == '1mo': data_corte = data_atual - pd.DateOffset(months=1)
+                        elif lupa_periodo == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
+                        elif lupa_periodo == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
+                        elif lupa_periodo == '1y': data_corte = data_atual - pd.DateOffset(years=1)
+                        elif lupa_periodo == '2y': data_corte = data_atual - pd.DateOffset(years=2)
+                        elif lupa_periodo == '5y': data_corte = data_atual - pd.DateOffset(years=5)
+                        elif lupa_periodo == '60d': data_corte = data_atual - pd.DateOffset(days=60)
+                        else: data_corte = df_full.index[0]
+
+                        df = df_full[df_full.index >= data_corte].copy()
+                        trades = []
+                        em_pos = False
+                        setup_armado = False
+                        saida_armada = False
+                        gatilho_entrada = 0.0
+                        gatilho_saida = 0.0
+                        stop_loss = 0.0
+                        df_back = df.reset_index()
+                        col_data = df_back.columns[0]
+                        vitorias, derrotas = 0, 0
+
+                        for i in range(2, len(df_back)):
+                            mme9_virou_cima = (df_back['MME9_Prev1'].iloc[i] < df_back['MME9_Prev2'].iloc[i]) and (df_back['MME9'].iloc[i] > df_back['MME9_Prev1'].iloc[i])
+                            mme9_caindo = df_back['MME9'].iloc[i] < df_back['MME9_Prev1'].iloc[i]
+
+                            if lupa_cond == "MM9 (Aritmética)":
+                                ma_atual, ma_prev1, ma_prev2 = df_back['MM9'].iloc[i], df_back['MM9_Prev1'].iloc[i], df_back['MM9_Prev2'].iloc[i]
+                            else:
+                                ma_atual, ma_prev1, ma_prev2 = df_back['MME9'].iloc[i], df_back['MME9_Prev1'].iloc[i], df_back['MME9_Prev2'].iloc[i]
+                                
+                            media_saida_virou_baixo = (ma_prev1 > ma_prev2) and (ma_atual < ma_prev1)
+                            media_saida_subindo = ma_atual > ma_prev1
+
+                            if em_pos:
+                                # 1. Stop Loss Inicial
+                                if df_back['Low'].iloc[i] <= stop_loss:
+                                    d_sai = df_back[col_data].iloc[i]
+                                    duracao = (d_sai - d_ent).days
+                                    lucro_rs = lupa_capital * ((stop_loss / preco_entrada) - 1)
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M') if lupa_tempo in ['15m', '60m'] else d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y %H:%M') if lupa_tempo in ['15m', '60m'] else d_sai.strftime('%d/%m/%Y'), 'Duração': duracao, 'Lucro (R$)': lucro_rs, 'Situação': 'Stop Inicial ❌'})
+                                    derrotas += 1
+                                    em_pos, saida_armada = False, False
+                                    continue
+                                
+                                # 2. Saída Técnica
+                                if saida_armada:
+                                    if df_back['Low'].iloc[i] < gatilho_saida:
+                                        d_sai = df_back[col_data].iloc[i]
+                                        duracao = (d_sai - d_ent).days
+                                        lucro_rs = lupa_capital * ((gatilho_saida / preco_entrada) - 1)
+                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M') if lupa_tempo in ['15m', '60m'] else d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y %H:%M') if lupa_tempo in ['15m', '60m'] else d_sai.strftime('%d/%m/%Y'), 'Duração': duracao, 'Lucro (R$)': lucro_rs, 'Situação': 'Gain ✅' if lucro_rs > 0 else 'Loss Técnico ❌'})
+                                        if lucro_rs > 0: vitorias += 1 
+                                        else: derrotas += 1
+                                        em_pos, saida_armada = False, False
+                                        continue
+                                    elif media_saida_subindo:
+                                        saida_armada = False
+
+                                # 3. Armar Saída
+                                if media_saida_virou_baixo and not saida_armada:
+                                    saida_armada = True
+                                    gatilho_saida = df_back['Low'].iloc[i]
+
+                            else:
+                                if setup_armado:
+                                    if df_back['High'].iloc[i] > gatilho_entrada:
+                                        em_pos = True
+                                        setup_armado = False
+                                        d_ent = df_back[col_data].iloc[i]
+                                        preco_entrada = max(gatilho_entrada + 0.01, df_back['Open'].iloc[i])
+                                    elif mme9_caindo:
+                                        setup_armado = False
+
+                                if mme9_virou_cima:
+                                    setup_armado = True
+                                    gatilho_entrada = df_back['High'].iloc[i]
+                                    if lupa_stop == "Fundo Anterior (5 candles)":
+                                        stop_loss = df_back['Fundo_5'].iloc[i] - 0.01
+                                    else:
+                                        stop_loss = df_back['Low'].iloc[i] - 0.01
+
+                        st.divider()
+                        st.markdown(f"### 📊 Resultado: {ativo} (Setup 9.1)")
+                        
+                        if len(trades) > 0:
+                            df_t = pd.DataFrame(trades)
+                            mc1, mc2, mc3, mc4 = st.columns(4)
+                            mc1.metric("Lucro Total Estimado", f"R$ {df_t['Lucro (R$)'].sum():,.2f}")
+                            mc2.metric("Tempo Preso (Médio)", f"{round(df_t['Duração'].mean(), 1)} dias")
+                            mc3.metric("Operações Fechadas", f"{len(df_t)}")
+                            
+                            taxa_acerto = (vitorias / len(df_t)) * 100
+                            mc4.metric("Taxa de Acerto", f"{taxa_acerto:.1f}%")
+                            
+                            st.dataframe(df_t, use_container_width=True, hide_index=True)
+                        else:
+                            st.warning("Nenhuma operação concluída usando essa configuração neste período.")
+                except Exception as e: st.error(f"Erro: {e}")
 with aba_futuros: st.info("Em breve: Raio-X Futuros do 9.1.")
