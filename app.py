@@ -699,7 +699,7 @@ else:
                     except Exception as e: st.error(f"Erro: {e}")
 
     # ==========================================
-    # ABA 5: RAIO-X FUTUROS (COM MENU DE ATIVOS)
+    # ABA 5: RAIO-X FUTUROS (SITUAÇÃO PERSONALIZADA)
     # ==========================================
     with aba_futuros:
         st.subheader("📈 Raio-X Mercado Futuro (WIN, WDO, etc)")
@@ -707,7 +707,6 @@ else:
         
         cf1, cf2, cf3 = st.columns(3)
         with cf1:
-            # Menu de seleção amigável
             mapa_futuros = {"WINFUT (Mini Índice)": "WIN1!", "WDOFUT (Mini Dólar)": "WDO1!"}
             fut_selecionado = st.selectbox("Selecione o Ativo Futuro:", options=list(mapa_futuros.keys()), key="f_ativo_sel")
             fut_ativo = mapa_futuros[fut_selecionado] 
@@ -720,10 +719,9 @@ else:
                 fut_stop = st.number_input("Stop Loss (em Pontos):", value=200, step=50, key="f_stop")
             else:
                 fut_stop = 0 
-                st.write("") # Espaçador visual
+                st.write("") 
             fut_contratos = st.number_input("Qtd. Contratos por Entrada:", value=1, step=1, key="f_cont")
         with cf3:
-            # Multiplicador automático
             valor_mult_padrao = 0.20 if "WIN" in fut_selecionado else 10.00
             fut_multiplicador = st.number_input("Multiplicador Financeiro (R$):", value=valor_mult_padrao, step=0.10, format="%.2f", key="f_mult")
             
@@ -732,7 +730,6 @@ else:
             
         fut_zerar_17h = st.checkbox("⏰ Forçar Zeragem Compulsória às 17h00", value=True, key="f_zerar")
             
-        # O botão que estava faltando
         btn_raiox_futuros = st.button("🚀 Gerar Raio-X Futuros", type="primary", use_container_width=True, key="f_btn")
 
         if btn_raiox_futuros:
@@ -776,7 +773,9 @@ else:
                                     lucro_rs = (preco_saida - preco_medio) * contratos_atuais * fut_multiplicador
                                 else:
                                     lucro_rs = (preco_saida - preco_entrada) * fut_contratos * fut_multiplicador
-                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': lucro_rs, 'Situação': 'Zerad. 17h'})
+                                
+                                situacao = 'Ganho (17h) ✅' if lucro_rs > 0 else 'Perda (17h) ❌'
+                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': lucro_rs, 'Situação': situacao})
                                 em_pos = False
                                 continue
 
@@ -786,7 +785,7 @@ else:
                                 if em_pos:
                                     if df_back['High'].iloc[i] >= take_profit:
                                         lucro_rs = fut_alvo * contratos_atuais * fut_multiplicador
-                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': lucro_rs, 'Situação': 'Gain ✅'})
+                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': lucro_rs, 'Situação': 'Ganho ✅'})
                                         em_pos, vitorias = False, vitorias + 1
                                         continue
                                 if condicao_entrada:
@@ -802,10 +801,10 @@ else:
                             elif fut_estrategia == "Alvo & Stop Loss":
                                 if em_pos:
                                     if df_back['Low'].iloc[i] <= stop_price:
-                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': -(fut_stop * fut_contratos * fut_multiplicador), 'Situação': 'Stop ❌'})
+                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': -(fut_stop * fut_contratos * fut_multiplicador), 'Situação': 'Perda ❌'})
                                         em_pos, derrotas = False, derrotas + 1
                                     elif df_back['High'].iloc[i] >= take_profit:
-                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': fut_alvo * fut_contratos * fut_multiplicador, 'Situação': 'Gain ✅'})
+                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': fut_alvo * fut_contratos * fut_multiplicador, 'Situação': 'Ganho ✅'})
                                         em_pos, vitorias = False, vitorias + 1
                                 if condicao_entrada and not em_pos:
                                     em_pos, d_ent, preco_entrada = True, df_back[col_data].iloc[i], df_back['Close'].iloc[i]
