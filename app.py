@@ -14,12 +14,12 @@ if not st.session_state['autenticado']:
     
     _, col_login, _ = st.columns([1, 1, 1])
     with col_login:
-        st.markdown("<br><br>### 🎯 Caçadores de Elite<br>", unsafe_allow_html=True)
+        st.markdown("<br><br>🎯 Caçadores de Elite<br>", unsafe_allow_html=True)
         usuario = st.text_input("Usuário").lower().strip()
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar no Sistema", use_container_width=True):
             # Verificação simples (adicione seus usuários aqui)
-            if usuario == "admin" and senha == "suasenhaforte":
+            if usuario == "aluno" and senha == "1234":
                 st.session_state['autenticado'] = True
                 st.rerun()
             else:
