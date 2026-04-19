@@ -794,15 +794,15 @@ else:
                                     em_pos, d_ent, preco_entrada = True, df_back[col_data].iloc[i], df_back['Close'].iloc[i]
                                     take_p, stop_p = preco_entrada + fut_alvo, preco_entrada - fut_stop
 
-                        # --- FIM DO PROCESSAMENTO / INÍCIO DA EXIBIÇÃO ---
+                        # --- INÍCIO DA EXIBIÇÃO DOS RESULTADOS ---
                         st.divider()
-                        st.markdown(f"### 📊 Resultado: {fut_selecionado} ({fut_estrategia})")
-                        st.caption(f"📅 Período Real Analisado: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
+                        st.markdown(f"### 📊 Resultado: {fut_selecionado}")
+                        st.caption(f"📅 Período: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
                         
                         if trades:
                             df_t = pd.DataFrame(trades)
                             
-                            # CÁLCULOS FINANCEIROS
+                            # Cálculos Financeiros
                             lucro_total = df_t['Lucro (R$)'].sum()
                             vitorias_df = df_t[df_t['Lucro (R$)'] > 0]
                             derrotas_df = df_t[df_t['Lucro (R$)'] <= 0]
@@ -811,19 +811,27 @@ else:
                             media_perda = abs(derrotas_df['Lucro (R$)'].mean()) if not derrotas_df.empty else 1
                             payoff = media_ganho / media_perda
                             
-                            # CARDS DE MÉTRICAS
+                            # Taxa de Acerto e Crítica
+                            taxa_acerto_real = (len(vitorias_df) / len(df_t)) * 100
+                            taxa_critica = (1 / (1 + (payoff if payoff > 0 else 0.01))) * 100
+                            margem_seguranca = taxa_acerto_real - taxa_critica
+
+                            # Cards de Métricas
                             m1, m2, m3, m4, m5 = st.columns(5)
                             m1.metric("Lucro Total", f"R$ {lucro_total:,.2f}")
                             m2.metric("Operações", len(df_t))
-                            m3.metric("Taxa Acerto", f"{(len(vitorias_df)/len(df_t))*100:.1f}%")
+                            m3.metric("Taxa Acerto", f"{taxa_acerto_real:.1f}%")
                             m4.metric("Payoff", f"{payoff:.2f}")
                             m5.metric("V / D", f"{len(vitorias_df)} / {len(derrotas_df)}")
                             
-                            # EXPLICAÇÃO DO RISCO-RETORNO
+                            # --- EXPLICAÇÃO INTELIGENTE DO RISCO ---
                             if payoff > 1:
-                                st.success(f"🎯 **Expectativa Positiva:** Para cada R$ 1,00 que você perde, você ganha em média R$ {payoff:.2f} quando acerta.")
+                                st.success(f"🎯 **Expectativa Positiva:** Para cada R$ 1,00 de risco, você ganha R$ {payoff:.2f}. Com esse Payoff, você só precisa de {taxa_critica:.1f}% de acerto para não perder dinheiro. Sua margem atual é de {margem_seguranca:.1f}%.")
                             else:
-                                st.warning(f"⚠️ **Expectativa Negativa:** Você ganha apenas R$ {payoff:.2f} para cada R$ 1,00 que perde. Cuidado!")
+                                if margem_seguranca > 0:
+                                    st.info(f"⚖️ **Alerta de Equilíbrio:** Seu Payoff é baixo ({payoff:.2f}), mas sua alta taxa de acerto compensa. **Atenção:** Você não pode deixar seu acerto cair abaixo de **{taxa_critica:.1f}%**, ou a estratégia ficará no prejuízo. Sua margem de gordura é de {margem_seguranca:.1f}%.")
+                                else:
+                                    st.error(f"🚨 **Expectativa Negativa:** Seu acerto de {taxa_acerto_real:.1f}% está abaixo da taxa crítica de {taxa_critica:.1f}% necessária para este Payoff de {payoff:.2f}.")
 
                             st.dataframe(df_t, use_container_width=True, hide_index=True)
                         else: 
