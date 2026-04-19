@@ -20,11 +20,16 @@ with col_man:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     st.link_button("📖 Manual FVG", "https://seusite.com/manual_fvg", use_container_width=True)
 
-st.markdown("Identifique desequilíbrios de preço (vácuos de liquidez) e opere nas zonas defendidas pelos grandes bancos.")
+st.markdown("Identifique desequilíbrios de preço e opere nas zonas defendidas pelos grandes bancos.")
 st.divider()
 
-# --- CRIAÇÃO DAS 3 SUB-ABAS ---
-aba_individual, aba_radar, aba_backtest = st.tabs(["🔍 Raio-X Individual", "📡 Radar de Oportunidades", "📊 Backtest FVG (Estatísticas)"])
+# --- CRIAÇÃO DAS 4 SUB-ABAS ---
+aba_individual, aba_radar, aba_backtest, aba_supremo = st.tabs([
+    "🔍 Raio-X Individual", 
+    "📡 Radar de Oportunidades", 
+    "📊 Backtest FVG (Estatísticas)",
+    "🔥 Radar Supremo (9.1 + FVG)"
+])
 
 # ==========================================
 # ABA 1: RAIO-X INDIVIDUAL
@@ -94,10 +99,10 @@ with aba_radar:
     ibrx_selecao = ['PETR4', 'VALE3', 'ITUB4', 'BBDC4', 'BBAS3', 'B3SA3', 'ABEV3', 'WEGE3', 'AXIA3', 'SUZB3', 'RENT3', 'RADL3', 'EQTL3', 'LREN3', 'PRIO3', 'HAPV3', 'GGBR4', 'VBBR3', 'SBSP3', 'CMIG4', 'CPLE3', 'ENEV3', 'TIMS3', 'TOTS3', 'EGIE3', 'CSAN3', 'ALOS3', 'DIRR3', 'VIVT3', 'KLBN11', 'UGPA3', 'PSSA3', 'CYRE3', 'ASAI3', 'RAIL3', 'ISAE3', 'CSNA3', 'MGLU3', 'EMBJ3', 'TAEE11', 'BBSE3', 'FLRY3', 'MULT3', 'TFCO4', 'LEVE3', 'CPFE3', 'GOAU4', 'MRVE3', 'YDUQ3', 'SMTO3', 'SLCE3', 'CVCB3', 'USIM5', 'BRAP4', 'BRAV3', 'EZTC3', 'PCAR3', 'AUAU3', 'DXCO3', 'CASH3', 'VAMO3', 'AZZA3', 'AURE3', 'BEEF3', 'ECOR3', 'FESA4', 'POMO4', 'CURY3', 'INTB3', 'JHSF3', 'LIGT3', 'LOGG3', 'MDIA3', 'MBRF3', 'NEOE3', 'QUAL3', 'RAPT4', 'ROMI3', 'SANB11', 'SIMH3', 'TEND3', 'VULC3', 'PLPL3', 'CEAB3', 'UNIP6', 'LWSA3', 'BPAC11', 'GMAT3', 'CXSE3', 'ABCB4', 'CSMG3', 'SAPR11', 'GRND3', 'BRAP3', 'LAVV3', 'RANI3', 'ITSA3', 'ALUP11', 'FIQE3', 'COGN3', 'IRBR3', 'SEER3', 'ANIM3', 'JSLG3', 'POSI3', 'MYPK3', 'SOJA3', 'BLAU3', 'PGMN3', 'TUPY3', 'VVEO3', 'MELK3', 'SHUL4', 'BRSR6']
 
     r1, r2 = st.columns([3, 1])
-    with r1: escolha_lista = st.selectbox("Escolha a Lista:", ["BDRs Elite (25 ativos)", "IBrX Seleção (93 ativos)", "Ambas as listas"], key="radar_lista")
-    with r2: radar_tempo = st.selectbox("Tempo Gráfico:", ['60m', '1d', '1wk'], index=1, format_func=lambda x: {'60m':'60 min','1d':'Diário','1wk':'Semanal'}[x], key="radar_tempo2")
+    with r1: escolha_lista = st.selectbox("Escolha a Lista:", ["BDRs Elite (25 ativos)", "IBrX Seleção (93 ativos)", "Ambas as listas"], key="radar_lista_2")
+    with r2: radar_tempo = st.selectbox("Tempo Gráfico:", ['60m', '1d', '1wk'], index=1, format_func=lambda x: {'60m':'60 min','1d':'Diário','1wk':'Semanal'}[x], key="radar_tempo_2")
         
-    if st.button("🚀 Iniciar Radar Automático", type="primary", use_container_width=True, key="btn_radar_massa"):
+    if st.button("🚀 Iniciar Radar Automático", type="primary", use_container_width=True, key="btn_radar_massa_2"):
         lista_ativos = bdrs_elite if "BDRs" in escolha_lista else ibrx_selecao if "IBrX" in escolha_lista else bdrs_elite + ibrx_selecao
         intervalo_tv = {'60m': Interval.in_1_hour, '1d': Interval.in_daily, '1wk': Interval.in_weekly}.get(radar_tempo, Interval.in_daily)
         
@@ -138,7 +143,7 @@ with aba_backtest:
     with b1: bk_ativo = st.text_input("Ativo para Backtest:", value="TSLA34").upper()
     with b2: bk_tempo = st.selectbox("Tempo Gráfico:", ['60m', '1d', '1wk'], index=1, format_func=lambda x: {'60m':'60 min','1d':'Diário','1wk':'Semanal'}[x], key="bk_tempo")
     with b3: bk_velas = st.number_input("Histórico (Velas):", value=500, step=100)
-    with b4: bk_qtd = st.number_input("Qtd. Ações:", value=100, step=100, help="Define o tamanho do lote para calcular o financeiro.")
+    with b4: bk_qtd = st.number_input("Qtd. Ações:", value=100, step=100)
 
     if st.button("⚙️ Rodar Backtest Financeiro", type="primary", use_container_width=True):
         ativo = bk_ativo.strip().replace('.SA', '')
@@ -153,7 +158,6 @@ with aba_backtest:
                     trades_realizados = []
                     
                     for i in range(2, len(df)-1):
-                        # Foca no Setup de COMPRA (FVG de Alta)
                         if df['Low'].iloc[i] > df['High'].iloc[i-2]:
                             topo = df['Low'].iloc[i]
                             fundo = df['High'].iloc[i-2]
@@ -190,7 +194,6 @@ with aba_backtest:
                             taxa_acerto = (gains / total_trades) * 100
                             
                             st.markdown("---")
-                            # --- AQUI ESTÁ A MUDANÇA: AGORA SÃO 6 COLUNAS ---
                             res1, res2, res3, res4, res5, res6 = st.columns(6)
                             res1.metric("Total de Trades", total_trades)
                             res2.metric("Acertos ✅", gains)
@@ -199,13 +202,10 @@ with aba_backtest:
                             res5.metric("Risco/Retorno", "2 para 1")
                             res6.metric("💰 Resultado Final", f"R$ {lucro_total:.2f}")
                             
-                            if lucro_total > 0:
-                                st.success(f"📈 **Estratégia Lucrativa!** Operando lotes de {bk_qtd} ações, o robô finalizou o período com lucro matemático.")
-                            else:
-                                st.warning(f"⚠️ **Estratégia no Prejuízo.** Mesmo com o payoff a favor, a taxa de acerto foi muito baixa neste ativo.")
+                            if lucro_total > 0: st.success(f"📈 **Estratégia Lucrativa!** Operando lotes de {bk_qtd} ações, o robô finalizou o período com lucro.")
+                            else: st.warning(f"⚠️ **Estratégia no Prejuízo.**")
                             
                             st.write("Histórico Financeiro das Operações:")
-                            
                             df_trades_show = df_trades.copy()
                             df_trades_show['Financeiro (R$)'] = df_trades_show['Financeiro (R$)'].apply(lambda x: f"R$ {x:.2f}")
                             
@@ -215,9 +215,82 @@ with aba_backtest:
                                 return f'background-color: {color}; color: {text_color}'
                                 
                             st.dataframe(df_trades_show.style.map(colorir_resultado, subset=['Resultado']), use_container_width=True)
-                    else:
-                        st.info("O robô não encontrou operações que foram fechadas no período (talvez elas ainda estejam rodando).")
-                else:
-                    st.error("Dados insuficientes.")
-            except Exception as e:
-                st.error(f"Erro no backtest: {e}")
+                    else: st.info("O robô não encontrou operações que foram fechadas no período.")
+                else: st.error("Dados insuficientes.")
+            except Exception as e: st.error(f"Erro no backtest: {e}")
+
+# ==========================================
+# ABA 4: RADAR SUPREMO (CONFLUÊNCIA 9.1 + FVG)
+# ==========================================
+with aba_supremo:
+    st.subheader("🔥 Radar de Confluência Institucional")
+    st.markdown("O Santo Graal: Encontra ativos onde o **Setup 9.1 (MME9 virou para cima)** acabou de acionar **exatamente dentro** de uma zona de suporte institucional (FVG de Alta).")
+    
+    # Listas
+    bdrs_elite_sup = ['NVDC34', 'P2LT34', 'ROXO34', 'INBR32', 'M1TA34', 'TSLA34', 'LILY34', 'AMZO34', 'AURA33', 'GOGL34', 'MSFT34', 'MUTC34', 'MELI34', 'C2OI34', 'ORCL34', 'M2ST34', 'A1MD34', 'NFLX34', 'ITLC34', 'AVGO34', 'COCA34', 'JBSS32', 'AAPL34', 'XPBR31', 'STOC34']
+    ibrx_selecao_sup = ['PETR4', 'VALE3', 'ITUB4', 'BBDC4', 'BBAS3', 'B3SA3', 'ABEV3', 'WEGE3', 'AXIA3', 'SUZB3', 'RENT3', 'RADL3', 'EQTL3', 'LREN3', 'PRIO3', 'HAPV3', 'GGBR4', 'VBBR3', 'SBSP3', 'CMIG4', 'CPLE3', 'ENEV3', 'TIMS3', 'TOTS3', 'EGIE3', 'CSAN3', 'ALOS3', 'DIRR3', 'VIVT3', 'KLBN11', 'UGPA3', 'PSSA3', 'CYRE3', 'ASAI3', 'RAIL3', 'ISAE3', 'CSNA3', 'MGLU3', 'EMBJ3', 'TAEE11', 'BBSE3', 'FLRY3', 'MULT3', 'TFCO4', 'LEVE3', 'CPFE3', 'GOAU4', 'MRVE3', 'YDUQ3', 'SMTO3', 'SLCE3', 'CVCB3', 'USIM5', 'BRAP4', 'BRAV3', 'EZTC3', 'PCAR3', 'AUAU3', 'DXCO3', 'CASH3', 'VAMO3', 'AZZA3', 'AURE3', 'BEEF3', 'ECOR3', 'FESA4', 'POMO4', 'CURY3', 'INTB3', 'JHSF3', 'LIGT3', 'LOGG3', 'MDIA3', 'MBRF3', 'NEOE3', 'QUAL3', 'RAPT4', 'ROMI3', 'SANB11', 'SIMH3', 'TEND3', 'VULC3', 'PLPL3', 'CEAB3', 'UNIP6', 'LWSA3', 'BPAC11', 'GMAT3', 'CXSE3', 'ABCB4', 'CSMG3', 'SAPR11', 'GRND3', 'BRAP3', 'LAVV3', 'RANI3', 'ITSA3', 'ALUP11', 'FIQE3', 'COGN3', 'IRBR3', 'SEER3', 'ANIM3', 'JSLG3', 'POSI3', 'MYPK3', 'SOJA3', 'BLAU3', 'PGMN3', 'TUPY3', 'VVEO3', 'MELK3', 'SHUL4', 'BRSR6']
+
+    s1, s2 = st.columns([3, 1])
+    with s1: lista_sup = st.selectbox("Escolha a Lista para o Filtro Supremo:", ["BDRs Elite", "IBrX Seleção", "Ambas as listas"], key="supremo_lista")
+    with s2: tempo_sup = st.selectbox("Tempo Gráfico:", ['1d', '1wk'], index=0, format_func=lambda x: {'1d':'Diário (Recomendado)','1wk':'Semanal'}[x], key="supremo_tempo")
+        
+    if st.button("🚨 Caçar Setup Supremo (9.1 + FVG)", type="primary", use_container_width=True, key="btn_supremo"):
+        ativos_scan = bdrs_elite_sup if "BDRs" in lista_sup else ibrx_selecao_sup if "IBrX" in lista_sup else bdrs_elite_sup + ibrx_selecao_sup
+        interv_sup = {'1d': Interval.in_daily, '1wk': Interval.in_weekly}.get(tempo_sup, Interval.in_daily)
+        
+        barra = st.progress(0, text="Calculando confluências complexas...")
+        achados_supremos = []
+
+        for idx, ativo in enumerate(ativos_scan):
+            barra.progress((idx + 1) / len(ativos_scan), text=f"🔥 Cruzando MME9 e Gaps de {ativo}...")
+            try:
+                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=interv_sup, n_bars=150)
+                if df is not None and len(df) > 15:
+                    df.rename(columns={'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                    
+                    # 1. Calcula a Média de 9 (MME9)
+                    df.ta.ema(length=9, append=True)
+                    mme9 = df['EMA_9']
+                    
+                    # 2. Verifica se a média virou para cima na última vela fechada (ou na atual)
+                    # mme9.iloc[-3] = Anteontem | mme9.iloc[-2] = Ontem | mme9.iloc[-1] = Hoje
+                    setup_91_armado = False
+                    
+                    # Condição: Ontem a média estava caindo, e Hoje virou pra cima
+                    if (mme9.iloc[-3] >= mme9.iloc[-2]) and (mme9.iloc[-1] > mme9.iloc[-2]):
+                        setup_91_armado = True
+                    
+                    if setup_91_armado:
+                        # 3. Se tem 9.1 de Compra, vamos procurar os Gaps de Alta Abertos
+                        for i in range(2, len(df)-2):
+                            if df['Low'].iloc[i] > df['High'].iloc[i-2]:
+                                topo = df['Low'].iloc[i]
+                                fundo = df['High'].iloc[i-2]
+                                
+                                # Verifica se o Gap AINDA ESTÁ ABERTO
+                                if df['Low'].iloc[i:].min() > fundo:
+                                    
+                                    # 4. A MAGIA: O Preço mínimo de Hoje ou Ontem tocou/entrou na zona do FVG?
+                                    minima_recente = min(df['Low'].iloc[-1], df['Low'].iloc[-2])
+                                    
+                                    if minima_recente <= topo and minima_recente >= fundo:
+                                        achados_supremos.append({
+                                            'Ativo': ativo, 
+                                            'Gatilho': '🔥 9.1 de COMPRA Acionado', 
+                                            'Defesa': '🛡️ Dentro do FVG',
+                                            'Cotação Atual': f"R$ {df['Close'].iloc[-1]:.2f}",
+                                            'Rompimento da Máxima': f"R$ {df['High'].iloc[-1]:.2f}",
+                                            'Stop Sugerido (Fundo FVG)': f"R$ {fundo:.2f}"
+                                        })
+                                        break # Já achou a confluência neste ativo, vai pro próximo
+            except: pass 
+            time.sleep(0.05) 
+            
+        barra.empty()
+        
+        if achados_supremos:
+            st.success(f"🎯 **BINGO!** Encontramos {len(achados_supremos)} ativo(s) com a confluência perfeita hoje.")
+            st.dataframe(pd.DataFrame(achados_supremos), use_container_width=True, hide_index=True)
+            st.info("💡 **Como Operar:** Coloque uma ordem de Compra Start (Disparo) no valor indicado em 'Rompimento da Máxima'. O Stop Loss fica no 'Fundo FVG'.")
+        else: 
+            st.warning("Nenhum ativo apresentou a confluência do 9.1 dentro de um FVG hoje. Esse é um setup raro de alta precisão, continue monitorando!")
