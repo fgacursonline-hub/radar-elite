@@ -40,7 +40,6 @@ btn_fvg = st.button("🔍 Escanear Desequilíbrios", type="primary", use_contain
 if btn_fvg:
     ativo = lupa_ativo.strip()
     
-    # Mapeamento de intervalos que já validamos
     mapa_intervalos = {
         '15m': Interval.in_15_minute, '60m': Interval.in_1_hour,
         '1d': Interval.in_daily, '1wk': Interval.in_weekly, '1mo': Interval.in_monthly
@@ -54,31 +53,54 @@ if btn_fvg:
             if df is not None and len(df) > 3:
                 df.rename(columns={'high': 'High', 'low': 'Low', 'close': 'Close', 'open': 'Open'}, inplace=True)
                 
-                # --- Lógica Matemática do FVG ---
-                # FVG de Alta: Mínima da vela 3 > Máxima da vela 1
-                df['FVG_Alta'] = df['Low'] > df['High'].shift(2)
-                # FVG de Baixa: Máxima da vela 3 < Mínima da vela 1
-                df['FVG_Baixa'] = df['High'] < df['Low'].shift(2)
+                lista_gaps = []
+                # Loop para calcular os limites de preço de cada Gap
+                for i in range(2, len(df)):
+                    # Lógica FVG Alta (Bullish)
+                    if df['Low'].iloc[i] > df['High'].iloc[i-2]:
+                        topo = df['Low'].iloc[i]
+                        fundo = df['High'].iloc[i-2]
+                        lista_gaps.append({
+                            'Data': df.index[i].strftime('%d/%m %H:%M'),
+                            'Tipo': 'Alta (Bullish) 🟢',
+                            'Limite Superior': topo,
+                            'Limite Inferior': fundo,
+                            'Preço Atual': df['Close'].iloc[-1]
+                        })
+
+                    # Lógica FVG Baixa (Bearish)
+                    if df['High'].iloc[i] < df['Low'].iloc[i-2]:
+                        topo = df['Low'].iloc[i-2]
+                        fundo = df['High'].iloc[i]
+                        lista_gaps.append({
+                            'Data': df.index[i].strftime('%d/%m %H:%M'),
+                            'Tipo': 'Baixa (Bearish) 🔴',
+                            'Limite Superior': topo,
+                            'Limite Inferior': fundo,
+                            'Preço Atual': df['Close'].iloc[-1]
+                        })
+
+                # --- EXIBIÇÃO DOS RESULTADOS ---
+                st.subheader(f"📊 Zonas de Desequilíbrio: {ativo}")
                 
-                # Filtra apenas onde ocorreram Gaps
-                gaps_alta = df[df['FVG_Alta'] == True].copy()
-                gaps_baixa = df[df['FVG_Baixa'] == True].copy()
-                
-                # Interface de Resultados
-                st.subheader(f"📊 Resultados para {ativo}")
-                
-                res1, res2 = st.columns(2)
-                res1.metric("Gaps de Alta (Bullish)", len(gaps_alta))
-                res2.metric("Gaps de Baixa (Bearish)", len(gaps_baixa))
-                
-                if not gaps_alta.empty or not gaps_baixa.empty:
-                    st.info("💡 **Dica:** O preço tende a retornar para preencher esses 'buracos' antes de seguir a tendência.")
-                    st.write("Últimos Gaps Detectados:")
-                    st.dataframe(df[['Open', 'High', 'Low', 'Close', 'FVG_Alta', 'FVG_Baixa']].tail(20))
-                else:
-                    st.success("Nenhum desequilíbrio recente detectado. Mercado em equilíbrio.")
+                if lista_gaps:
+                    # Mostra os 3 Gaps mais recentes em cards de destaque
+                    cols = st.columns(len(lista_gaps[-3:]))
+                    for idx, gap in enumerate(lista_gaps[-3:]):
+                        with cols[idx]:
+                            cor = "green" if "Alta" in gap['Tipo'] else "red"
+                            st.markdown(f"### {gap['Tipo']}")
+                            st.metric("Topo da Zona", f"R$ {gap['Limite Superior']:.2f}")
+                            st.metric("Fundo da Zona", f"R$ {gap['Limite Inferior']:.2f}")
+                            st.caption(f"Detectado em: {gap['Data']}")
                     
+                    st.divider()
+                    # Tabela completa com histórico
+                    df_final = pd.DataFrame(lista_gaps).sort_index(ascending=False)
+                    st.dataframe(df_final, use_container_width=True)
+                else:
+                    st.success("Mercado em equilíbrio. Nenhum Gap relevante encontrado.")
             else:
-                st.error("Dados insuficientes para este ativo.")
+                st.error("Ativo não encontrado ou dados insuficientes.")
         except Exception as e:
-            st.error(f"Erro na conexão: {e}")
+            st.error(f"Erro no processamento: {e}")
