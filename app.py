@@ -699,7 +699,7 @@ else:
                     except Exception as e: st.error(f"Erro: {e}")
 
     # ==========================================
-    # ABA 5: RAIO-X FUTUROS (VERSÃO FINAL DETALHADA)
+    # ABA 5: RAIO-X FUTUROS (VERSÃO FINAL BLINDADA)
     # ==========================================
     with aba_futuros:
         st.subheader("📈 Raio-X Mercado Futuro (WIN, WDO, etc)")
@@ -732,8 +732,8 @@ else:
         if btn_raiox_futuros:
             if fut_tempo == '5m': fut_periodo = '1mo'
             elif fut_tempo == '15m' and fut_periodo in ['1y', '2y', '5y', 'max']: fut_periodo = '6mo'
-                
             intervalo_tv = tradutor_intervalo.get(fut_tempo, Interval.in_daily)
+            
             with st.spinner(f'Analisando {fut_selecionado}...'):
                 try:
                     df_full = tv.get_hist(symbol=fut_ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=10000)
@@ -753,18 +753,30 @@ else:
                         col_data = df_back.columns[0]
 
                         for i in range(1, len(df_back)):
-                            if em_pos and fut_zerar_17h and df_back[col_data].iloc[i].hour >= 17:
+                            # --- GARANTIA DE HORÁRIO ---
+                            try:
+                                h_atual = df_back[col_data].iloc[i].hour
+                            except:
+                                h_atual = pd.to_datetime(df_back[col_data].iloc[i]).hour
+                            
+                            # 1. ZERAGEM COMPULSÓRIA ÀS 17H (DAY TRADE)
+                            if em_pos and fut_zerar_17h and h_atual >= 17:
                                 preco_saida = df_back['Close'].iloc[i]
-                                p_ent = preco_medio if fut_estrategia == "PM Dinâmico" else preco_entrada
-                                qtd = contratos_atuais if fut_estrategia == "PM Dinâmico" else fut_contratos
-                                lucro_rs = (preco_saida - p_ent) * qtd * fut_multiplicador
-                                status = 'Ganho (17h) ✅' if lucro_rs > 0 else 'Perda (17h) ❌'
-                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': lucro_rs, 'Situação': status})
+                                p_ent_calc = preco_medio if fut_estrategia == "PM Dinâmico" else preco_entrada
+                                qtd_calc = contratos_atuais if fut_estrategia == "PM Dinâmico" else fut_contratos
+                                lucro_rs = (preco_saida - p_ent_calc) * qtd_calc * fut_multiplicador
+                                status_z = 'Ganho (17h) ✅' if lucro_rs > 0 else 'Perda (17h) ❌'
+                                trades.append({
+                                    'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'),
+                                    'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'),
+                                    'Lucro (R$)': lucro_rs, 'Situação': status_z
+                                })
                                 if lucro_rs > 0: vitorias += 1
                                 else: derrotas += 1
                                 em_pos = False
                                 continue
 
+                            # 2. SINAL DE ENTRADA (IFR)
                             cond_ent = (df_back['IFR_Prev'].iloc[i] < 25) and (df_back['IFR'].iloc[i] >= 25)
                             
                             if fut_estrategia == "PM Dinâmico":
@@ -785,22 +797,25 @@ else:
                                     if fut_estrategia == "Alvo & Stop Loss" and df_back['Low'].iloc[i] <= stop_p:
                                         trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': -(fut_stop * fut_contratos * fut_multiplicador), 'Situação': 'Perda ❌'})
                                         em_pos, derrotas = False, derrotas + 1
+                                        continue
                                     elif df_back['High'].iloc[i] >= take_p:
                                         trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': df_back[col_data].iloc[i].strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': fut_alvo * fut_contratos * fut_multiplicador, 'Situação': 'Ganho ✅'})
                                         em_pos, vitorias = False, vitorias + 1
+                                        continue
                                 if cond_ent and not em_pos:
                                     em_pos, d_ent, preco_entrada = True, df_back[col_data].iloc[i], df_back['Close'].iloc[i]
                                     take_p, stop_p = preco_entrada + fut_alvo, preco_entrada - fut_stop
 
+                        # --- EXIBIÇÃO FINAL ---
                         st.divider()
                         st.markdown(f"### 📊 Resultado: {fut_selecionado}")
-                        st.caption(f"📅 Período: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
                         if trades:
                             df_t = pd.DataFrame(trades)
                             lucro_t = df_t['Lucro (R$)'].sum()
                             vits_df = df_t[df_t['Lucro (R$)'] > 0]
                             media_g = vits_df['Lucro (R$)'].mean() if not vits_df.empty else 0
-                            media_p = abs(df_t[df_t['Lucro (R$)'] <= 0]['Lucro (R$)'].mean()) if not df_t[df_t['Lucro (R$)'] <= 0].empty else 1
+                            derrs_df = df_t[df_t['Lucro (R$)'] <= 0]
+                            media_p = abs(derrs_df['Lucro (R$)'].mean()) if not derrs_df.empty else 1
                             payoff = media_g / media_p
                             t_acerto = (len(vits_df) / len(df_t)) * 100
                             t_critica = (1 / (1 + (payoff if payoff > 0 else 0.01))) * 100
@@ -811,7 +826,7 @@ else:
                             m2.metric("Operações", len(df_t))
                             m3.metric("Taxa Acerto", f"{t_acerto:.1f}%")
                             m4.metric("Payoff", f"{payoff:.2f}")
-                            m5.metric("V / D", f"{len(vits_df)} / {len(df_t)-len(vits_df)}")
+                            m5.metric("V / D", f"{len(vits_df)} / {len(derrs_df)}")
                             
                             if payoff > 1:
                                 st.success(f"🎯 **Expectativa Positiva:** Para cada R$ 1,00 arriscado, você ganha R$ {payoff:.2f}. Acerto mínimo necessário: {t_critica:.1f}%.")
@@ -821,5 +836,6 @@ else:
                                 st.error(f"🚨 **Expectativa Negativa:** Seu acerto de {t_acerto:.1f}% está abaixo do crítico ({t_critica:.1f}%) para este Payoff.")
                             
                             st.dataframe(df_t, use_container_width=True, hide_index=True)
-                        else: st.warning("Sem trades.")
+                        else:
+                            st.warning("Sem trades encontrados.")
                 except Exception as e: st.error(f"Erro: {e}")
