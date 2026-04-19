@@ -706,8 +706,11 @@ with aba_futuros:
                                 'Lucro (R$)': luc, 
                                 'Situação': 'Zerad. Fim Dia ✅' if luc > 0 else 'Zerad. Fim Dia ❌'
                             })
-                            if luc > 0: vitorias += 1
-                            else: derrotas += 1
+                            if luc > 0: 
+                                vitorias += 1
+                            else: 
+                                derrotas += 1
+                                
                             posicao, setup_compra, setup_venda, saida_armada = 0, False, False, False
                             continue
 
@@ -724,7 +727,11 @@ with aba_futuros:
                                 if df_back['Low'].iloc[i] < gatilho_saida:
                                     luc = (gatilho_saida - preco_entrada) * fut_contratos * fut_multiplicador
                                     trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': d_at.strftime('%d/%m/%Y %H:%M'), 'Tipo': 'Compra 🟢', 'Lucro (R$)': luc, 'Situação': 'Saída Técnica ✅' if luc > 0 else 'Saída Técnica ❌'})
-                                    if luc > 0: vitorias += 1 else: derrotas += 1
+                                    if luc > 0: 
+                                        vitorias += 1 
+                                    else: 
+                                        derrotas += 1
+                                        
                                     posicao, saida_armada = 0, False
                                     continue
                                 elif media_saida_subindo:
@@ -746,7 +753,11 @@ with aba_futuros:
                                 if df_back['High'].iloc[i] > gatilho_saida:
                                     luc = (preco_entrada - gatilho_saida) * fut_contratos * fut_multiplicador
                                     trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': d_at.strftime('%d/%m/%Y %H:%M'), 'Tipo': 'Venda 🔴', 'Lucro (R$)': luc, 'Situação': 'Saída Técnica ✅' if luc > 0 else 'Saída Técnica ❌'})
-                                    if luc > 0: vitorias += 1 else: derrotas += 1
+                                    if luc > 0: 
+                                        vitorias += 1 
+                                    else: 
+                                        derrotas += 1
+                                        
                                     posicao, saida_armada = 0, False
                                     continue
                                 elif media_saida_caindo:
