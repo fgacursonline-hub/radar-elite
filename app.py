@@ -1,64 +1,31 @@
 import streamlit as st
 
-# 1. CONFIGURAÇÃO DA PÁGINA (DEVE SER A PRIMEIRA LINHA)
-st.set_page_config(
-    page_title="Radar Elite", 
-    layout="wide", 
-    initial_sidebar_state="collapsed"
-)
+# 1. Configuração da Página (Primeira linha sempre)
+st.set_page_config(page_title="Radar Elite", layout="wide", initial_sidebar_state="collapsed")
 
-# 2. SISTEMA DE LOGIN COM MENU OCULTO
+# 2. Controle de Sessão
 if 'autenticado' not in st.session_state:
     st.session_state['autenticado'] = False
 
+# 3. Tela de Login (Apenas se não estiver logado)
 if not st.session_state['autenticado']:
-    # CSS para esconder o menu lateral completamente antes do login
-    st.markdown("""
-        <style>
-            [data-testid="stSidebar"] {display: none;}
-            [data-testid="stSidebarNav"] {display: none;}
-            .stDeployButton {display:none;}
-        </style>
-    """, unsafe_allow_html=True)
-
-    # Centraliza o formulário de login na tela
-    _, col_login, _ = st.columns([1, 1, 1])
+    # CSS para esconder o menu lateral antes do login
+    st.markdown("<style>[data-testid='stSidebar'] {display: none;} [data-testid='stSidebarNav'] {display: none;}</style>", unsafe_allow_html=True)
     
+    _, col_login, _ = st.columns([1, 1, 1])
     with col_login:
-        st.markdown("<br><br><br>", unsafe_allow_html=True)
-        st.markdown("### 🔐 Radar Elite")
-        st.caption("Acesso exclusivo para membros do curso.")
-        
-        senha = st.text_input("Senha de acesso:", type="password", placeholder="Sua senha...")
-        
-        if st.button("Acessar Plataforma", use_container_width=True):
-            # AJUSTE AQUI: Coloque a sua senha real entre as aspas
-            if senha == "1234": 
+        st.markdown("<br><br>### 🎯 Caçadores de Elite<br>", unsafe_allow_html=True)
+        usuario = st.text_input("Usuário").lower().strip()
+        senha = st.text_input("Senha", type="password")
+        if st.button("Entrar no Sistema", use_container_width=True):
+            # Verificação simples (adicione seus usuários aqui)
+            if usuario == "admin" and senha == "suasenhaforte":
                 st.session_state['autenticado'] = True
                 st.rerun()
             else:
-                st.error("Senha incorreta. Tente novamente.")
-    
-    st.stop() # Interrompe a execução aqui se não estiver logado
+                st.error("Usuário ou senha incorretos.")
+    st.stop()
 
-# 3. CONTEÚDO APÓS LOGIN (A HOME DA PLATAFORMA)
-# O menu lateral aparecerá automaticamente agora que o código passou pelo st.stop()
-st.title("🎯 Bem-vindo ao Radar Elite")
-st.markdown("---")
-
-col_info, col_img = st.columns([2, 1])
-
-with col_info:
-    st.subheader("Olá, Caçador!")
-    st.markdown("""
-    Sua plataforma multipáginas está configurada e protegida.
-    
-    👈 **Navegue pelo Menu Lateral:** Selecione a estratégia que deseja operar (IFR, Keltner ou Médias). 
-    Dentro de cada uma, você encontrará os radares e backtests específicos.
-    """)
-    
-    st.info("💡 **Dica:** Cada estratégia agora carrega de forma independente, o que torna o sistema muito mais rápido.")
-
-with col_img:
-    st.write("📡 **Status do Sistema:** Operacional")
-    st.caption("Versão 2.0 - 2026")
+# 4. Conteúdo Pós-Login (Home)
+st.title("🎯 Bem-vindo, Caçador!")
+st.write("A plataforma está liberada. Escolha uma estratégia no menu lateral à esquerda.")
