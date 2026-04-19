@@ -806,6 +806,10 @@ else:
                         if trades:
                             df_t = pd.DataFrame(trades)
                             st.divider()
+                            st.markdown(f"### 📊 Resultado: {fut_selecionado}")
+                            
+                            # --- LINHA QUE VOLTOU: PERÍODO ANALISADO ---
+                            st.caption(f"📅 Período: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
                             
                             l_total = df_t['Lucro (R$)'].sum()
                             vits_df = df_t[df_t['Lucro (R$)'] > 0]
@@ -831,7 +835,7 @@ else:
                             elif margem > 0:
                                 st.info(f"⚖️ **Alerta de Equilíbrio:** Seu Payoff é baixo ({p_off:.2f}), mas o acerto compensa. Gordura de {margem:.1f}% acima do crítico.")
                             else:
-                                st.error(f"🚨 **Expectativa Negativa:** Acerto de {t_acerto:.1f}% abaixo do crítico ({t_critica:.1f}%).")
+                                st.error(f"🚨 **Expectativa Negativa:** Seu acerto de {t_acerto:.1f}% está abaixo do crítico ({t_critica:.1f}%).")
 
                             st.dataframe(df_t, use_container_width=True, hide_index=True)
                         else:
