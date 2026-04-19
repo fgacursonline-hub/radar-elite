@@ -695,4 +695,160 @@ with aba_individual:
                         else:
                             st.warning("Nenhuma operação concluída usando essa estratégia neste período.")
                 except Exception as e: st.error(f"Erro: {e}")
-with aba_futuros: st.info("Pronto para receber o Raio-X Futuros do Keltner.")
+# ==========================================
+# ABA 5: RAIO-X FUTUROS (VERSÃO FINAL KELTNER)
+# ==========================================
+with aba_futuros:
+    st.subheader("📈 Raio-X Mercado Futuro (WIN, WDO) - Keltner")
+    st.markdown("Focado em **15 minutos** para garantir a estabilidade do backtest. As entradas ocorrem ao tocar a Banda Inferior.")
+    
+    cf1, cf2, cf3 = st.columns(3)
+    with cf1:
+        mapa_futuros = {"WINFUT (Mini Índice)": "WIN1!", "WDOFUT (Mini Dólar)": "WDO1!"}
+        fut_selecionado = st.selectbox("Selecione o Ativo:", options=list(mapa_futuros.keys()), key="f5k_ativo")
+        fut_ativo = mapa_futuros[fut_selecionado] 
+        fut_estrategia = st.selectbox("Estratégia:", ["Padrão (Sem PM)", "PM Dinâmico", "Alvo & Stop Loss"], key="f5k_est")
+        fut_periodo = st.selectbox("Período:", options=['3mo', '6mo', '1y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=1, key="f5k_per")
+    with cf2:
+        fut_alvo = st.number_input("Alvo (Pontos):", value=300, step=50, key="f5k_alvo")
+        
+        # --- LÓGICA DINÂMICA (PONTOS) ---
+        if fut_estrategia == "Alvo & Stop Loss":
+            fut_stop = st.number_input("Stop Loss (Pontos):", value=200, step=50, key="f5k_stop")
+            fut_pm_drop = 150 # Neutro
+        elif fut_estrategia == "PM Dinâmico":
+            fut_pm_drop = st.number_input("Queda p/ novo PM (Pontos):", value=150, step=50, key="f5k_drop")
+            fut_stop = 0
+        else:
+            fut_stop = 0 
+            fut_pm_drop = 150
+            st.write("") 
+            
+        fut_contratos = st.number_input("Contratos Iniciais:", value=1, step=1, key="f5k_cont")
+    with cf3:
+        valor_mult_padrao = 0.20 if "WIN" in fut_selecionado else 10.00
+        fut_multiplicador = st.number_input("Multiplicador (R$):", value=valor_mult_padrao, step=0.10, format="%.2f", key="f5k_mult")
+        fut_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d'], index=0, key="f5k_tmp")
+        fut_keltner = st.number_input("Multiplicador Keltner:", min_value=0.5, max_value=10.0, value=3.0, step=0.1, key="f5k_kmult")
+        
+    fut_zerar_daytrade = st.checkbox("⏰ Zeragem Automática no Fim do Dia", value=True, key="f5k_zerar")
+    btn_raiox_futuros = st.button("🚀 Gerar Raio-X", type="primary", use_container_width=True, key="f5k_btn")
+
+    if btn_raiox_futuros:
+        intervalo_tv = tradutor_intervalo.get(fut_tempo, Interval.in_15_minute)
+        with st.spinner(f'A analisar {fut_selecionado}...'):
+            try:
+                df_full = tv.get_hist(symbol=fut_ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=10000)
+                if df_full is not None and len(df_full) > 50:
+                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                    
+                    # --- CÁLCULO DO KELTNER ---
+                    kc = ta.kc(df_full['High'], df_full['Low'], df_full['Close'], length=20, scalar=fut_keltner)
+                    coluna_inferior = [c for c in kc.columns if c.startswith('KCL')][0]
+                    df_full['Keltner_Inf'] = kc[coluna_inferior]
+                    df_full = df_full.dropna()
+
+                    data_atual_dt = df_full.index[-1]
+                    delta = {'3mo': 3, '6mo': 6, '1y': 12}.get(fut_periodo, 0)
+                    data_corte = data_atual_dt - pd.DateOffset(months=delta) if delta > 0 else df_full.index[0]
+                    df = df_full[df_full.index >= data_corte].copy()
+                    
+                    trades, em_pos, vitorias, derrotas = [], False, 0, 0
+                    df_back = df.reset_index()
+                    col_data = df_back.columns[0]
+
+                    for i in range(1, len(df_back)):
+                        d_at = df_back[col_data].iloc[i]
+                        d_ant = df_back[col_data].iloc[i-1]
+                        
+                        # --- LÓGICA DE ZERAGEM NO FIM DO DIA ---
+                        if em_pos and fut_zerar_daytrade and d_at.date() != d_ant.date():
+                            p_sai = df_back['Close'].iloc[i-1]
+                            p_en_c = preco_medio if fut_estrategia == "PM Dinâmico" else preco_entrada
+                            qtd_c = contratos_atuais if fut_estrategia == "PM Dinâmico" else fut_contratos
+                            luc = (p_sai - p_en_c) * qtd_c * fut_multiplicador
+                            trades.append({
+                                'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 
+                                'Saída': d_ant.strftime('%d/%m/%Y %H:%M'), 
+                                'Lucro (R$)': luc, 
+                                'Situação': 'Zerad. Fim Dia ✅' if luc > 0 else 'Zerad. Fim Dia ❌'
+                            })
+                            if luc > 0: vitorias += 1
+                            else: derrotas += 1
+                            em_pos = False
+
+                        # CONDIÇÃO DE ENTRADA KELTNER
+                        cond_ent = df_back['Low'].iloc[i] <= df_back['Keltner_Inf'].iloc[i]
+                        
+                        if em_pos:
+                            if fut_estrategia == "PM Dinâmico":
+                                if df_back['High'].iloc[i] >= take_profit:
+                                    luc = fut_alvo * contratos_atuais * fut_multiplicador
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': d_at.strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': luc, 'Situação': 'Gain Atingido ✅'})
+                                    em_pos, vitorias = False, vitorias + 1
+                                    continue
+                                elif df_back['Low'].iloc[i] <= next_pm_price:
+                                    preco_compra = next_pm_price
+                                    # Recálculo do Preço Médio
+                                    preco_medio = ((preco_medio * contratos_atuais) + (preco_compra * fut_contratos)) / (contratos_atuais + fut_contratos)
+                                    contratos_atuais += fut_contratos
+                                    take_profit = preco_medio + fut_alvo
+                                    next_pm_price = preco_compra - fut_pm_drop
+                            else:
+                                if fut_estrategia == "Alvo & Stop Loss" and df_back['Low'].iloc[i] <= stop_p:
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': d_at.strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': -(fut_stop * fut_contratos * fut_multiplicador), 'Situação': 'Stop Acionado ❌'})
+                                    em_pos, derrotas = False, derrotas + 1
+                                    continue
+                                elif df_back['High'].iloc[i] >= take_p:
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': d_at.strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': fut_alvo * fut_contratos * fut_multiplicador, 'Situação': 'Gain Atingido ✅'})
+                                    em_pos, vitorias = False, vitorias + 1
+                                    continue
+                        
+                        if cond_ent and not em_pos:
+                            em_pos, d_ent = True, d_at
+                            preco_entrada = df_back['Keltner_Inf'].iloc[i]
+                            if fut_estrategia == "PM Dinâmico":
+                                preco_medio, contratos_atuais = preco_entrada, fut_contratos
+                                take_profit = preco_medio + fut_alvo
+                                next_pm_price = preco_entrada - fut_pm_drop
+                            else:
+                                take_p, stop_p = preco_entrada + fut_alvo, preco_entrada - fut_stop
+
+                    # --- PAINEL DE RESULTADOS (IDÊNTICO AO IFR) ---
+                    if trades:
+                        df_t = pd.DataFrame(trades)
+                        st.divider()
+                        st.markdown(f"### 📊 Resultado: {fut_selecionado}")
+                        st.caption(f"📅 Período: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
+                        
+                        l_total = df_t['Lucro (R$)'].sum()
+                        vits_df = df_t[df_t['Lucro (R$)'] > 0]
+                        derrs_df = df_t[df_t['Lucro (R$)'] <= 0]
+                        t_acerto = (len(vits_df) / len(df_t)) * 100
+                        
+                        m_ganho = vits_df['Lucro (R$)'].mean() if not vits_df.empty else 0
+                        m_perda = abs(derrs_df['Lucro (R$)'].mean()) if not derrs_df.empty else 1
+                        p_off = m_ganho / m_perda
+                        
+                        t_critica = (1 / (1 + (p_off if p_off > 0 else 0.01))) * 100
+                        margem = t_acerto - t_critica
+
+                        m1, m2, m3, m4, m5 = st.columns(5)
+                        m1.metric("Lucro Total", f"R$ {l_total:,.2f}", delta=f"{l_total:,.2f}")
+                        m2.metric("Operações", len(df_t))
+                        m3.metric("Taxa Acerto", f"{t_acerto:.1f}%")
+                        m4.metric("Payoff", f"{p_off:.2f}")
+                        m5.metric("V / D", f"{len(vits_df)} / {len(derrs_df)}")
+                        
+                        if l_total > 0:
+                            if p_off > 1:
+                                st.success(f"🎯 **Expectativa Real Positiva:** Você está vencendo o mercado! Para cada R$ 1,00 arriscado, ganha R$ {p_off:.2f}. Margem de gordura: {margem:.1f}% acima do crítico.")
+                            else:
+                                st.info(f"⚖️ **Alerta de Equilíbrio:** Saldo positivo, mas payoff baixo ({p_off:.2f}). Sua alta taxa de acerto é que está salvando a estratégia. Cuidado!")
+                        else:
+                            st.error(f"🚨 **Expectativa Negativa:** O saldo de R$ {l_total:,.2f} mostra que a conta não fecha. Você precisa acertar mais de {t_critica:.1f}% para este Payoff, ou aumentar seu alvo.")
+
+                        st.dataframe(df_t, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning("Nenhuma operação encontrada no período selecionado.")
+            except Exception as e: st.error(f"Erro ao processar: {e}")
