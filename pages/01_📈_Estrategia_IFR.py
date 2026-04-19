@@ -207,7 +207,145 @@ with aba_padrao:
             st.warning("Nenhuma operação finalizada.")
 
 # ESPAÇO PARA AS PRÓXIMAS ABAS
-with aba_pm: st.info("Pronto para receber o código da Aba 2.")
+# ==========================================
+# ABA 2: RADAR EM MASSA (PM DINÂMICO) - SEU CÓDIGO ÍNTEGRO
+# ==========================================
+with aba_pm:
+    st.subheader("📡 Radar PM Dinâmico")
+    st.markdown("O robô defende a posição fazendo novos aportes a cada novo sinal de entrada, reduzindo o preço médio.")
+    
+    st.markdown("##### ⚙️ Configurações da Varredura")
+    cr1, cr2, cr3 = st.columns(3)
+    with cr1:
+        lista_pm = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="r1_lista")
+        ativos_pm = bdrs_elite if lista_pm == "BDRs Elite" else ibrx_selecao if lista_pm == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        periodo_pm = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="r1_per")
+    with cr2:
+        alvo_pm = st.number_input("Alvo (%):", value=3.0, step=0.5, key="r1_alvo")
+        ifr_pm = st.number_input("Período do IFR:", min_value=2, max_value=50, value=8, step=1, key="r1_ifr")
+    with cr3:
+        capital_pm = st.number_input("Capital por Sinal (R$):", value=10000.0, step=1000.0, key="r1_cap")
+        tempo_pm = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="r1_tmp")
+        
+    btn_iniciar_pm = st.button("🚀 Iniciar Varredura PM", type="primary", use_container_width=True, key="r1_btn")
+
+    if btn_iniciar_pm:
+        if tempo_pm == '15m' and periodo_pm not in ['1mo', '3mo']: periodo_pm = '60d'
+        elif tempo_pm == '60m' and periodo_pm in ['5y', 'max']: periodo_pm = '2y'
+
+        intervalo_tv = tradutor_intervalo.get(tempo_pm, Interval.in_daily)
+        alvo_decimal = alvo_pm / 100
+
+        lista_sinais, lista_abertos, lista_resumo = [], [], []
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        for idx, ativo_raw in enumerate(ativos_pm):
+            ativo = ativo_raw.replace('.SA', '')
+            status_text.text(f"🔍 Analisando (PM): {ativo} ({idx+1}/{len(ativos_pm)})")
+            progress_bar.progress((idx + 1) / len(ativos_pm))
+
+            try:
+                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                if df_full is None or len(df_full) < 50: continue
+
+                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                df_full = df_full.dropna()
+                
+                df_full['IFR'] = ta.rsi(df_full['Close'], length=ifr_pm)
+                df_full['IFR_Prev'] = df_full['IFR'].shift(1)
+                df_full = df_full.dropna()
+
+                # Lógica de Data de Corte
+                data_atual = df_full.index[-1]
+                if periodo_pm == '1mo': data_corte = data_atual - pd.DateOffset(months=1)
+                elif periodo_pm == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
+                elif periodo_pm == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
+                elif periodo_pm == '1y': data_corte = data_atual - pd.DateOffset(years=1)
+                elif periodo_pm == '2y': data_corte = data_atual - pd.DateOffset(years=2)
+                elif periodo_pm == '5y': data_corte = data_atual - pd.DateOffset(years=5)
+                elif periodo_pm == '60d': data_corte = data_atual - pd.DateOffset(days=60)
+                else: data_corte = df_full.index[0]
+
+                df = df_full[df_full.index >= data_corte].copy()
+                if len(df) == 0: continue
+
+                trades, em_pos = [], False
+                df_back = df.reset_index()
+                col_data = df_back.columns[0]
+
+                for i in range(1, len(df_back)):
+                    if em_pos:
+                        if df_back['Low'].iloc[i] < min_price_in_trade: 
+                            min_price_in_trade = df_back['Low'].iloc[i]
+                        if df_back['High'].iloc[i] >= take_profit:
+                            lucro_rs = capital_total * alvo_decimal
+                            trades.append({'Lucro (R$)': lucro_rs, 'Drawdown_Raw': ((min_price_in_trade / preco_entrada_inicial) - 1) * 100})
+                            em_pos = False
+                            continue 
+
+                    condicao_entrada = (df_back['IFR_Prev'].iloc[i] < 25) and (df_back['IFR'].iloc[i] >= 25)
+                    if condicao_entrada:
+                        if not em_pos:
+                            em_pos = True
+                            d_ent = df_back[col_data].iloc[i]
+                            preco_entrada_inicial = df_back['Close'].iloc[i]
+                            min_price_in_trade = df_back['Low'].iloc[i]
+                            qtd_pms = 0
+                            preco_compra = preco_entrada_inicial
+                            capital_total = float(capital_pm)
+                            qtd_acoes = capital_total / preco_compra
+                            preco_medio = preco_compra
+                            take_profit = preco_medio * (1 + alvo_decimal)
+                        else:
+                            qtd_pms += 1
+                            preco_compra = df_back['Close'].iloc[i]
+                            capital_total += float(capital_pm)
+                            qtd_acoes += float(capital_pm) / preco_compra
+                            preco_medio = capital_total / qtd_acoes
+                            take_profit = preco_medio * (1 + alvo_decimal)
+
+                if em_pos:
+                    queda_maxima = ((min_price_in_trade / preco_entrada_inicial) - 1) * 100
+                    resultado_atual = ((df_back['Close'].iloc[-1] / preco_medio) - 1) * 100
+                    lista_abertos.append({
+                        'Ativo': ativo, 'Entrada': d_ent.strftime('%d/%m %H:%M') if tempo_pm in ['15m', '60m'] else d_ent.strftime('%d/%m/%Y'),
+                        'Dias': (df_back[col_data].iloc[-1] - d_ent).days, 'PM': f"R$ {preco_medio:.2f}",
+                        'Cotação Atual': f"R$ {df_back['Close'].iloc[-1]:.2f}", 'Prej. Máx': f"{queda_maxima:.2f}%",
+                        'Resultado Atual': f"+{resultado_atual:.2f}%" if resultado_atual > 0 else f"{resultado_atual:.2f}%",
+                        'Fez PM?': f"Sim ({qtd_pms}x)" if qtd_pms > 0 else 'Não'
+                    })
+                else:
+                    tem_sinal = (df_full['IFR_Prev'].iloc[-1] < 25) and (df_full['IFR'].iloc[-1] >= 25)
+                    if tem_sinal: lista_sinais.append({'Ativo': ativo, 'Preço Atual': f"R$ {df_full['Close'].iloc[-1]:.2f}"})
+
+                if len(trades) > 0:
+                    df_t = pd.DataFrame(trades)
+                    lista_resumo.append({'Ativo': ativo, 'Trades': len(df_t), 'Pior Queda': f"{df_t['Drawdown_Raw'].min():.2f}%", 'Lucro R$': df_t['Lucro (R$)'].sum()})
+
+            except Exception as e: pass
+            time.sleep(0.05)
+
+        status_text.empty()
+        progress_bar.empty()
+
+        # --- EXIBIÇÃO DOS RESULTADOS (ESTILO ORIGINAL) ---
+        st.subheader(f"🚀 Oportunidades Hoje (PM | IFR {ifr_pm})")
+        if len(lista_sinais) > 0: st.dataframe(pd.DataFrame(lista_sinais), use_container_width=True, hide_index=True)
+        else: st.info("Nenhum ativo deu sinal de entrada na última barra.")
+
+        st.subheader("⏳ Operações em Andamento (PM)")
+        if len(lista_abertos) > 0:
+            df_abertos = pd.DataFrame(lista_abertos).sort_values(by='Dias', ascending=False)
+            st.dataframe(df_abertos.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
+        else: st.success("Sua carteira está limpa.")
+
+        st.subheader(f"📊 Top 10 Histórico ({tradutor_periodo_nome.get(periodo_pm, periodo_pm)})")
+        if len(lista_resumo) > 0:
+            df_resumo = pd.DataFrame(lista_resumo).sort_values(by='Lucro R$', ascending=False).head(10)
+            df_resumo['Lucro R$'] = df_resumo['Lucro R$'].apply(lambda x: f"R$ {x:,.2f}")
+            st.dataframe(df_resumo, use_container_width=True, hide_index=True)
+        else: st.warning("Nenhuma operação finalizada.")
 with aba_stop: st.info("Pronto para receber o código da Aba 3.")
 with aba_individual: st.info("Pronto para receber o código da Aba 4.")
 with aba_futuros: st.info("Pronto para receber o código da Aba 5.")
