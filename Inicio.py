@@ -105,17 +105,18 @@ with c3:
 st.divider()
 
 # ==========================================
-# NOVO: FEED DE NOTÍCIAS
+# 4. NOTÍCIAS DO MERCADO EM PORTUGUÊS (BR)
 # ==========================================
-st.subheader("📰 Radar de Notícias em Tempo Real")
-st.markdown("Fatos relevantes, balanços e movimentações globais que afetam o seu operacional.")
+st.subheader("📰 Radar de Notícias - Brasil & Mundo")
+st.markdown("Fatos relevantes e notícias do mercado em português.")
 
-codigo_noticias = """
+codigo_noticias_br = """
 <div class="tradingview-widget-container">
   <div class="tradingview-widget-container__widget"></div>
   <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-timeline.js" async>
   {
-  "feedMode": "all_symbols",
+  "feedMode": "market",
+  "market": "stock",
   "colorTheme": "dark",
   "isTransparent": true,
   "displayMode": "regular",
@@ -126,6 +127,9 @@ codigo_noticias = """
   </script>
 </div>
 """
+
+# Renderiza as notícias com foco no mercado brasileiro
+components.html(codigo_noticias_br, height=600, scrolling=True)
 # Renderiza as notícias com 600px de altura
 components.html(codigo_noticias, height=600, scrolling=True)
 
