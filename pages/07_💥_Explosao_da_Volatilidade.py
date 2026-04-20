@@ -60,10 +60,10 @@ ibrx_selecao = [
 # ==========================================
 col_titulo, col_botao = st.columns([4, 1])
 with col_titulo:
-    st.title("💥 Explosão da Volatilidade (Latinha)")
+    st.title("💥 Explosão da Volatilidade (Mola)")
 with col_botao:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-    st.link_button("📖 Ler Manual", "https://seusite.com/manual_latinha", use_container_width=True)
+    st.link_button("📖 Ler Manual", "https://seusite.com/manual_mola", use_container_width=True)
 
 aba_radar, aba_individual = st.tabs(["📡 Radar (Setups Armados)", "🔬 Raio-X Individual"])
 
@@ -71,13 +71,13 @@ aba_radar, aba_individual = st.tabs(["📡 Radar (Setups Armados)", "🔬 Raio-X
 # ABA 1: RADAR DE COMPRESSÃO (NR4 / NR7)
 # ==========================================
 with aba_radar:
-    st.subheader("📡 Radar de Latinhas Chacoalhadas")
+    st.subheader("📡 Radar de Mola Comprimida")
     st.markdown("Varre o mercado em busca de ativos em congestão que formaram o menor candle dos últimos 4 (NR4) ou 7 (NR7) períodos. Uma mola pronta para disparar.")
     
     c1, c2, c3 = st.columns(3)
     with c1:
         lista_sel = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="lat_lst")
-        tipo_setup = st.selectbox("Setup de Volatilidade:", ["NR4 (Latinha Clássica)", "NR7 (Latinha Estendida)"], key="lat_setup")
+        tipo_setup = st.selectbox("Setup de Volatilidade:", ["NR4 (Mola Clássica)", "NR7 (Mola Estendida)"], key="lat_setup")
     with c2:
         tempo_grafico = st.selectbox("Tempo Gráfico:", ['1d', '1wk', '60m', '15m'], index=0, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="lat_tmp")
         tipo_filtro = st.selectbox("Filtro de Congestão (Caixote):", [
@@ -87,7 +87,7 @@ with aba_radar:
             "Sem Filtro (Basta ser NR4/NR7)"
         ], key="lat_filtro")
     with c3:
-        st.info("💡 **Ação:** Rompendo a máxima, é Compra. Perdendo a mínima, é Venda. O Stop inicial fica no outro extremo da 'Latinha'.")
+        st.info("💡 **Ação:** Rompendo a máxima, é Compra. Perdendo a mínima, é Venda. O Stop inicial fica no outro extremo da 'Mola'.")
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
     btn_iniciar = st.button(f"🚀 Caçar Setups {tipo_setup[:3]} Armados Hoje", type="primary", use_container_width=True)
@@ -113,7 +113,7 @@ with aba_radar:
 
                 df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 
-                # --- MATEMÁTICA DA LATINHA (NR4/NR7) ---
+                # --- MATEMÁTICA DA MOLA (NR4/NR7) ---
                 df['Range'] = df['High'] - df['Low']
                 df[f'Min_Range_{janela_nr}'] = df['Range'].rolling(window=janela_nr).min()
                 df['Is_Latinha'] = df['Range'] == df[f'Min_Range_{janela_nr}']
@@ -174,4 +174,4 @@ with aba_radar:
 # ABA 2: RAIO-X INDIVIDUAL (A FAZER)
 # ==========================================
 with aba_individual:
-    st.info("Em breve: Backtest completo para analisar a rentabilidade da Latinha no passado.")
+    st.info("Em breve: Backtest completo para analisar a rentabilidade da mola no passado.")
