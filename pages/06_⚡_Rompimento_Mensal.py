@@ -229,7 +229,7 @@ with aba_backtest:
 # ==========================================
 with aba_raio_x:
     st.subheader("🔬 Simulador de Resultados Históricos (Individual)")
-    st.markdown("Audite cada entrada, saída (Gain ou Loss) e analise as métricas totais do ativo.")
+    st.markdown("Audite cada entrada, saída (Gain ou Loss), duração e o 'calor' máximo suportado na operação.")
     
     rx1, rx2, rx3, rx4 = st.columns(4)
     with rx1: 
@@ -241,7 +241,6 @@ with aba_raio_x:
     with rx3: 
         alvo_rx = st.number_input("Alvo de Ganho (%):", value=40.0, step=5.0, key="rx_alvo")
     with rx4:
-        # Nova caixa de seleção para habilitar/desabilitar o Stop
         usar_stop_rx = st.checkbox("Habilitar Stop Loss", value=True, key="rx_chk_stop")
         stop_rx = st.number_input("Stop Loss (%):", value=15.0, step=5.0, key="rx_stop", disabled=not usar_stop_rx)
 
@@ -267,33 +266,43 @@ with aba_raio_x:
                             em_trade = True
                             p_entrada = df['Close'].iloc[i]
                             p_alvo = p_entrada * (1 + (alvo_rx / 100))
-                            
-                            # Calcula o preço do stop apenas se estiver habilitado
                             p_stop = p_entrada * (1 - (stop_rx / 100)) if usar_stop_rx else 0
-                            
                             data_entrada = df.index[i]
+                            
+                            # Inicializa o rastreador de queda máxima
+                            preco_minimo_op = p_entrada
                     else:
+                        # Rastreia o menor preço alcançado durante o trade (O "Calor")
+                        if df['Low'].iloc[i] < preco_minimo_op:
+                            preco_minimo_op = df['Low'].iloc[i]
+                            
                         # Monitora Saída (Gain)
                         if df['High'].iloc[i] >= p_alvo:
                             dias_op = (df.index[i] - data_entrada).days
+                            queda_max = ((preco_minimo_op / p_entrada) - 1) * 100
+                            
                             trades.append({
                                 'Data Entrada': data_entrada.strftime('%d/%m/%Y'),
                                 'Preço Entrada': f"R$ {p_entrada:.2f}",
                                 'Data Saída': df.index[i].strftime('%d/%m/%Y'),
                                 'Preço Saída': f"R$ {p_alvo:.2f}",
+                                'Queda Máxima': f"{queda_max:.2f}%",
                                 'Duração': f"{dias_op} dias",
                                 'Resultado': f"🟢 GAIN"
                             })
                             em_trade = False
                             
-                        # Monitora Saída (Loss / Stop) - Só entra aqui se o Stop estiver habilitado
+                        # Monitora Saída (Loss / Stop)
                         elif usar_stop_rx and df['Low'].iloc[i] <= p_stop:
                             dias_op = (df.index[i] - data_entrada).days
+                            queda_max = ((preco_minimo_op / p_entrada) - 1) * 100
+                            
                             trades.append({
                                 'Data Entrada': data_entrada.strftime('%d/%m/%Y'),
                                 'Preço Entrada': f"R$ {p_entrada:.2f}",
                                 'Data Saída': df.index[i].strftime('%d/%m/%Y'),
                                 'Preço Saída': f"R$ {p_stop:.2f}",
+                                'Queda Máxima': f"{queda_max:.2f}%",
                                 'Duração': f"{dias_op} dias",
                                 'Resultado': f"🔴 LOSS"
                             })
@@ -307,7 +316,6 @@ with aba_raio_x:
                     
                     tx_acerto = (acertos / total_ops) * 100
                     
-                    # Se não usar stop, não existe payoff matemático calculável dessa forma
                     if usar_stop_rx and stop_rx > 0:
                         payoff_str = f"{(alvo_rx / stop_rx):.2f}"
                     else:
