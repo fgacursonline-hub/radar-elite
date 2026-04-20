@@ -189,3 +189,233 @@ with aba_radar:
 
 with aba_individual:
     st.info("Aba de Raio-X Individual em desenvolvimento. Próximo passo: Backtest de Alvos Matemáticos.")
+    # ==========================================
+# ABA 2: RAIO-X INDIVIDUAL (BACKTEST)
+# ==========================================
+with aba_individual:
+    st.subheader("🔬 Raio-X Individual: Laboratório de Backtest")
+    st.markdown("Teste o desempenho histórico da Compressão de Volatilidade e do Contra-Golpe em um ativo específico.")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        rx_ativo = st.text_input("Ativo (Ex: M1TA34):", value="M1TA34", key="rx_vol_ativo")
+        rx_periodo = st.selectbox("Período do Backtest:", options=['3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="rx_vol_per")
+    with col2:
+        rx_setup = st.selectbox("Estratégia de Elite:", [
+            "Mola Comprimida (NR4)", 
+            "Mola Mestra (NR7)", 
+            "Contra-Golpe Tático"
+        ], key="rx_vol_setup")
+        rx_filtro = st.selectbox("Filtro de Compressão:", [
+            "Bollinger Squeeze", 
+            "Médias Emboladas", 
+            "Sem Filtro"
+        ], key="rx_vol_filtro", disabled=("Contra-Golpe" in rx_setup))
+    with col3:
+        rx_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="rx_vol_tmp")
+        rx_capital = st.number_input("Capital por Operação (R$):", value=10000.0, step=1000.0, key="rx_vol_cap")
+        
+    btn_raiox = st.button(f"🔍 Gerar Raio-X: {rx_setup.split('(')[0].strip()}", type="primary", use_container_width=True)
+
+    if btn_raiox:
+        ativo_input = rx_ativo.strip().upper().replace('.SA', '')
+        if not ativo_input:
+            st.error("Digite o código de um ativo.")
+        else:
+            intervalo_tv = tradutor_intervalo.get(rx_tempo, Interval.in_daily)
+            with st.spinner(f'Processando histórico de {ativo_input}...'):
+                try:
+                    df_full = tv.get_hist(symbol=ativo_input, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                    if df_full is None or len(df_full) < 50:
+                        st.error("Dados insuficientes para este ativo.")
+                    else:
+                        df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                        
+                        # --- PREPARAÇÃO DE DADOS ---
+                        df_full['Range'] = df_full['High'] - df_full['Low']
+                        df_full['MM21'] = ta.sma(df_full['Close'], length=21)
+                        df_full['MME9'] = ta.ema(df_full['Close'], length=9)
+                        
+                        df_full['Cor'] = 'Verde'
+                        df_full.loc[df_full['Close'] < df_full['Open'], 'Cor'] = 'Vermelho'
+                        
+                        bb = ta.bbands(df_full['Close'], length=20, std=2)
+                        if bb is not None:
+                            df_full['BB_Width'] = (bb['BBU_20_2.0'] - bb['BBL_20_2.0']) / bb['BBM_20_2.0']
+                            df_full['BB_Width_Med'] = df_full['BB_Width'].rolling(20).mean()
+
+                        df_full = df_full.dropna()
+
+                        # Corte de Tempo
+                        data_atual = df_full.index[-1]
+                        if rx_periodo == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
+                        elif rx_periodo == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
+                        elif rx_periodo == '1y': data_corte = data_atual - pd.DateOffset(years=1)
+                        elif rx_periodo == '2y': data_corte = data_atual - pd.DateOffset(years=2)
+                        elif rx_periodo == '5y': data_corte = data_atual - pd.DateOffset(years=5)
+                        else: data_corte = df_full.index[0]
+
+                        df = df_full[df_full.index >= data_corte].copy()
+                        df_back = df.reset_index()
+                        col_data = df_back.columns[0]
+
+                        # --- VARIÁVEIS DE ESTADO DO ROBÔ ---
+                        trades = []
+                        em_pos = False
+                        direcao = 0 # 1 = Compra, -1 = Venda
+                        preco_entrada = 0.0
+                        stop_loss = 0.0
+                        alvo = 0.0
+                        d_ent = None
+                        
+                        setup_compra_armado = False
+                        setup_venda_armado = False
+                        gatilho_compra = 0.0
+                        gatilho_venda = 0.0
+                        validade_setup = 0
+                        sl_pendente_c = 0.0
+                        sl_pendente_v = 0.0
+                        alvo_pendente_c = 0.0
+                        alvo_pendente_v = 0.0
+
+                        vitorias, derrotas = 0, 0
+
+                        # --- MOTOR DE BACKTEST ---
+                        for i in range(7, len(df_back)):
+                            atual = df_back.iloc[i]
+                            ontem = df_back.iloc[i-1]
+
+                            # 1. GERENCIAMENTO DE POSIÇÃO
+                            if em_pos:
+                                if direcao == 1: # COMPRADO
+                                    if atual['Low'] <= stop_loss:
+                                        d_sai = atual[col_data]
+                                        lucro = rx_capital * ((stop_loss / preco_entrada) - 1)
+                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Tipo': 'Compra 🟢', 'Lucro (R$)': lucro, 'Situação': 'Stop Acionado ❌'})
+                                        derrotas += 1; em_pos = False
+                                    elif atual['High'] >= alvo:
+                                        d_sai = atual[col_data]
+                                        lucro = rx_capital * ((alvo / preco_entrada) - 1)
+                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Tipo': 'Compra 🟢', 'Lucro (R$)': lucro, 'Situação': 'Alvo Atingido 🎯'})
+                                        vitorias += 1; em_pos = False
+
+                                elif direcao == -1: # VENDIDO
+                                    if atual['High'] >= stop_loss:
+                                        d_sai = atual[col_data]
+                                        lucro = rx_capital * ((preco_entrada - stop_loss) / preco_entrada)
+                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Tipo': 'Venda 🔴', 'Lucro (R$)': lucro, 'Situação': 'Stop Acionado ❌'})
+                                        derrotas += 1; em_pos = False
+                                    elif atual['Low'] <= alvo:
+                                        d_sai = atual[col_data]
+                                        lucro = rx_capital * ((preco_entrada - alvo) / preco_entrada)
+                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Tipo': 'Venda 🔴', 'Lucro (R$)': lucro, 'Situação': 'Alvo Atingido 🎯'})
+                                        vitorias += 1; em_pos = False
+                                continue # Se estava em posição e gerenciou, pula para o próximo dia
+
+                            # 2. VERIFICAÇÃO DE GATILHOS (ENTRADA)
+                            entrou_hoje = False
+                            if setup_compra_armado:
+                                if atual['High'] > gatilho_compra:
+                                    em_pos = True; direcao = 1; entrou_hoje = True
+                                    preco_entrada = max(gatilho_compra, atual['Open'])
+                                    stop_loss = sl_pendente_c; alvo = alvo_pendente_c
+                                    d_ent = atual[col_data]
+                                    setup_compra_armado = False; setup_venda_armado = False
+                                else:
+                                    validade_setup -= 1
+                                    if validade_setup <= 0 or atual['Low'] < sl_pendente_c:
+                                        setup_compra_armado = False # Expirou ou perdeu suporte
+
+                            if not entrou_hoje and setup_venda_armado:
+                                if atual['Low'] < gatilho_venda:
+                                    em_pos = True; direcao = -1; entrou_hoje = True
+                                    preco_entrada = min(gatilho_venda, atual['Open'])
+                                    stop_loss = sl_pendente_v; alvo = alvo_pendente_v
+                                    d_ent = atual[col_data]
+                                    setup_compra_armado = False; setup_venda_armado = False
+                                else:
+                                    validade_setup -= 1
+                                    if validade_setup <= 0 or atual['High'] > sl_pendente_v:
+                                        setup_venda_armado = False
+
+                            # 3. BUSCA DE NOVOS SETUPS (Se não estiver posicionado e não entrou hoje)
+                            if not em_pos and not entrou_hoje:
+                                # --- LÓGICA MOLA COMPRIMIDA ---
+                                if "Mola" in rx_setup:
+                                    janela = 4 if "NR4" in rx_setup else 7
+                                    min_range_janela = df_back['Range'].iloc[i-janela:i].min() # Mínimo até ontem
+                                    
+                                    mercado_lateral = True
+                                    if "Bollinger" in rx_filtro:
+                                        mercado_lateral = ontem['BB_Width'] < ontem['BB_Width_Med']
+                                    elif "Médias" in rx_filtro:
+                                        mercado_lateral = (abs(ontem['MME9'] - ontem['MM21']) / ontem['Close'] * 100) < 1.5
+
+                                    if ontem['Range'] == min_range_janela and mercado_lateral:
+                                        setup_compra_armado = True
+                                        setup_venda_armado = True
+                                        gatilho_compra = ontem['High'] + 0.01
+                                        gatilho_venda = ontem['Low'] - 0.01
+                                        sl_pendente_c = ontem['Low'] - 0.01
+                                        sl_pendente_v = ontem['High'] + 0.01
+                                        amplitude = ontem['Range']
+                                        alvo_pendente_c = gatilho_compra + amplitude
+                                        alvo_pendente_v = gatilho_venda - amplitude
+                                        validade_setup = 1 # Rompimento obrigatório no dia seguinte
+
+                                # --- LÓGICA CONTRA-GOLPE TÁTICO ---
+                                elif "Contra-Golpe" in rx_setup:
+                                    tend_alta = df_back['MM21'].iloc[i-1] > df_back['MM21'].iloc[i-2]
+                                    tend_baixa = df_back['MM21'].iloc[i-1] < df_back['MM21'].iloc[i-2]
+                                    
+                                    c_2, c_1, c_0 = df_back['Cor'].iloc[i-3], df_back['Cor'].iloc[i-2], df_back['Cor'].iloc[i-1]
+
+                                    if tend_alta and c_2 == 'Vermelho' and c_1 == 'Verde' and c_0 == 'Vermelho':
+                                        setup_compra_armado = True
+                                        max_conj = df_back['High'].iloc[i-3:i].max()
+                                        min_conj = df_back['Low'].iloc[i-3:i].min()
+                                        gatilho_compra = max_conj + 0.01
+                                        sl_pendente_c = min_conj - 0.01
+                                        alvo_pendente_c = gatilho_compra + (max_conj - min_conj)
+                                        validade_setup = 5 # Tem até 5 dias para romper
+
+                                    elif tend_baixa and c_2 == 'Verde' and c_1 == 'Vermelho' and c_0 == 'Verde':
+                                        setup_venda_armado = True
+                                        max_conj = df_back['High'].iloc[i-3:i].max()
+                                        min_conj = df_back['Low'].iloc[i-3:i].min()
+                                        gatilho_venda = min_conj - 0.01
+                                        sl_pendente_v = max_conj + 0.01
+                                        alvo_pendente_v = gatilho_venda - (max_conj - min_conj)
+                                        validade_setup = 5
+
+                        # --- EXIBIÇÃO DE RESULTADOS ---
+                        st.divider()
+                        st.markdown(f"### 📊 Resultado: {ativo_input} ({rx_setup.split('(')[0].strip()})")
+                        
+                        if len(trades) > 0:
+                            df_t = pd.DataFrame(trades)
+                            
+                            l_total = df_t['Lucro (R$)'].sum()
+                            vits_df = df_t[df_t['Lucro (R$)'] > 0]
+                            derrs_df = df_t[df_t['Lucro (R$)'] <= 0]
+                            t_acerto = (len(vits_df) / len(df_t)) * 100
+                            
+                            m_ganho = vits_df['Lucro (R$)'].mean() if not vits_df.empty else 0
+                            m_perda = abs(derrs_df['Lucro (R$)'].mean()) if not derrs_df.empty else 1
+                            p_off = m_ganho / m_perda
+
+                            m1, m2, m3, m4 = st.columns(4)
+                            m1.metric("Lucro Acumulado", f"R$ {l_total:,.2f}", delta=f"{l_total:,.2f}")
+                            m2.metric("Nº de Operações", len(df_t))
+                            m3.metric("Taxa de Acerto", f"{t_acerto:.1f}%")
+                            m4.metric("Payoff Média", f"{p_off:.2f}")
+
+                            if l_total > 0:
+                                st.success("🟢 **Estratégia Vencedora:** O modelo matemático extraiu dinheiro do mercado neste ativo e período.")
+                            else:
+                                st.error("🔴 **Estratégia Perdedora:** Cuidado, o ativo apresentou muitos falsos rompimentos machucando a taxa de acerto.")
+
+                            st.dataframe(df_t, use_container_width=True, hide_index=True)
+                        else:
+                            st.warning("Nenhuma operação ativou e fechou o ciclo completo neste período.")
+                except Exception as e: st.error(f"Erro no processamento: {e}")
