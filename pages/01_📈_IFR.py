@@ -181,8 +181,16 @@ with aba_padrao:
 
                 if len(trades) > 0:
                     df_t = pd.DataFrame(trades)
+                    lucro_tot = df_t['Lucro (R$)'].sum()
+                    invest = float(capital_padrao) * len(df_t)
+                    res_pct = (lucro_tot / invest) * 100 if invest > 0 else 0
                     ls_resumo_p.append({
-                        'Ativo': ativo, 'Trades': len(df_t), 'Pior Queda': f"{df_t['Drawdown_Raw'].min():.2f}%", 'Lucro R$': df_t['Lucro (R$)'].sum()
+                        'Ativo': ativo, 
+                        'Trades': len(df_t), 
+                        'Pior Queda': f"{df_t['Drawdown_Raw'].min():.2f}%", 
+                        'Investimento': f"R$ {invest:,.2f}", 
+                        'Lucro R$': lucro_tot, 
+                        'Resultado': f"{res_pct:.2f}%"
                     })
             except: pass
             time.sleep(0.05)
@@ -330,7 +338,17 @@ with aba_pm:
 
                 if len(trades) > 0:
                     df_t = pd.DataFrame(trades)
-                    lista_resumo.append({'Ativo': ativo, 'Trades': len(df_t), 'Pior Queda': f"{df_t['Drawdown_Raw'].min():.2f}%", 'Lucro R$': df_t['Lucro (R$)'].sum()})
+                    lucro_tot = df_t['Lucro (R$)'].sum()
+                    invest = float(capital_pm) * len(df_t)
+                    res_pct = (lucro_tot / invest) * 100 if invest > 0 else 0
+                    lista_resumo.append({
+                        'Ativo': ativo, 
+                        'Trades': len(df_t), 
+                        'Pior Queda': f"{df_t['Drawdown_Raw'].min():.2f}%", 
+                        'Investimento': f"R$ {invest:,.2f}", 
+                        'Lucro R$': lucro_tot, 
+                        'Resultado': f"{res_pct:.2f}%"
+                    })
 
             except Exception as e: pass
             time.sleep(0.05)
@@ -463,13 +481,18 @@ with aba_stop:
                 if len(trades) > 0:
                     df_t = pd.DataFrame(trades)
                     taxa_acerto = (vitorias / len(df_t)) * 100
+                    lucro_tot = df_t['Lucro (R$)'].sum()
+                    invest = float(capital_stop) * len(df_t)
+                    res_pct = (lucro_tot / invest) * 100 if invest > 0 else 0
                     ls_resumo.append({
                         'Ativo': ativo, 
                         'Total Trades': len(df_t), 
                         'Acertos ✅': vitorias, 
                         'Stops ❌': derrotas, 
                         'Taxa de Acerto': f"{taxa_acerto:.2f}%", 
-                        'Lucro R$': df_t['Lucro (R$)'].sum()
+                        'Investimento': f"R$ {invest:,.2f}",
+                        'Lucro R$': lucro_tot,
+                        'Resultado': f"{res_pct:.2f}%"
                     })
 
             except Exception as e: pass
@@ -732,58 +755,4 @@ with aba_futuros:
                                     em_pos, derrotas = False, derrotas + 1
                                     continue
                                 elif df_back['High'].iloc[i] >= take_p:
-                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': d_at.strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': fut_alvo * fut_contratos * fut_multiplicador, 'Situação': 'Ganho ✅'})
-                                    em_pos, vitorias = False, vitorias + 1
-                                    continue
-                        
-                        if cond_ent and not em_pos:
-                            em_pos, d_ent = True, d_at
-                            if fut_estrategia == "PM Dinâmico":
-                                preco_medio, contratos_atuais = df_back['Close'].iloc[i], fut_contratos
-                                take_profit = preco_medio + fut_alvo
-                            else:
-                                preco_entrada = df_back['Close'].iloc[i]
-                                take_p, stop_p = preco_entrada + fut_alvo, preco_entrada - fut_stop
-                        elif cond_ent and em_pos and fut_estrategia == "PM Dinâmico":
-                            preco_medio = ((preco_medio * contratos_atuais) + (df_back['Close'].iloc[i] * fut_contratos)) / (contratos_atuais + fut_contratos)
-                            contratos_atuais += fut_contratos
-                            take_profit = preco_medio + fut_alvo
-
-                    # --- PAINEL DE RESULTADOS (VERSÃO INTELIGENTE) ---
-                    if trades:
-                        df_t = pd.DataFrame(trades)
-                        st.divider()
-                        st.markdown(f"### 📊 Resultado: {fut_selecionado}")
-                        st.caption(f"📅 Período: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
-                        
-                        l_total = df_t['Lucro (R$)'].sum()
-                        vits_df = df_t[df_t['Lucro (R$)'] > 0]
-                        derrs_df = df_t[df_t['Lucro (R$)'] <= 0]
-                        t_acerto = (len(vits_df) / len(df_t)) * 100
-                        
-                        m_ganho = vits_df['Lucro (R$)'].mean() if not vits_df.empty else 0
-                        m_perda = abs(derrs_df['Lucro (R$)'].mean()) if not derrs_df.empty else 1
-                        p_off = m_ganho / m_perda
-                        
-                        t_critica = (1 / (1 + (p_off if p_off > 0 else 0.01))) * 100
-                        margem = t_acerto - t_critica
-
-                        m1, m2, m3, m4, m5 = st.columns(5)
-                        m1.metric("Lucro Total", f"R$ {l_total:,.2f}", delta=f"{l_total:,.2f}")
-                        m2.metric("Operações", len(df_t))
-                        m3.metric("Taxa Acerto", f"{t_acerto:.1f}%")
-                        m4.metric("Payoff", f"{p_off:.2f}")
-                        m5.metric("V / D", f"{len(vits_df)} / {len(derrs_df)}")
-                        
-                        if l_total > 0:
-                            if p_off > 1:
-                                st.success(f"🎯 **Expectativa Real Positiva:** Você está vencendo o mercado! Para cada R$ 1,00 arriscado, ganha R$ {p_off:.2f}. Margem de gordura: {margem:.1f}% acima do crítico.")
-                            else:
-                                st.info(f"⚖️ **Alerta de Equilíbrio:** Saldo positivo, mas payoff baixo ({p_off:.2f}). Sua alta taxa de acerto é que está salvando a estratégia. Cuidado!")
-                        else:
-                            st.error(f"🚨 **Expectativa Negativa:** O saldo de R$ {l_total:,.2f} mostra que a conta não fecha. Você precisa acertar mais de {t_critica:.1f}% para este Payoff, ou aumentar seu alvo.")
-
-                        st.dataframe(df_t, use_container_width=True, hide_index=True)
-                    else:
-                        st.warning("Nenhuma operação encontrada.")
-            except Exception as e: st.error(f"Erro: {e}")
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': d_at.strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': fut
