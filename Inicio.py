@@ -1,5 +1,6 @@
 import streamlit as st
 from tvDatafeed import TvDatafeed, Interval
+import streamlit.components.v1 as components # <-- Importação adicionada para as Notícias
 
 # Mantendo sua configuração original de página e proteção
 st.set_page_config(page_title="Caçadores de Elite", layout="wide", page_icon="🎯", initial_sidebar_state="collapsed")
@@ -100,6 +101,33 @@ with c2:
 
 with c3:
     st.success("### 🕳️ Smart Money (FVG)\nOpere exatamente como os bancos institucionais, encontrando vácuos de liquidez e armadilhas.")
+
+st.divider()
+
+# ==========================================
+# NOVO: FEED DE NOTÍCIAS
+# ==========================================
+st.subheader("📰 Radar de Notícias em Tempo Real")
+st.markdown("Fatos relevantes, balanços e movimentações globais que afetam o seu operacional.")
+
+codigo_noticias = """
+<div class="tradingview-widget-container">
+  <div class="tradingview-widget-container__widget"></div>
+  <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-timeline.js" async>
+  {
+  "feedMode": "all_symbols",
+  "colorTheme": "dark",
+  "isTransparent": true,
+  "displayMode": "regular",
+  "width": "100%",
+  "height": 600,
+  "locale": "br"
+}
+  </script>
+</div>
+"""
+# Renderiza as notícias com 600px de altura
+components.html(codigo_noticias, height=600, scrolling=True)
 
 st.markdown("<br><br>", unsafe_allow_html=True)
 st.caption("© 2026 Caçadores de Elite - Todos os direitos reservados. Desenvolvido para operações de alta performance.")
