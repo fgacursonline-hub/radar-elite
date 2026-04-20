@@ -88,16 +88,25 @@ with aba_padrao:
     st.subheader("📡 Radar 9.1 Clássico (MME9)")
     st.markdown("Identifica quando a MME9 vira para cima. A entrada ocorre no rompimento da máxima do candle que fez a média virar. Saída quando a média vira para baixo e perde a mínima.")
     
-    cp1, cp2, cp3 = st.columns(3)
-    with cp1:
-        lista_91 = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="p91_lista")
-        ativos_91 = bdrs_elite if lista_91 == "BDRs Elite" else ibrx_selecao if lista_91 == "IBrX Seleção" else bdrs_elite + ibrx_selecao
-        periodo_91 = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="p91_per")
-    with cp2:
-        capital_91 = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="p91_cap")
-        st.markdown("<div style='height: 75px;'></div>", unsafe_allow_html=True) 
-    with cp3:
-        tempo_91 = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="p91_tmp")
+    # ... código anterior ...
+c1, c2, c3 = st.columns(3)
+
+with c1:
+    lista_ativos = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção"])
+    periodo = st.selectbox("Período de Estudo:", ["1 Ano", "6 Meses", "3 Meses"])
+
+with c2:
+    capital = st.number_input("Capital por Trade (R$):", value=10000.0)
+    
+    # AQUI ENTRA A SUA CAIXA AZUL!
+    setup_escolhido = st.selectbox(
+        "Escolha a Estratégia:", 
+        ["Setup 9.1 (Virada de Média)", "Setup 9.2 (Pullback Curto)", "Setup 9.3 (Pullback Duplo)"]
+    )
+
+with c3:
+    tempo_grafico = st.selectbox("Tempo Gráfico:", ["Diário", "15 min", "60 min", "Semanal"])
+# ... botão de Iniciar Varredura ...
 
     btn_iniciar_91 = st.button("🚀 Iniciar Varredura 9.1", type="primary", use_container_width=True, key="p91_btn")
 
