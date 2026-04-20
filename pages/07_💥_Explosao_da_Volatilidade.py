@@ -164,11 +164,11 @@ with aba_radar:
         # --- EXIBIÇÃO DOS RESULTADOS ---
         st.divider()
         if len(ls_armados) > 0:
-            st.success(f"🎯 Encontramos {len(ls_armados)} 'Latinhas' validadas pelo filtro de {tipo_filtro.split()[0]}!")
+            st.success(f"🎯 Encontramos {len(ls_armados)} 'Molas' validadas pelo filtro de {tipo_filtro.split()[0]}!")
             df_res = pd.DataFrame(ls_armados)
             st.dataframe(df_res, use_container_width=True, hide_index=True)
         else:
-            st.warning(f"Nenhuma latinha encontrada hoje com as condições do filtro ({tipo_filtro.split()[0]}). O mercado pode estar muito direcional.")
+            st.warning(f"Nenhuma mola encontrada hoje com as condições do filtro ({tipo_filtro.split()[0]}). O mercado pode estar muito direcional.")
 
 # ==========================================
 # ABA 2: RAIO-X INDIVIDUAL (A FAZER)
