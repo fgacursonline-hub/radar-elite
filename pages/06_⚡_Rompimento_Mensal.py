@@ -229,52 +229,88 @@ with aba_backtest:
 # ==========================================
 with aba_raio_x:
     st.subheader("🔬 Simulador de Resultados Históricos (Individual)")
-    st.markdown("Testa o que aconteceria se você tivesse entrado em todos os rompimentos passados deste ativo específico.")
+    st.markdown("Audite cada entrada, saída (Gain ou Loss) e o tempo de duração de um ativo específico.")
     
-    rx1, rx2, rx3 = st.columns(3)
-    with rx1: at_rx = st.text_input("Ativo para Teste:", value="AURA33", key="rx_ativo").upper()
-    with rx2: alvo_rx = st.number_input("Alvo da Simulação (%):", value=50.0, step=10.0, key="alvo_rx")
-    with rx3: hist_rx = st.number_input("Histórico (Velas Diárias):", value=1000, step=500, key="rx_hist")
+    rx1, rx2, rx3, rx4 = st.columns(4)
+    with rx1: 
+        at_rx = st.text_input("Ativo para Teste:", value="AURA33", key="rx_ativo").upper()
+        tipo_romp_rx = st.radio("Romper por:", ["Máxima", "Fechamento"], horizontal=True, key="rx_tipo")
+    with rx2: 
+        tempo_rx = st.selectbox("Tempo Gráfico:", ["Mensal", "Anual"], index=1, key="rx_tmp")
+        hist_rx = st.number_input("Histórico (Velas Diárias):", value=1500, step=500, key="rx_hist")
+    with rx3: 
+        alvo_rx = st.number_input("Alvo de Ganho (%):", value=40.0, step=5.0, key="rx_alvo")
+    with rx4:
+        stop_rx = st.number_input("Stop Loss (%):", value=15.0, step=5.0, key="rx_stop")
 
     if st.button("⚙️ Rodar Simulação do Ativo", type="primary", use_container_width=True, key="btn_rx"):
         try:
             df = tv.get_hist(symbol=at_rx, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=hist_rx)
-            if df is not None:
+            janela_rx = 252 if tempo_rx == "Anual" else 21
+            
+            if df is not None and len(df) > janela_rx:
                 df.columns = [c.capitalize() for c in df.columns]
-                # Define a máxima anual móvel (252 dias úteis = 1 ano)
-                df['Max_Anual'] = df['High'].rolling(window=252).max().shift(1)
+                
+                # Define a referência móvel (Máxima ou Fechamento)
+                col_ref_rx = "High" if tipo_romp_rx == "Máxima" else "Close"
+                df['Max_Ref'] = df[col_ref_rx].rolling(window=janela_rx).max().shift(1)
                 
                 trades = []
                 em_trade = False
                 
-                for i in range(252, len(df)):
+                for i in range(janela_rx, len(df)):
                     if not em_trade:
-                        # Gatilho de entrada no rompimento da máxima anual
-                        if df['Close'].iloc[i] > df['Max_Anual'].iloc[i]:
+                        # Gatilho de entrada no rompimento da referência
+                        if df['Close'].iloc[i] > df['Max_Ref'].iloc[i]:
                             em_trade = True
                             p_entrada = df['Close'].iloc[i]
                             p_alvo = p_entrada * (1 + (alvo_rx / 100))
+                            p_stop = p_entrada * (1 - (stop_rx / 100))
                             data_entrada = df.index[i]
                     else:
-                        # Monitora se bateu no alvo
+                        # Monitora Saída (Gain)
                         if df['High'].iloc[i] >= p_alvo:
-                            # Calcula os dias corridos na operação
-                            dias_na_operacao = (df.index[i] - data_entrada).days
-                            
+                            dias_op = (df.index[i] - data_entrada).days
                             trades.append({
                                 'Data Entrada': data_entrada.strftime('%d/%m/%Y'),
                                 'Preço Entrada': f"R$ {p_entrada:.2f}",
                                 'Data Saída': df.index[i].strftime('%d/%m/%Y'),
                                 'Preço Saída': f"R$ {p_alvo:.2f}",
-                                'Duração': f"{dias_na_operacao} dias",
+                                'Duração': f"{dias_op} dias",
                                 'Resultado': f"🟢 GAIN (+{alvo_rx}%)"
+                            })
+                            em_trade = False
+                            
+                        # Monitora Saída (Loss / Stop)
+                        elif df['Low'].iloc[i] <= p_stop:
+                            dias_op = (df.index[i] - data_entrada).days
+                            trades.append({
+                                'Data Entrada': data_entrada.strftime('%d/%m/%Y'),
+                                'Preço Entrada': f"R$ {p_entrada:.2f}",
+                                'Data Saída': df.index[i].strftime('%d/%m/%Y'),
+                                'Preço Saída': f"R$ {p_stop:.2f}",
+                                'Duração': f"{dias_op} dias",
+                                'Resultado': f"🔴 LOSS (-{stop_rx}%)"
                             })
                             em_trade = False
                 
                 if trades:
                     st.success(f"Simulação concluída para {at_rx}!")
-                    st.dataframe(pd.DataFrame(trades), use_container_width=True)
+                    df_trades = pd.DataFrame(trades)
+                    
+                    # Função para colorir Gain e Loss
+                    def colorir_resultado(val):
+                        if 'GAIN' in str(val): return 'color: #28a745; font-weight: bold'
+                        elif 'LOSS' in str(val): return 'color: #dc3545; font-weight: bold'
+                        return ''
+                        
+                    try:
+                        st.dataframe(df_trades.style.map(colorir_resultado, subset=['Resultado']), use_container_width=True, hide_index=True)
+                    except:
+                        st.dataframe(df_trades.style.applymap(colorir_resultado, subset=['Resultado']), use_container_width=True, hide_index=True)
                 else:
-                    st.warning("Nenhum trade finalizado (atingiu o alvo) encontrado no histórico recente.")
+                    st.warning("Nenhum trade finalizado (atingiu o alvo ou stop) encontrado no histórico recente.")
+            else:
+                st.error("Histórico insuficiente para essa janela de tempo.")
         except Exception as e: 
             st.error(f"Erro na Simulação: {e}")
