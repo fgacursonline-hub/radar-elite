@@ -19,7 +19,7 @@ st.markdown("Identifique e valide rompimentos históricos de Máximas e Fechamen
 st.divider()
 
 # Criação das Abas
-aba_rad_p, aba_backtest, aba_raio_x = st.tabs(["📡 Radar (Padrão)", "📊 Backtest", "🔬 Raio-X Individual"])
+aba_rad_p, aba_backtest, aba_raio_x, aba_futuros = st.tabs(["📡 Radar (Padrão)", "📊 Backtest", "🔬 Raio-X Individual", "📈 Raio-X Futuros"])
 
 # ==========================================
 # 1. RADAR (PADRÃO)
