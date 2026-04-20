@@ -356,3 +356,156 @@ with aba_raio_x:
                 st.error("Histórico insuficiente para essa janela de tempo.")
         except Exception as e: 
             st.error(f"Erro na Simulação: {e}")
+            # ==========================================
+# 4. RAIO-X FUTUROS (WIN/WDO - ROMPIMENTO)
+# ==========================================
+with aba_futuros:
+    st.subheader("📈 Raio-X Mercado Futuro (WIN, WDO) - Rompimento")
+    st.markdown("Focado em intraday para garantir a estabilidade do backtest. As entradas ocorrem no rompimento da referência configurada.")
+    
+    cf1, cf2, cf3 = st.columns(3)
+    
+    with cf1:
+        mapa_fut = {"WINFUT (Mini Índice)": "WIN1!", "WDOFUT (Mini Dólar)": "WDO1!"}
+        f_selecionado = st.selectbox("Selecione o Ativo:", options=list(mapa_fut.keys()), key="f_brk_ativo")
+        f_ativo = mapa_fut[f_selecionado]
+        
+        tipo_romp_f = st.radio("Romper por:", ["Máxima/Mínima", "Fechamento"], horizontal=True, key="f_brk_tipo")
+        f_dir = st.selectbox("Direção do Trade:", ["Ambas", "Apenas Compra", "Apenas Venda"], key="f_brk_dir")
+        f_per = st.selectbox("Período Histórico:", options=['1mo', '3mo', '6mo', '1y'], format_func=lambda x: {'1mo':'1 Mês', '3mo':'3 Meses', '6mo':'6 Meses', '1y':'1 Ano'}[x], index=2, key="f_brk_per")
+
+    with cf2:
+        f_alvo = st.number_input("Alvo (Pontos):", value=300 if "WIN" in f_selecionado else 10, step=50 if "WIN" in f_selecionado else 1, key="f_brk_alvo")
+        f_stop = st.number_input("Stop (Pontos):", value=150 if "WIN" in f_selecionado else 5, step=50 if "WIN" in f_selecionado else 1, key="f_brk_stop")
+        f_contratos = st.number_input("Contratos Iniciais:", value=1, step=1, key="f_brk_cont")
+
+    with cf3:
+        f_multi = st.number_input("Multiplicador (R$):", value=0.20 if "WIN" in f_selecionado else 10.0, key="f_brk_mult")
+        f_tmp = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d'], index=0, key="f_brk_tmp")
+        f_janela = st.number_input("Janela de Rompimento (Velas):", value=20, step=5, key="f_brk_janela", help="Quantidade de velas passadas para definir o topo/fundo a ser rompido.")
+
+    f_zerar = st.checkbox("⏰ Zeragem Automática no Fim do Dia", value=True, key="f_brk_zerar")
+    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+    
+    btn_fut = st.button("🚀 Gerar Raio-X", type="primary", use_container_width=True, key="f_brk_btn")
+
+    if btn_fut:
+        intervalo_tv = tradutor_intervalo.get(f_tmp, Interval.in_15_minute)
+
+        with st.spinner(f'Testando rompimento no {f_selecionado}...'):
+            try:
+                df = tv.get_hist(symbol=f_ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+
+                if df is not None and len(df) > f_janela:
+                    df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+
+                    data_atual = df.index[-1]
+                    delta = {'1mo': 1, '3mo': 3, '6mo': 6, '1y': 12}.get(f_per, 6)
+                    data_corte = data_atual - pd.DateOffset(months=delta)
+                    df = df[df.index >= data_corte].copy()
+
+                    if len(df) > f_janela:
+                        # --- LÓGICA DE ROMPIMENTO BANCANDO AS DUAS DIREÇÕES ---
+                        col_ref_high = "High" if tipo_romp_f == "Máxima/Mínima" else "Close"
+                        col_ref_low = "Low" if tipo_romp_f == "Máxima/Mínima" else "Close"
+                        
+                        df['Max_Ref'] = df[col_ref_high].rolling(window=f_janela).max().shift(1)
+                        df['Min_Ref'] = df[col_ref_low].rolling(window=f_janela).min().shift(1)
+
+                        trades = []
+                        posicao = 0 # 0: Fora, 1: Comprado, -1: Vendido
+                        vits, derrs = 0, 0
+                        df_b = df.reset_index()
+                        col_dt = df_b.columns[0]
+
+                        for i in range(f_janela, len(df_b)):
+                            d_at, d_ant = df_b[col_dt].iloc[i], df_b[col_dt].iloc[i-1]
+
+                            # 1. ZERAGEM NO FIM DO DIA (Day Trade)
+                            if posicao != 0 and f_zerar and d_at.date() != d_ant.date():
+                                p_sai = df_b['Close'].iloc[i-1]
+                                pts = (p_sai - p_ent) if posicao == 1 else (p_ent - p_sai)
+                                luc = pts * f_contratos * f_multi
+                                trades.append({
+                                    'Entrada': d_ent.strftime('%d/%m %H:%M'),
+                                    'Saída': d_ant.strftime('%d/%m %H:%M'),
+                                    'Resultado': 'Gain 🟢' if luc > 0 else 'Loss 🔴',
+                                    'Tipo': 'Compra' if posicao == 1 else 'Venda',
+                                    'Pontos': pts,
+                                    'Lucro (R$)': luc,
+                                    'Status': 'Fim Dia'
+                                })
+                                if luc > 0: vits += 1
+                                else: derrs += 1
+                                posicao = 0
+
+                            # 2. MONITORAMENTO DE ALVO E STOP
+                            if posicao == 1: # COMPRADO
+                                if df_b['High'].iloc[i] >= take_p:
+                                    luc = f_alvo * f_contratos * f_multi
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Resultado': 'Gain 🟢', 'Tipo': 'Compra', 'Pontos': f_alvo, 'Lucro (R$)': luc, 'Status': 'Alvo'})
+                                    vits += 1; posicao = 0
+                                elif df_b['Low'].iloc[i] <= stop_p:
+                                    luc = -f_stop * f_contratos * f_multi
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Resultado': 'Loss 🔴', 'Tipo': 'Compra', 'Pontos': -f_stop, 'Lucro (R$)': luc, 'Status': 'Stop'})
+                                    derrs += 1; posicao = 0
+                                    
+                            elif posicao == -1: # VENDIDO
+                                if df_b['Low'].iloc[i] <= take_p:
+                                    luc = f_alvo * f_contratos * f_multi
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Resultado': 'Gain 🟢', 'Tipo': 'Venda', 'Pontos': f_alvo, 'Lucro (R$)': luc, 'Status': 'Alvo'})
+                                    vits += 1; posicao = 0
+                                elif df_b['High'].iloc[i] >= stop_p:
+                                    luc = -f_stop * f_contratos * f_multi
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Resultado': 'Loss 🔴', 'Tipo': 'Venda', 'Pontos': -f_stop, 'Lucro (R$)': luc, 'Status': 'Stop'})
+                                    derrs += 1; posicao = 0
+
+                            # 3. GATILHO DE ENTRADA (Rompimento)
+                            if posicao == 0 and not pd.isna(df_b['Max_Ref'].iloc[i]) and not pd.isna(df_b['Min_Ref'].iloc[i]):
+                                # Sinal de Compra
+                                if f_dir != "Apenas Venda" and df_b['Close'].iloc[i] > df_b['Max_Ref'].iloc[i]:
+                                    posicao = 1
+                                    d_ent = d_at
+                                    p_ent = df_b['Close'].iloc[i]
+                                    take_p = p_ent + f_alvo
+                                    stop_p = p_ent - f_stop
+                                # Sinal de Venda
+                                elif f_dir != "Apenas Compra" and df_b['Close'].iloc[i] < df_b['Min_Ref'].iloc[i]:
+                                    posicao = -1
+                                    d_ent = d_at
+                                    p_ent = df_b['Close'].iloc[i]
+                                    take_p = p_ent - f_alvo
+                                    stop_p = p_ent + f_stop
+
+                        # --- RENDERIZAÇÃO DOS RESULTADOS ---
+                        st.divider()
+                        if trades:
+                            df_res = pd.DataFrame(trades)
+                            total_ops = len(df_res)
+                            tx_acerto = (vits / total_ops) * 100
+                            acumulado = df_res['Lucro (R$)'].sum()
+
+                            m1, m2, m3, m4, m5, m6 = st.columns(6)
+                            m1.metric("Total de Operações", total_ops)
+                            m2.metric("🟢 Acertos", vits)
+                            m3.metric("🔴 Erros", derrs)
+                            m4.metric("🎯 Taxa de Acerto", f"{tx_acerto:.1f}%")
+                            m5.metric("Saldo de Pontos", f"{df_res['Pontos'].sum():.0f}")
+                            m6.metric("💰 Acumulado", f"R$ {acumulado:,.2f}")
+                            st.divider()
+
+                            def colorir_resultado(val):
+                                if 'Gain' in str(val): return 'color: #28a745; font-weight: bold'
+                                elif 'Loss' in str(val): return 'color: #dc3545; font-weight: bold'
+                                return ''
+
+                            try:
+                                st.dataframe(df_res.style.map(colorir_resultado, subset=['Resultado']), use_container_width=True, hide_index=True)
+                            except:
+                                st.dataframe(df_res.style.applymap(colorir_resultado, subset=['Resultado']), use_container_width=True, hide_index=True)
+                        else:
+                            st.warning("Nenhum trade finalizado encontrado para a configuração e período selecionados.")
+                    else:
+                        st.warning("Histórico limpo insuficiente para a janela solicitada. Tente diminuir a janela de velas ou aumentar o período.")
+            except Exception as e:
+                st.error(f"Erro na Simulação: {e}")
