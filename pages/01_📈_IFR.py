@@ -19,6 +19,19 @@ def get_tv_connection():
 
 tv = get_tv_connection()
 
+# --- CONFIGURAÇÃO DO TELEGRAM ---
+TOKEN_TELEGRAM = "COLE_AQUI_AQUELE_TOKEN_LONGO"
+CHAT_ID_TELEGRAM = "COLE_AQUI_O_NUMERO_DO_ID"
+
+def enviar_alerta_telegram(mensagem):
+    url = f"https://api.telegram.org/bot{TOKEN_TELEGRAM}/sendMessage"
+    payload = {"chat_id": CHAT_ID_TELEGRAM, "text": mensagem}
+    try:
+        # Manda a mensagem sem travar o restante do código
+        import requests
+        requests.post(url, json=payload, timeout=5)
+    except:
+        pass
 tradutor_periodo_nome = {
     '1mo': '1 Mês', '3mo': '3 Meses', '6mo': '6 Meses',
     '1y': '1 Ano', '2y': '2 Anos', '5y': '5 Anos',
