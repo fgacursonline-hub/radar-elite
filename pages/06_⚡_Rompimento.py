@@ -124,11 +124,12 @@ with aba_backtest:
         lista_bk = st.selectbox("Lista:", ["BDRs Elite", "IBrX Seleção", "Todos (BDR + IBrX)"], key="bk_lst")
         tipo_romp_bk = st.radio("Romper por:", ["Máxima", "Fechamento"], horizontal=True, key="bk_tipo")
     with col_b2:
-        # --- ADICIONADO O TEMPO "SEMANAL" ---
         tempo_bk = st.selectbox("Tempo Gráfico:", ["Semanal", "Mensal", "Anual"], index=2, key="bk_tmp")
         hist_bk = st.number_input("Histórico (Velas Diárias):", value=1500, step=500, key="bk_velas", help="1500 = ~6 anos")
     with col_b3:
         alvo_bk = st.number_input("Alvo de Ganho (Gain %):", value=40.0, step=5.0, key="bk_alvo")
+        # --- CHECKBOX ADICIONADO AQUI ---
+        usar_stop_bk = st.checkbox("Habilitar Stop Loss", value=True, key="bk_usar_stop")
         stop_bk = st.number_input("Stop Loss (Loss %):", value=15.0, step=5.0, key="bk_stop")
     with col_b4:
         st.info("Payoff = Média de Ganho / Média de Perda.")
@@ -137,7 +138,6 @@ with aba_backtest:
     if st.button("⚙️ Rodar Backtest em Lote", type="primary", use_container_width=True, key="btn_run_bk"):
         ativos = bdrs_elite if lista_bk == "BDRs Elite" else ibrx_selecao if lista_bk == "IBrX Seleção" else bdrs_elite + ibrx_selecao
         
-        # --- LÓGICA DE DIAS ÚTEIS ATUALIZADA (5 dias úteis = 1 semana) ---
         janela = 252 if tempo_bk == "Anual" else (21 if tempo_bk == "Mensal" else 5) 
         
         resultados_bk = []
@@ -152,7 +152,6 @@ with aba_backtest:
                     
                 df.columns = [c.capitalize() for c in df.columns]
                 
-                # --- NOVA LÓGICA DE REFERÊNCIA (MÁXIMA VS FECHAMENTO) ---
                 col_ref_bk = "High" if tipo_romp_bk == "Máxima" else "Close"
                 df['Max_Ref'] = df[col_ref_bk].rolling(window=janela).max().shift(1)
                 
@@ -173,7 +172,8 @@ with aba_backtest:
                         if df['High'].iloc[i] >= p_gain:
                             lucros.append(alvo_bk)
                             em_trade = False
-                        elif df['Low'].iloc[i] <= p_loss:
+                        # --- TRAVA DO STOP LOSS APLICADA AQUI ---
+                        elif usar_stop_bk and df['Low'].iloc[i] <= p_loss:
                             prejuizos.append(stop_bk)
                             em_trade = False
                             
