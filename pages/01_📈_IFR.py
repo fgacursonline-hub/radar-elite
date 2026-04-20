@@ -184,7 +184,6 @@ with aba_padrao:
                         'Resultado Atual': f"+{res_atual:.2f}%" if res_atual > 0 else f"{res_atual:.2f}%"
                     })
                 else:
-                    else:
                     # Aqui o robô verifica se o sinal aconteceu na última barra fechada
                     tem_sinal = (df_full['IFR_Prev'].iloc[-1] < 25) and (df_full['IFR'].iloc[-1] >= 25)
                     
