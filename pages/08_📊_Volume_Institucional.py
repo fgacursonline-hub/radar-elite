@@ -11,9 +11,9 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. SEGURANÇA E CONEXÃO
 # ==========================================
-# Autenticação via Email para acesso à plataforma de alunos
+# Autenticação via Email para acesso à plataforma
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
-    st.error("🚫 Por favor, faça login com seu e-mail na página inicial (Home) para liberar o motor Quant.")
+    st.error("🚫 Por favor, inicie sessão na página inicial (Home) para libertar o motor Quant.")
     st.stop()
 
 @st.cache_resource
@@ -109,7 +109,9 @@ with c3:
     alvo_pct = st.number_input("Alvo de Lucro (%):", value=5.0, step=0.5, help="Fechamento da operação no lucro.") / 100
 with c4:
     st.markdown("**Limites de Perda**")
-    stop_pct = st.number_input("Stop Loss (%):", value=2.0, step=0.5, help="Proteção do capital.") / 100
+    # AQUI ADICIONAMOS A OPÇÃO DE LIGAR/DESLIGAR O STOP LOSS
+    usar_stop = st.checkbox("Utilizar Stop Loss", value=True)
+    stop_pct = st.number_input("Stop Loss (%):", value=2.0, step=0.5, help="Proteção do capital.", disabled=not usar_stop) / 100
 
 btn_raiox = st.button("🔍 Rodar Motor Institucional", type="primary", use_container_width=True)
 
@@ -118,7 +120,7 @@ if btn_raiox:
         st.error("Digite o código de um ativo para analisar o fluxo.")
     else:
         intervalo_tv = tradutor_intervalo.get(rx_tempo, Interval.in_daily)
-        with st.spinner(f'Decodificando livro de ofertas e volume de {rx_ativo}...'):
+        with st.spinner(f'A descodificar o livro de ofertas e volume de {rx_ativo}...'):
             try:
                 df_full = tv.get_hist(symbol=rx_ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
                 if df_full is None or len(df_full) < 100:
@@ -162,8 +164,8 @@ if btn_raiox:
 
                         # 1. GESTÃO PERCENTUAL
                         if em_pos:
-                            # Verifica Saídas
-                            if atual['Low'] <= stop_loss:
+                            # Verifica Saídas (com ou sem Stop Loss)
+                            if usar_stop and atual['Low'] <= stop_loss:
                                 d_sai = atual[col_data]
                                 lucro = rx_capital * ((stop_loss / preco_entrada) - 1)
                                 trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Lucro (R$)': lucro, 'Resultado': 'Stop Acionado ❌'})
@@ -176,16 +178,12 @@ if btn_raiox:
                             continue
 
                         # 2. GATILHO INSTITUCIONAL (EMBOSCADA)
-                        # Condição Macro: O Ativo precisa estar sendo defendido ACIMA do maior nó de volume (POC)
                         macro_bullish = ontem['Close'] > ontem['POC']
-                        
-                        # Condição Micro: O preço afunda durante o dia (Low) tocando na VWAP, mas o fechamento (Close) defende e termina acima da VWAP.
                         toque_vwap = atual['Low'] <= atual['VWAP_Inst']
                         defesa_vwap = atual['Close'] >= atual['VWAP_Inst']
                         
                         if macro_bullish and toque_vwap and defesa_vwap and not em_pos:
                             em_pos = True
-                            # Compra no fechamento do dia que validou a defesa
                             preco_entrada = atual['Close']
                             d_ent = atual[col_data]
                             
@@ -207,14 +205,19 @@ if btn_raiox:
                         m1.metric("Lucro Extraído", f"R$ {l_total:,.2f}", delta=f"{l_total:,.2f}")
                         m2.metric("Disparos do Robô", len(df_t))
                         m3.metric("Taxa de Precisão", f"{t_acerto:.1f}%")
-                        m4.metric("Relação Risco/Retorno", f"1 para {alvo_pct/stop_pct:.1f}")
+                        
+                        # Proteção de cálculo caso não se utilize stop ou não haja perdas
+                        if usar_stop and stop_pct > 0:
+                            m4.metric("Relação Risco/Retorno", f"1 para {alvo_pct/stop_pct:.1f}")
+                        else:
+                            m4.metric("Relação Risco/Retorno", "N/A (Sem Stop)")
 
                         if l_total > 0:
                             st.success("🟢 **Dominância Institucional:** O ativo possui fluxo contínuo e respeita os defensores da VWAP. Sistema validado com sucesso.")
                         else:
-                            st.error("🔴 **Falta de Lote:** Ativo errático. O fluxo comprador na VWAP não teve força para deslocar o preço até o alvo percentual na maioria das vezes.")
+                            st.error("🔴 **Falta de Lote:** Ativo errático. O fluxo comprador na VWAP não teve força para deslocar o preço até ao alvo percentual na maioria das vezes.")
 
                         st.dataframe(df_t, use_container_width=True, hide_index=True)
                     else:
-                        st.warning("O algoritmo não detectou nenhuma emboscada perfeita de fluxo no período especificado.")
+                        st.warning("O algoritmo não detetou nenhuma emboscada perfeita de fluxo no período especificado.")
             except Exception as e: st.error(f"Ocorreu um erro no cálculo do volume: {e}")
