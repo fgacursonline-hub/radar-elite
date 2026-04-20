@@ -124,7 +124,8 @@ with aba_backtest:
         lista_bk = st.selectbox("Lista:", ["BDRs Elite", "IBrX Seleção", "Todos (BDR + IBrX)"], key="bk_lst")
         tipo_romp_bk = st.radio("Romper por:", ["Máxima", "Fechamento"], horizontal=True, key="bk_tipo")
     with col_b2:
-        tempo_bk = st.selectbox("Tempo Gráfico:", ["Mensal", "Anual"], index=1, key="bk_tmp")
+        # --- ADICIONADO O TEMPO "SEMANAL" ---
+        tempo_bk = st.selectbox("Tempo Gráfico:", ["Semanal", "Mensal", "Anual"], index=2, key="bk_tmp")
         hist_bk = st.number_input("Histórico (Velas Diárias):", value=1500, step=500, key="bk_velas", help="1500 = ~6 anos")
     with col_b3:
         alvo_bk = st.number_input("Alvo de Ganho (Gain %):", value=40.0, step=5.0, key="bk_alvo")
@@ -136,8 +137,8 @@ with aba_backtest:
     if st.button("⚙️ Rodar Backtest em Lote", type="primary", use_container_width=True, key="btn_run_bk"):
         ativos = bdrs_elite if lista_bk == "BDRs Elite" else ibrx_selecao if lista_bk == "IBrX Seleção" else bdrs_elite + ibrx_selecao
         
-        # 252 dias úteis = 1 ano | 21 dias úteis = 1 mês
-        janela = 252 if tempo_bk == "Anual" else 21 
+        # --- LÓGICA DE DIAS ÚTEIS ATUALIZADA (5 dias úteis = 1 semana) ---
+        janela = 252 if tempo_bk == "Anual" else (21 if tempo_bk == "Mensal" else 5) 
         
         resultados_bk = []
         barra_bk = st.progress(0)
@@ -223,7 +224,6 @@ with aba_backtest:
                 st.dataframe(df_res.style.applymap(colorir_acumulado, subset=['Acumulado']), use_container_width=True, hide_index=True)
         else:
             st.warning("Nenhum trade foi finalizado no histórico selecionado.")
-
 # ==========================================
 # 3. RAIO-X INDIVIDUAL (Simulador Histórico)
 # ==========================================
