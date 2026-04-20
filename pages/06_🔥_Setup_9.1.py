@@ -535,11 +535,11 @@ with aba_avancado:
             st.dataframe(df_resumo, use_container_width=True, hide_index=True)
         else: st.warning("Nenhuma operação finalizada.")
 # ==========================================
-# ABA 3: RAIO-X DO ATIVO INDIVIDUAL (SETUP 9.1)
+# ABA 3: RAIO-X DO ATIVO INDIVIDUAL (FAMÍLIA 9.x)
 # ==========================================
 with aba_individual:
-    st.subheader("🔬 Análise Detalhada de Ativo Único (Setup 9.1)")
-    st.markdown("Faça o teste de estresse de um ativo específico validando as variações de Stop Inicial e Médias de Condução.")
+    st.subheader("🔬 Análise Detalhada de Ativo Único (Família 9.x)")
+    st.markdown("Faça o teste de estresse de um ativo específico validando as variações de Stop Inicial e Médias de Condução para os setups 9.1, 9.2 e 9.3.")
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -547,13 +547,15 @@ with aba_individual:
         lupa_stop = st.selectbox("Posição do Stop Inicial:", ["Mínima do Candle", "Fundo Anterior (5 candles)"], key="i91_stop")
         lupa_periodo = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=2, key="i91_per")
     with col2:
+        # --- CAIXA AZUL INSERIDA AQUI ---
+        setup_escolhido_i = st.selectbox("Escolha a Estratégia:", ["Setup 9.1 (Virada de Média)", "Setup 9.2 (Pullback Curto)", "Setup 9.3 (Pullback Duplo)"], key="i91_setup")
         lupa_cond = st.selectbox("Média de Condução (Trailing):", ["MME9 (Exponencial)", "MM9 (Aritmética)"], key="i91_cond")
-        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True) 
         lupa_capital = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="i91_cap")
     with col3:
         lupa_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="i91_tmp")
         
-    btn_raiox = st.button("🔍 Gerar Raio-X 9.1", type="primary", use_container_width=True, key="i91_btn")
+    # NOME DO BOTÃO DINÂMICO
+    btn_raiox = st.button(f"🔍 Gerar Raio-X {setup_escolhido_i.split()[1]}", type="primary", use_container_width=True, key="i91_btn")
 
     if btn_raiox:
         ativo_input = lupa_ativo.strip().upper()
@@ -565,7 +567,7 @@ with aba_individual:
             elif lupa_tempo == '60m' and lupa_periodo in ['5y', 'max']: lupa_periodo = '2y'
             intervalo_tv = tradutor_intervalo.get(lupa_tempo, Interval.in_daily)
 
-            with st.spinner(f'Testando Backtest 9.1 em {ativo}...'):
+            with st.spinner(f'Testando Backtest {setup_escolhido_i.split()[1]} em {ativo}...'):
                 try:
                     df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
                     if df_full is None or len(df_full) < 50:
@@ -608,14 +610,24 @@ with aba_individual:
                         col_data = df_back.columns[0]
                         vitorias, derrotas = 0, 0
 
-                        for i in range(2, len(df_back)):
-                            mme9_virou_cima = (df_back['MME9_Prev1'].iloc[i] < df_back['MME9_Prev2'].iloc[i]) and (df_back['MME9'].iloc[i] > df_back['MME9_Prev1'].iloc[i])
-                            mme9_caindo = df_back['MME9'].iloc[i] < df_back['MME9_Prev1'].iloc[i]
+                        # Começando do índice 3 para ter margem de candles passados
+                        for i in range(3, len(df_back)):
+                            mme9_atual = df_back['MME9'].iloc[i]
+                            mme9_p1 = df_back['MME9_Prev1'].iloc[i]
+                            mme9_p2 = df_back['MME9_Prev2'].iloc[i]
+                            
+                            mme9_virou_cima = (mme9_p1 < mme9_p2) and (mme9_atual > mme9_p1)
+                            mme9_caindo = mme9_atual < mme9_p1
+                            mme9_subindo = mme9_atual > mme9_p1
+
+                            fechou_abaixo_min_ant = df_back['Close'].iloc[i] < df_back['Low'].iloc[i-1]
+                            fechou_abaixo_fech_ant1 = df_back['Close'].iloc[i] < df_back['Close'].iloc[i-1]
+                            fechou_abaixo_fech_ant2 = df_back['Close'].iloc[i-1] < df_back['Close'].iloc[i-2]
 
                             if lupa_cond == "MM9 (Aritmética)":
                                 ma_atual, ma_prev1, ma_prev2 = df_back['MM9'].iloc[i], df_back['MM9_Prev1'].iloc[i], df_back['MM9_Prev2'].iloc[i]
                             else:
-                                ma_atual, ma_prev1, ma_prev2 = df_back['MME9'].iloc[i], df_back['MME9_Prev1'].iloc[i], df_back['MME9_Prev2'].iloc[i]
+                                ma_atual, ma_prev1, ma_prev2 = mme9_atual, mme9_p1, mme9_p2
                                 
                             media_saida_virou_baixo = (ma_prev1 > ma_prev2) and (ma_atual < ma_prev1)
                             media_saida_subindo = ma_atual > ma_prev1
@@ -657,19 +669,34 @@ with aba_individual:
                                         setup_armado = False
                                         d_ent = df_back[col_data].iloc[i]
                                         preco_entrada = max(gatilho_entrada + 0.01, df_back['Open'].iloc[i])
-                                    elif mme9_caindo:
-                                        setup_armado = False
+                                    else:
+                                        if "9.1" in setup_escolhido_i:
+                                            if mme9_caindo: setup_armado = False
+                                        elif "9.2" in setup_escolhido_i or "9.3" in setup_escolhido_i:
+                                            if mme9_subindo:
+                                                gatilho_entrada = df_back['High'].iloc[i]
+                                                if lupa_stop == "Fundo Anterior (5 candles)":
+                                                    stop_loss = df_back['Fundo_5'].iloc[i] - 0.01
+                                                else:
+                                                    stop_loss = df_back['Low'].iloc[i] - 0.01
+                                            else:
+                                                setup_armado = False
 
-                                if mme9_virou_cima:
+                                if "9.1" in setup_escolhido_i and mme9_virou_cima:
                                     setup_armado = True
                                     gatilho_entrada = df_back['High'].iloc[i]
-                                    if lupa_stop == "Fundo Anterior (5 candles)":
-                                        stop_loss = df_back['Fundo_5'].iloc[i] - 0.01
-                                    else:
-                                        stop_loss = df_back['Low'].iloc[i] - 0.01
+                                    stop_loss = df_back['Fundo_5'].iloc[i] - 0.01 if lupa_stop == "Fundo Anterior (5 candles)" else df_back['Low'].iloc[i] - 0.01
+                                elif "9.2" in setup_escolhido_i and mme9_subindo and fechou_abaixo_min_ant:
+                                    setup_armado = True
+                                    gatilho_entrada = df_back['High'].iloc[i]
+                                    stop_loss = df_back['Fundo_5'].iloc[i] - 0.01 if lupa_stop == "Fundo Anterior (5 candles)" else df_back['Low'].iloc[i] - 0.01
+                                elif "9.3" in setup_escolhido_i and mme9_subindo and fechou_abaixo_fech_ant1 and fechou_abaixo_fech_ant2:
+                                    setup_armado = True
+                                    gatilho_entrada = df_back['High'].iloc[i]
+                                    stop_loss = df_back['Fundo_5'].iloc[i] - 0.01 if lupa_stop == "Fundo Anterior (5 candles)" else df_back['Low'].iloc[i] - 0.01
 
                         st.divider()
-                        st.markdown(f"### 📊 Resultado: {ativo} (Setup 9.1)")
+                        st.markdown(f"### 📊 Resultado: {ativo} ({setup_escolhido_i.split()[1]})")
                         
                         if len(trades) > 0:
                             df_t = pd.DataFrame(trades)
