@@ -184,8 +184,22 @@ with aba_padrao:
                         'Resultado Atual': f"+{res_atual:.2f}%" if res_atual > 0 else f"{res_atual:.2f}%"
                     })
                 else:
+                    else:
+                    # Aqui o robô verifica se o sinal aconteceu na última barra fechada
                     tem_sinal = (df_full['IFR_Prev'].iloc[-1] < 25) and (df_full['IFR'].iloc[-1] >= 25)
-                    if tem_sinal: ls_sinais_p.append({'Ativo': ativo, 'Preço Atual': f"R$ {df_full['Close'].iloc[-1]:.2f}"})
+                    
+                    if tem_sinal: 
+                        preco_at = df_full['Close'].iloc[-1]
+                        ls_sinais_p.append({'Ativo': ativo, 'Preço Atual': f"R$ {preco_at:.2f}"})
+                        
+                        # --- O GATILHO QUE ENVIA A MENSAGEM ---
+                        msg_elite = (
+                            f"🎯 *CAÇADORES DE ELITE: IFR*\n\n"
+                            f"🚀 *SINAL DE ENTRADA:* `{ativo}`\n"
+                            f"💵 *Preço:* R$ {preco_at:.2f}\n"
+                            f"⏱️ *Tempo:* {tempo_padrao}"
+                        )
+                        enviar_alerta_telegram(msg_elite)
 
                 if len(trades) > 0:
                     df_t = pd.DataFrame(trades)
