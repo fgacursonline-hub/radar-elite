@@ -20,8 +20,8 @@ def get_tv_connection():
 tv = get_tv_connection()
 
 # --- CONFIGURAÇÃO DO TELEGRAM ---
-TOKEN_TELEGRAM = "COLE_AQUI_AQUELE_TOKEN_LONGO"
-CHAT_ID_TELEGRAM = "COLE_AQUI_O_NUMERO_DO_ID"
+TOKEN_TELEGRAM = "8689032615:AAFnJTZm0SYgSng9VlwzzZdafOP4mmGlt5Y"
+CHAT_ID_TELEGRAM = "734303365"
 
 def enviar_alerta_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TOKEN_TELEGRAM}/sendMessage"
