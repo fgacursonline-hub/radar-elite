@@ -105,32 +105,46 @@ with c3:
 st.divider()
 
 # ==========================================
-# 4. NOTÍCIAS DO MERCADO EM PORTUGUÊS (B3)
+# 4. RADAR DE NOTÍCIAS (FONTE: INFOMONEY)
 # ==========================================
 st.subheader("📰 Radar de Notícias - Brasil")
-st.markdown("Acompanhe o que está movimentando o mercado brasileiro agora.")
+st.markdown("As últimas manchetes do mercado financeiro em tempo real.")
 
-codigo_noticias_br = """
-<div class="tradingview-widget-container">
-  <div class="tradingview-widget-container__widget"></div>
-  <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-timeline.js" async>
-  {
-  "feedMode": "market",
-  "market": "stock",
-  "colorTheme": "dark",
-  "isTransparent": true,
-  "displayMode": "regular",
-  "width": "100%",
-  "height": 600,
-  "locale": "br"
-}
-  </script>
-</div>
-"""
+import xml.etree.ElementTree as ET
+import requests
+from datetime import datetime
 
-# Renderiza o widget focado em ações brasileiras
-components.html(codigo_noticias_br, height=600, scrolling=True)
+def buscar_noticias_br():
+    try:
+        # Usando o Feed RSS do InfoMoney (100% em português e focado em mercado)
+        url = "https://www.infomoney.com.br/feed/"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers)
+        
+        # Parseando o XML das notícias
+        root = ET.fromstring(response.content)
+        noticias = []
+        
+        for item in root.findall('./channel/item')[:10]: # Pega as 10 últimas
+            titulo = item.find('title').text
+            link = item.find('link').text
+            data_pub = item.find('pubDate').text
+            
+            # Formata a data (opcional)
+            noticias.append({"titulo": titulo, "link": link, "data": data_pub})
+        return noticias
+    except:
+        return None
 
+noticias = buscar_noticias_br()
 
-st.markdown("<br><br>", unsafe_allow_html=True)
-st.caption("© 2026 Caçadores de Elite - Todos os direitos reservados. Desenvolvido para operações de alta performance.")
+if noticias:
+    for n in noticias:
+        # Cria um box bonitinho para cada notícia
+        with st.container():
+            st.markdown(f"**{n['titulo']}**")
+            st.caption(f"📅 {n['data']}")
+            st.markdown(f"[Ler notícia completa]({n['link']})")
+            st.divider()
+else:
+    st.info("Não foi possível carregar as notícias brasileiras no momento. Tente novamente em instantes.")
