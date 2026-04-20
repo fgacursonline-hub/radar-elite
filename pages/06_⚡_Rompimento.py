@@ -390,6 +390,8 @@ with aba_futuros:
     btn_fut = st.button("🚀 Gerar Raio-X", type="primary", use_container_width=True, key="f_brk_btn")
 
     if btn_fut:
+        # Criando o tradutor localmente para resolver o NameError
+        tradutor_intervalo = {'15m': Interval.in_15_minute, '60m': Interval.in_1_hour, '1d': Interval.in_daily}
         intervalo_tv = tradutor_intervalo.get(f_tmp, Interval.in_15_minute)
 
         with st.spinner(f'Testando rompimento no {f_selecionado}...'):
