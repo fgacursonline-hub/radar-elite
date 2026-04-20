@@ -105,46 +105,57 @@ with c3:
 st.divider()
 
 # ==========================================
-# 4. RADAR DE NOTÍCIAS (FONTE: INFOMONEY)
+# 4. RADAR DE NOTÍCIAS MULTI-FONTE (100% BR)
 # ==========================================
-st.subheader("📰 Radar de Notícias - Brasil")
-st.markdown("As últimas manchetes do mercado financeiro em tempo real.")
+st.divider()
+st.subheader("📰 Radar de Notícias Caçadores de Elite")
+st.markdown("Fique por dentro de tudo o que acontece nas principais fontes de economia do Brasil.")
 
 import xml.etree.ElementTree as ET
 import requests
-from datetime import datetime
 
-def buscar_noticias_br():
+# Função mestre para buscar e processar as notícias
+def carregar_feed(url):
     try:
-        # Usando o Feed RSS do InfoMoney (100% em português e focado em mercado)
-        url = "https://www.infomoney.com.br/feed/"
         headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers)
-        
-        # Parseando o XML das notícias
+        response = requests.get(url, headers=headers, timeout=10)
         root = ET.fromstring(response.content)
-        noticias = []
-        
-        for item in root.findall('./channel/item')[:10]: # Pega as 10 últimas
+        itens = []
+        for item in root.findall('./channel/item')[:8]: # Pega as 8 últimas de cada
             titulo = item.find('title').text
             link = item.find('link').text
-            data_pub = item.find('pubDate').text
-            
-            # Formata a data (opcional)
-            noticias.append({"titulo": titulo, "link": link, "data": data_pub})
-        return noticias
+            itens.append({"titulo": titulo, "link": link})
+        return itens
     except:
         return None
 
-noticias = buscar_noticias_br()
+# Criação das Sub-Abas de Notícias
+tab_info, tab_inv, tab_g1 = st.tabs(["💰 InfoMoney", "📈 Investing.com", "🌍 G1 Economia"])
 
-if noticias:
-    for n in noticias:
-        # Cria um box bonitinho para cada notícia
-        with st.container():
-            st.markdown(f"**{n['titulo']}**")
-            st.caption(f"📅 {n['data']}")
-            st.markdown(f"[Ler notícia completa]({n['link']})")
+with tab_info:
+    noticias_im = carregar_feed("https://www.infomoney.com.br/feed/")
+    if noticias_im:
+        for n in noticias_im:
+            st.markdown(f"• **{n['titulo']}** \n[Ler mais]({n['link']})")
             st.divider()
-else:
-    st.info("Não foi possível carregar as notícias brasileiras no momento. Tente novamente em instantes.")
+    else:
+        st.error("Erro ao carregar InfoMoney.")
+
+with tab_inv:
+    # O Investing.com às vezes bloqueia bots, por isso o timeout e headers são vitais
+    noticias_inv = carregar_feed("https://br.investing.com/rss/news_25.rss")
+    if noticias_inv:
+        for n in noticias_inv:
+            st.markdown(f"• **{n['titulo']}** \n[Ler mais]({n['link']})")
+            st.divider()
+    else:
+        st.warning("Investing.com temporariamente indisponível.")
+
+with tab_g1:
+    noticias_g1 = carregar_feed("https://g1.globo.com/rss/g1/economia/")
+    if noticias_g1:
+        for n in noticias_g1:
+            st.markdown(f"• **{n['titulo']}** \n[Ler mais]({n['link']})")
+            st.divider()
+    else:
+        st.error("Erro ao carregar G1 Economia.")
