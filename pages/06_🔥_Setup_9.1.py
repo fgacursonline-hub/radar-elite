@@ -70,7 +70,7 @@ def colorir_lucro(row):
 col_titulo, col_botao = st.columns([4, 1])
 
 with col_titulo:
-    st.title("🔥 Setup 9.1 (Larry Williams)")
+    st.title("🔥 Setup 9.x (Larry Williams)")
 
 with col_botao:
     # Esse espaço em branco alinha o botão mais para baixo, para ficar na mesma altura do texto do título
