@@ -236,7 +236,8 @@ with aba_raio_x:
         at_rx = st.text_input("Ativo para Teste:", value="AURA33", key="rx_ativo").upper()
         tipo_romp_rx = st.radio("Romper por:", ["Máxima", "Fechamento"], horizontal=True, key="rx_tipo")
     with rx2: 
-        tempo_rx = st.selectbox("Tempo Gráfico:", ["Mensal", "Anual"], index=1, key="rx_tmp")
+        # --- OPÇÃO SEMANAL ADICIONADA ---
+        tempo_rx = st.selectbox("Tempo Gráfico:", ["Semanal", "Mensal", "Anual"], index=2, key="rx_tmp")
         hist_rx = st.number_input("Histórico (Velas Diárias):", value=1500, step=500, key="rx_hist")
     with rx3: 
         alvo_rx = st.number_input("Alvo de Ganho (%):", value=40.0, step=5.0, key="rx_alvo")
@@ -247,7 +248,8 @@ with aba_raio_x:
     if st.button("⚙️ Rodar Simulação do Ativo", type="primary", use_container_width=True, key="btn_rx"):
         try:
             df = tv.get_hist(symbol=at_rx, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=hist_rx)
-            janela_rx = 252 if tempo_rx == "Anual" else 21
+            # --- LÓGICA DE JANELA ATUALIZADA (5 dias = 1 semana) ---
+            janela_rx = 252 if tempo_rx == "Anual" else (21 if tempo_rx == "Mensal" else 5)
             
             if df is not None and len(df) > janela_rx:
                 df.columns = [c.capitalize() for c in df.columns]
