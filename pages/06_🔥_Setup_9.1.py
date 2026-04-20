@@ -713,10 +713,10 @@ with aba_individual:
                             st.warning("Nenhuma operação concluída usando essa configuração neste período.")
                 except Exception as e: st.error(f"Erro: {e}")
 # ==========================================
-# ABA 4: RAIO-X FUTUROS (SETUP 9.1 DAY TRADE - COMPRA E VENDA)
+# ABA 4: RAIO-X FUTUROS (DAY TRADE MULTI-SETUP)
 # ==========================================
 with aba_futuros:
-    st.subheader("📈 Raio-X Mercado Futuro (WIN, WDO) - Setup 9.1")
+    st.subheader("📈 Raio-X Mercado Futuro (WIN, WDO) - Família 9.x")
     st.markdown("Teste o poder do *Trend Following* no Day Trade operando nas duas pontas (**Compra e Venda**). Zeragem no Fim do Dia obrigatória.")
     
     cf1, cf2, cf3 = st.columns(3)
@@ -727,6 +727,8 @@ with aba_futuros:
         fut_periodo = st.selectbox("Período:", options=['3mo', '6mo', '1y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=1, key="f91_per")
         fut_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m'], index=0, key="f91_tmp")
     with cf2:
+        # --- CAIXA AZUL INSERIDA AQUI NO FUTUROS ---
+        setup_escolhido_f = st.selectbox("Escolha a Estratégia:", ["Setup 9.1 (Virada de Média)", "Setup 9.2 (Pullback Curto)", "Setup 9.3 (Pullback Duplo)"], key="f91_setup")
         direcao_fut = st.selectbox("Direção do Trade:", ["Ambas (Compra e Venda)", "Apenas Compra", "Apenas Venda"], key="f91_dir")
         tipo_stop_fut = st.selectbox("Posição do Stop Inicial:", ["Extremo do Candle (Máx/Mín)", "Extremo Anterior (5 candles)"], key="f91_stop")
         tipo_cond_fut = st.selectbox("Média de Condução:", ["MME9 (Exponencial)", "MM9 (Aritmética)"], key="f91_cond")
@@ -736,11 +738,12 @@ with aba_futuros:
         fut_multiplicador = st.number_input("Multiplicador (R$):", value=valor_mult_padrao, step=0.10, format="%.2f", key="f91_mult")
         fut_zerar_daytrade = st.checkbox("⏰ Zeragem Automática no Fim do Dia", value=True, key="f91_zerar")
         st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)
-        btn_raiox_futuros = st.button("🚀 Gerar Raio-X Futuros 9.1", type="primary", use_container_width=True, key="f91_btn")
+        
+        btn_raiox_futuros = st.button(f"🚀 Gerar Raio-X Futuros {setup_escolhido_f.split()[1]}", type="primary", use_container_width=True, key="f91_btn")
 
     if btn_raiox_futuros:
         intervalo_tv = tradutor_intervalo.get(fut_tempo, Interval.in_15_minute)
-        with st.spinner(f'Testando o motor do 9.1 ({direcao_fut}) em {fut_selecionado}...'):
+        with st.spinner(f'Testando o motor do {setup_escolhido_f.split()[1]} ({direcao_fut}) em {fut_selecionado}...'):
             try:
                 df_full = tv.get_hist(symbol=fut_ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=10000)
                 if df_full is not None and len(df_full) > 50:
@@ -777,20 +780,34 @@ with aba_futuros:
                     # Ajuste do Tick da B3
                     offset = 5.0 if "WIN" in fut_ativo else 0.5
 
-                    for i in range(2, len(df_back)):
+                    # Precisamos começar do índice 3 para os setups 9.2 e 9.3 lerem os candles passados
+                    for i in range(3, len(df_back)):
                         d_at = df_back[col_data].iloc[i]
                         d_ant = df_back[col_data].iloc[i-1]
                         
-                        mme9_virou_cima = (df_back['MME9_Prev1'].iloc[i] < df_back['MME9_Prev2'].iloc[i]) and (df_back['MME9'].iloc[i] > df_back['MME9_Prev1'].iloc[i])
-                        mme9_caindo = df_back['MME9'].iloc[i] < df_back['MME9_Prev1'].iloc[i]
+                        mme9_atual = df_back['MME9'].iloc[i]
+                        mme9_p1 = df_back['MME9_Prev1'].iloc[i]
+                        mme9_p2 = df_back['MME9_Prev2'].iloc[i]
 
-                        mme9_virou_baixo = (df_back['MME9_Prev1'].iloc[i] > df_back['MME9_Prev2'].iloc[i]) and (df_back['MME9'].iloc[i] < df_back['MME9_Prev1'].iloc[i])
-                        mme9_subindo = df_back['MME9'].iloc[i] > df_back['MME9_Prev1'].iloc[i]
+                        mme9_virou_cima = (mme9_p1 < mme9_p2) and (mme9_atual > mme9_p1)
+                        mme9_caindo = mme9_atual < mme9_p1
+                        mme9_virou_baixo = (mme9_p1 > mme9_p2) and (mme9_atual < mme9_p1)
+                        mme9_subindo = mme9_atual > mme9_p1
+
+                        # Regras para Compras (9.2 e 9.3)
+                        fechou_abaixo_min_ant = df_back['Close'].iloc[i] < df_back['Low'].iloc[i-1]
+                        fechou_abaixo_fech_ant1 = df_back['Close'].iloc[i] < df_back['Close'].iloc[i-1]
+                        fechou_abaixo_fech_ant2 = df_back['Close'].iloc[i-1] < df_back['Close'].iloc[i-2]
+
+                        # Regras para Vendas (9.2 e 9.3)
+                        fechou_acima_max_ant = df_back['Close'].iloc[i] > df_back['High'].iloc[i-1]
+                        fechou_acima_fech_ant1 = df_back['Close'].iloc[i] > df_back['Close'].iloc[i-1]
+                        fechou_acima_fech_ant2 = df_back['Close'].iloc[i-1] > df_back['Close'].iloc[i-2]
 
                         if tipo_cond_fut == "MM9 (Aritmética)":
                             ma_atual, ma_prev1, ma_prev2 = df_back['MM9'].iloc[i], df_back['MM9_Prev1'].iloc[i], df_back['MM9_Prev2'].iloc[i]
                         else:
-                            ma_atual, ma_prev1, ma_prev2 = df_back['MME9'].iloc[i], df_back['MME9_Prev1'].iloc[i], df_back['MME9_Prev2'].iloc[i]
+                            ma_atual, ma_prev1, ma_prev2 = mme9_atual, mme9_p1, mme9_p2
                             
                         media_saida_virou_baixo = (ma_prev1 > ma_prev2) and (ma_atual < ma_prev1)
                         media_saida_virou_cima = (ma_prev1 < ma_prev2) and (ma_atual > ma_prev1)
@@ -809,10 +826,8 @@ with aba_futuros:
                                 'Lucro (R$)': luc, 
                                 'Situação': 'Zerad. Fim Dia ✅' if luc > 0 else 'Zerad. Fim Dia ❌'
                             })
-                            if luc > 0: 
-                                vitorias += 1
-                            else: 
-                                derrotas += 1
+                            if luc > 0: vitorias += 1
+                            else: derrotas += 1
                                 
                             posicao, setup_compra, setup_venda, saida_armada = 0, False, False, False
                             continue
@@ -830,11 +845,9 @@ with aba_futuros:
                                 if df_back['Low'].iloc[i] < gatilho_saida:
                                     luc = (gatilho_saida - preco_entrada) * fut_contratos * fut_multiplicador
                                     trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': d_at.strftime('%d/%m/%Y %H:%M'), 'Tipo': 'Compra 🟢', 'Lucro (R$)': luc, 'Situação': 'Saída Técnica ✅' if luc > 0 else 'Saída Técnica ❌'})
-                                    if luc > 0: 
-                                        vitorias += 1 
-                                    else: 
-                                        derrotas += 1
-                                        
+                                    if luc > 0: vitorias += 1 
+                                    else: derrotas += 1
+                                    
                                     posicao, saida_armada = 0, False
                                     continue
                                 elif media_saida_subindo:
@@ -856,11 +869,9 @@ with aba_futuros:
                                 if df_back['High'].iloc[i] > gatilho_saida:
                                     luc = (preco_entrada - gatilho_saida) * fut_contratos * fut_multiplicador
                                     trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': d_at.strftime('%d/%m/%Y %H:%M'), 'Tipo': 'Venda 🔴', 'Lucro (R$)': luc, 'Situação': 'Saída Técnica ✅' if luc > 0 else 'Saída Técnica ❌'})
-                                    if luc > 0: 
-                                        vitorias += 1 
-                                    else: 
-                                        derrotas += 1
-                                        
+                                    if luc > 0: vitorias += 1 
+                                    else: derrotas += 1
+                                    
                                     posicao, saida_armada = 0, False
                                     continue
                                 elif media_saida_caindo:
@@ -877,8 +888,15 @@ with aba_futuros:
                                     setup_compra, setup_venda = False, False
                                     d_ent = df_back[col_data].iloc[i]
                                     preco_entrada = max(gatilho_entrada + offset, df_back['Open'].iloc[i])
-                                elif mme9_caindo:
-                                    setup_compra = False
+                                else:
+                                    if "9.1" in setup_escolhido_f:
+                                        if mme9_caindo: setup_compra = False
+                                    elif "9.2" in setup_escolhido_f or "9.3" in setup_escolhido_f:
+                                        if mme9_subindo:
+                                            gatilho_entrada = df_back['High'].iloc[i]
+                                            stop_loss = df_back['Fundo_5'].iloc[i] - offset if "Extremo Anterior" in tipo_stop_fut else df_back['Low'].iloc[i] - offset
+                                        else:
+                                            setup_compra = False
 
                             if setup_venda and posicao == 0:
                                 if df_back['Low'].iloc[i] < gatilho_entrada:
@@ -886,27 +904,45 @@ with aba_futuros:
                                     setup_compra, setup_venda = False, False
                                     d_ent = df_back[col_data].iloc[i]
                                     preco_entrada = min(gatilho_entrada - offset, df_back['Open'].iloc[i])
-                                elif mme9_subindo:
-                                    setup_venda = False
+                                else:
+                                    if "9.1" in setup_escolhido_f:
+                                        if mme9_subindo: setup_venda = False
+                                    elif "9.2" in setup_escolhido_f or "9.3" in setup_escolhido_f:
+                                        if mme9_caindo:
+                                            gatilho_entrada = df_back['Low'].iloc[i]
+                                            stop_loss = df_back['Topo_5'].iloc[i] + offset if "Extremo Anterior" in tipo_stop_fut else df_back['High'].iloc[i] + offset
+                                        else:
+                                            setup_venda = False
 
                             # ARMA O SETUP (COM TRAVA DE DIREÇÃO)
-                            if mme9_virou_cima and posicao == 0 and direcao_fut != "Apenas Venda":
-                                setup_compra = True
-                                setup_venda = False
-                                gatilho_entrada = df_back['High'].iloc[i]
-                                stop_loss = df_back['Fundo_5'].iloc[i] - offset if "Extremo Anterior" in tipo_stop_fut else df_back['Low'].iloc[i] - offset
+                            if posicao == 0:
+                                armar_compra = False
+                                if "9.1" in setup_escolhido_f and mme9_virou_cima: armar_compra = True
+                                elif "9.2" in setup_escolhido_f and mme9_subindo and fechou_abaixo_min_ant: armar_compra = True
+                                elif "9.3" in setup_escolhido_f and mme9_subindo and fechou_abaixo_fech_ant1 and fechou_abaixo_fech_ant2: armar_compra = True
                                 
-                            elif mme9_virou_baixo and posicao == 0 and direcao_fut != "Apenas Compra":
-                                setup_venda = True
-                                setup_compra = False
-                                gatilho_entrada = df_back['Low'].iloc[i]
-                                stop_loss = df_back['Topo_5'].iloc[i] + offset if "Extremo Anterior" in tipo_stop_fut else df_back['High'].iloc[i] + offset
+                                if armar_compra and direcao_fut != "Apenas Venda":
+                                    setup_compra = True
+                                    setup_venda = False
+                                    gatilho_entrada = df_back['High'].iloc[i]
+                                    stop_loss = df_back['Fundo_5'].iloc[i] - offset if "Extremo Anterior" in tipo_stop_fut else df_back['Low'].iloc[i] - offset
+                                    
+                                armar_venda = False
+                                if "9.1" in setup_escolhido_f and mme9_virou_baixo: armar_venda = True
+                                elif "9.2" in setup_escolhido_f and mme9_caindo and fechou_acima_max_ant: armar_venda = True
+                                elif "9.3" in setup_escolhido_f and mme9_caindo and fechou_acima_fech_ant1 and fechou_acima_fech_ant2: armar_venda = True
+                                
+                                if armar_venda and direcao_fut != "Apenas Compra":
+                                    setup_venda = True
+                                    setup_compra = False
+                                    gatilho_entrada = df_back['Low'].iloc[i]
+                                    stop_loss = df_back['Topo_5'].iloc[i] + offset if "Extremo Anterior" in tipo_stop_fut else df_back['High'].iloc[i] + offset
 
                     # --- PAINEL DE RESULTADOS (DIAGNÓSTICO QUANTI) ---
                     if trades:
                         df_t = pd.DataFrame(trades)
                         st.divider()
-                        st.markdown(f"### 📊 Resultado: {fut_selecionado} (9.1 {direcao_fut})")
+                        st.markdown(f"### 📊 Resultado: {fut_selecionado} ({setup_escolhido_f.split()[1]} - {direcao_fut})")
                         st.caption(f"📅 Período: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
                         
                         l_total = df_t['Lucro (R$)'].sum()
@@ -930,11 +966,11 @@ with aba_futuros:
                         
                         if l_total > 0:
                             if p_off > 1:
-                                st.success(f"🎯 **Expectativa Real Positiva:** O Payoff é o rei do Setup 9.1! Você arrisca 1 para ganhar {p_off:.2f}. Margem de gordura: {margem:.1f}% acima da taxa crítica.")
+                                st.success(f"🎯 **Expectativa Real Positiva:** O Payoff é o rei da família 9.x! Você arrisca 1 para ganhar {p_off:.2f}. Margem de gordura: {margem:.1f}% acima da taxa crítica.")
                             else:
                                 st.info(f"⚖️ **Alerta de Risco:** Saldo positivo, mas payoff de {p_off:.2f} é perigoso para seguidores de tendência. A alta taxa de acerto é que está sustentando o sistema.")
                         else:
-                            st.error(f"🚨 **Expectativa Negativa:** Saldo de R$ {l_total:,.2f}. O 'Efeito Serrote' machucou o robô. Se o Payoff não cobrir a taxa de erro natural da lateralização intraday, a conta não fecha.")
+                            st.error(f"🚨 **Expectativa Negativa:** Saldo de R$ {l_total:,.2f}. O 'Efeito Serrote' ou falsos rompimentos machucaram o robô. Se o Payoff não cobrir a taxa de erro natural, a conta não fecha.")
 
                         st.dataframe(df_t, use_container_width=True, hide_index=True)
                     else:
