@@ -241,7 +241,9 @@ with aba_raio_x:
     with rx3: 
         alvo_rx = st.number_input("Alvo de Ganho (%):", value=40.0, step=5.0, key="rx_alvo")
     with rx4:
-        stop_rx = st.number_input("Stop Loss (%):", value=15.0, step=5.0, key="rx_stop")
+        # Nova caixa de seleção para habilitar/desabilitar o Stop
+        usar_stop_rx = st.checkbox("Habilitar Stop Loss", value=True, key="rx_chk_stop")
+        stop_rx = st.number_input("Stop Loss (%):", value=15.0, step=5.0, key="rx_stop", disabled=not usar_stop_rx)
 
     if st.button("⚙️ Rodar Simulação do Ativo", type="primary", use_container_width=True, key="btn_rx"):
         try:
@@ -265,7 +267,10 @@ with aba_raio_x:
                             em_trade = True
                             p_entrada = df['Close'].iloc[i]
                             p_alvo = p_entrada * (1 + (alvo_rx / 100))
-                            p_stop = p_entrada * (1 - (stop_rx / 100))
+                            
+                            # Calcula o preço do stop apenas se estiver habilitado
+                            p_stop = p_entrada * (1 - (stop_rx / 100)) if usar_stop_rx else 0
+                            
                             data_entrada = df.index[i]
                     else:
                         # Monitora Saída (Gain)
@@ -281,8 +286,8 @@ with aba_raio_x:
                             })
                             em_trade = False
                             
-                        # Monitora Saída (Loss / Stop)
-                        elif df['Low'].iloc[i] <= p_stop:
+                        # Monitora Saída (Loss / Stop) - Só entra aqui se o Stop estiver habilitado
+                        elif usar_stop_rx and df['Low'].iloc[i] <= p_stop:
                             dias_op = (df.index[i] - data_entrada).days
                             trades.append({
                                 'Data Entrada': data_entrada.strftime('%d/%m/%Y'),
@@ -301,8 +306,14 @@ with aba_raio_x:
                     erros = sum(1 for t in trades if 'LOSS' in t['Resultado'])
                     
                     tx_acerto = (acertos / total_ops) * 100
-                    payoff = alvo_rx / stop_rx if stop_rx > 0 else alvo_rx
-                    acumulado = (acertos * alvo_rx) - (erros * stop_rx)
+                    
+                    # Se não usar stop, não existe payoff matemático calculável dessa forma
+                    if usar_stop_rx and stop_rx > 0:
+                        payoff_str = f"{(alvo_rx / stop_rx):.2f}"
+                    else:
+                        payoff_str = "N/A"
+                        
+                    acumulado = (acertos * alvo_rx) - (erros * stop_rx if usar_stop_rx else 0)
                     
                     st.success(f"Simulação concluída para {at_rx}!")
                     
@@ -313,7 +324,7 @@ with aba_raio_x:
                     m2.metric("🟢 Acertos", acertos)
                     m3.metric("🔴 Erros", erros)
                     m4.metric("🎯 Taxa de Acerto", f"{tx_acerto:.1f}%")
-                    m5.metric("⚖️ Payoff", f"{payoff:.2f}")
+                    m5.metric("⚖️ Payoff", payoff_str)
                     m6.metric("💰 Acumulado", f"{acumulado:.1f}%", delta=f"{acumulado:.1f}%", delta_color="normal" if acumulado >= 0 else "inverse")
                     st.divider()
                     
@@ -330,7 +341,7 @@ with aba_raio_x:
                     except:
                         st.dataframe(df_trades.style.applymap(colorir_resultado, subset=['Resultado']), use_container_width=True, hide_index=True)
                 else:
-                    st.warning("Nenhum trade finalizado (atingiu o alvo ou stop) encontrado no histórico recente.")
+                    st.warning("Nenhum trade finalizado encontrado. O ativo pode estar em operação no momento sem atingir o alvo.")
             else:
                 st.error("Histórico insuficiente para essa janela de tempo.")
         except Exception as e: 
