@@ -117,19 +117,21 @@ with aba_rad_p:
 # ==========================================
 with aba_backtest:
     st.subheader("📊 Backtest Global da Estratégia")
-    st.markdown("Varre uma lista completa de ativos para descobrir a Taxa de Acerto, Payoff e o Retorno Acumulado histórico.")
+    st.markdown("Varre uma lista completa para descobrir a Taxa de Acerto, Payoff e Retorno Acumulado histórico.")
     
     col_b1, col_b2, col_b3, col_b4 = st.columns(4)
     with col_b1:
         lista_bk = st.selectbox("Lista:", ["BDRs Elite", "IBrX Seleção", "Todos (BDR + IBrX)"], key="bk_lst")
-        tempo_bk = st.selectbox("Romper Máxima:", ["Mensal", "Anual"], index=1, key="bk_tmp")
+        tipo_romp_bk = st.radio("Romper por:", ["Máxima", "Fechamento"], horizontal=True, key="bk_tipo")
     with col_b2:
+        tempo_bk = st.selectbox("Tempo Gráfico:", ["Mensal", "Anual"], index=1, key="bk_tmp")
+        hist_bk = st.number_input("Histórico (Velas Diárias):", value=1500, step=500, key="bk_velas", help="1500 = ~6 anos")
+    with col_b3:
         alvo_bk = st.number_input("Alvo de Ganho (Gain %):", value=40.0, step=5.0, key="bk_alvo")
         stop_bk = st.number_input("Stop Loss (Loss %):", value=15.0, step=5.0, key="bk_stop")
-    with col_b3:
-        hist_bk = st.number_input("Histórico (Velas Diárias):", value=1500, step=500, key="bk_velas", help="1500 velas = ~6 anos")
     with col_b4:
         st.info("Payoff = Média de Ganho / Média de Perda.")
+        st.caption("O simulador comprará quando o preço de fechamento superar a referência escolhida.")
 
     if st.button("⚙️ Rodar Backtest em Lote", type="primary", use_container_width=True, key="btn_run_bk"):
         ativos = bdrs_elite if lista_bk == "BDRs Elite" else ibrx_selecao if lista_bk == "IBrX Seleção" else bdrs_elite + ibrx_selecao
@@ -143,13 +145,15 @@ with aba_backtest:
         for idx, ativo in enumerate(ativos):
             barra_bk.progress((idx + 1) / len(ativos), text=f"Calculando métricas para {ativo}...")
             try:
-                # Puxa o histórico longo para fazer as simulações
                 df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=hist_bk)
                 if df is None or len(df) <= janela:
                     continue
                     
                 df.columns = [c.capitalize() for c in df.columns]
-                df['Max_Ref'] = df['High'].rolling(window=janela).max().shift(1)
+                
+                # --- NOVA LÓGICA DE REFERÊNCIA (MÁXIMA VS FECHAMENTO) ---
+                col_ref_bk = "High" if tipo_romp_bk == "Máxima" else "Close"
+                df['Max_Ref'] = df[col_ref_bk].rolling(window=janela).max().shift(1)
                 
                 em_trade = False
                 lucros = []
@@ -157,14 +161,14 @@ with aba_backtest:
                 
                 for i in range(janela, len(df)):
                     if not em_trade:
-                        # Gatilho de Entrada: Rompeu a máxima móvel
+                        # Gatilho de Entrada: Fechamento atual cruza a referência móvel
                         if df['Close'].iloc[i] > df['Max_Ref'].iloc[i]:
                             em_trade = True
                             p_in = df['Close'].iloc[i]
                             p_gain = p_in * (1 + (alvo_bk / 100))
                             p_loss = p_in * (1 - (stop_bk / 100))
                     else:
-                        # Monitoramento de Saída (Gain ou Loss)
+                        # Monitoramento de Saída
                         if df['High'].iloc[i] >= p_gain:
                             lucros.append(alvo_bk)
                             em_trade = False
@@ -172,7 +176,7 @@ with aba_backtest:
                             prejuizos.append(stop_bk)
                             em_trade = False
                             
-                # --- CÁLCULO DAS MÉTRICAS QUANTITATIVAS ---
+                # Cálculos Finais
                 total_ops = len(lucros) + len(prejuizos)
                 if total_ops > 0:
                     acertos = len(lucros)
@@ -181,7 +185,6 @@ with aba_backtest:
                     
                     media_gain = alvo_bk
                     media_loss = stop_bk
-                    # Payoff = Retorno médio de ganho dividido pelo retorno médio de perda
                     payoff = media_gain / media_loss if media_loss > 0 else media_gain
                     
                     acumulado = sum(lucros) - sum(prejuizos)
@@ -203,13 +206,9 @@ with aba_backtest:
             st.success(f"Backtest processado em {len(resultados_bk)} ativos da lista '{lista_bk}'!")
             df_res = pd.DataFrame(resultados_bk)
             
-            # Ordena pelo maior lucro acumulado
             df_res = df_res.sort_values(by='Acumulado', ascending=False)
-            
-            # Formata a coluna acumulado com %
             df_res['Acumulado'] = df_res['Acumulado'].apply(lambda x: f"{x:.1f}%")
             
-            # Estiliza o resultado final
             def colorir_acumulado(val):
                 try:
                     num = float(val.replace('%',''))
