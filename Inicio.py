@@ -130,8 +130,7 @@ codigo_noticias_br = """
 
 # Renderiza as notícias com foco no mercado brasileiro
 components.html(codigo_noticias_br, height=600, scrolling=True)
-# Renderiza as notícias com 600px de altura
-components.html(codigo_noticias, height=600, scrolling=True)
+
 
 st.markdown("<br><br>", unsafe_allow_html=True)
 st.caption("© 2026 Caçadores de Elite - Todos os direitos reservados. Desenvolvido para operações de alta performance.")
