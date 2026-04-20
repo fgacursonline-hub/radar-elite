@@ -105,10 +105,10 @@ with c3:
 st.divider()
 
 # ==========================================
-# 4. NOTÍCIAS DO MERCADO EM PORTUGUÊS (BR)
+# 4. NOTÍCIAS DO MERCADO EM PORTUGUÊS (B3)
 # ==========================================
-st.subheader("📰 Radar de Notícias - Brasil & Mundo")
-st.markdown("Fatos relevantes e notícias do mercado em português.")
+st.subheader("📰 Radar de Notícias - Brasil")
+st.markdown("Acompanhe o que está movimentando o mercado brasileiro agora.")
 
 codigo_noticias_br = """
 <div class="tradingview-widget-container">
@@ -128,7 +128,7 @@ codigo_noticias_br = """
 </div>
 """
 
-# Renderiza as notícias com foco no mercado brasileiro
+# Renderiza o widget focado em ações brasileiras
 components.html(codigo_noticias_br, height=600, scrolling=True)
 
 
