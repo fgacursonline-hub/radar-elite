@@ -102,7 +102,7 @@ with c2:
 with c3:
     st.success("### 🕳️ Smart Money (FVG)\nOpere exatamente como os bancos institucionais, encontrando vácuos de liquidez e armadilhas.")
 
-st.divider()
+
 
 # ==========================================
 # 4. RADAR DE NOTÍCIAS MULTI-FONTE (100% BR)
