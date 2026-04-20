@@ -229,7 +229,7 @@ with aba_backtest:
 # ==========================================
 with aba_raio_x:
     st.subheader("🔬 Simulador de Resultados Históricos (Individual)")
-    st.markdown("Audite cada entrada, saída (Gain ou Loss) e o tempo de duração de um ativo específico.")
+    st.markdown("Audite cada entrada, saída (Gain ou Loss) e analise as métricas totais do ativo.")
     
     rx1, rx2, rx3, rx4 = st.columns(4)
     with rx1: 
@@ -277,7 +277,7 @@ with aba_raio_x:
                                 'Data Saída': df.index[i].strftime('%d/%m/%Y'),
                                 'Preço Saída': f"R$ {p_alvo:.2f}",
                                 'Duração': f"{dias_op} dias",
-                                'Resultado': f"🟢 GAIN (+{alvo_rx}%)"
+                                'Resultado': f"🟢 GAIN"
                             })
                             em_trade = False
                             
@@ -290,15 +290,36 @@ with aba_raio_x:
                                 'Data Saída': df.index[i].strftime('%d/%m/%Y'),
                                 'Preço Saída': f"R$ {p_stop:.2f}",
                                 'Duração': f"{dias_op} dias",
-                                'Resultado': f"🔴 LOSS (-{stop_rx}%)"
+                                'Resultado': f"🔴 LOSS"
                             })
                             em_trade = False
                 
                 if trades:
+                    # --- CÁLCULO DAS MÉTRICAS QUANTITATIVAS ---
+                    total_ops = len(trades)
+                    acertos = sum(1 for t in trades if 'GAIN' in t['Resultado'])
+                    erros = sum(1 for t in trades if 'LOSS' in t['Resultado'])
+                    
+                    tx_acerto = (acertos / total_ops) * 100
+                    payoff = alvo_rx / stop_rx if stop_rx > 0 else alvo_rx
+                    acumulado = (acertos * alvo_rx) - (erros * stop_rx)
+                    
                     st.success(f"Simulação concluída para {at_rx}!")
+                    
+                    # --- PAINEL DE MÉTRICAS (DASHBOARD) ---
+                    st.divider()
+                    m1, m2, m3, m4, m5, m6 = st.columns(6)
+                    m1.metric("Total de Operações", total_ops)
+                    m2.metric("🟢 Acertos", acertos)
+                    m3.metric("🔴 Erros", erros)
+                    m4.metric("🎯 Taxa de Acerto", f"{tx_acerto:.1f}%")
+                    m5.metric("⚖️ Payoff", f"{payoff:.2f}")
+                    m6.metric("💰 Acumulado", f"{acumulado:.1f}%", delta=f"{acumulado:.1f}%", delta_color="normal" if acumulado >= 0 else "inverse")
+                    st.divider()
+                    
+                    # --- TABELA DE TRADES ---
                     df_trades = pd.DataFrame(trades)
                     
-                    # Função para colorir Gain e Loss
                     def colorir_resultado(val):
                         if 'GAIN' in str(val): return 'color: #28a745; font-weight: bold'
                         elif 'LOSS' in str(val): return 'color: #dc3545; font-weight: bold'
