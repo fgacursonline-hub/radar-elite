@@ -244,10 +244,17 @@ with aba_individual:
                         df_full['Cor'] = 'Verde'
                         df_full.loc[df_full['Close'] < df_full['Open'], 'Cor'] = 'Vermelho'
                         
+                        # Cálculo Dinâmico de Bollinger (Blindado contra erro de versão)
                         bb = ta.bbands(df_full['Close'], length=20, std=2)
-                        if bb is not None:
-                            df_full['BB_Width'] = (bb['BBU_20_2.0'] - bb['BBL_20_2.0']) / bb['BBM_20_2.0']
+                        if bb is not None and not bb.empty:
+                            col_u = [c for c in bb.columns if 'BBU' in c][0]
+                            col_l = [c for c in bb.columns if 'BBL' in c][0]
+                            col_m = [c for c in bb.columns if 'BBM' in c][0]
+                            df_full['BB_Width'] = (bb[col_u] - bb[col_l]) / bb[col_m]
                             df_full['BB_Width_Med'] = df_full['BB_Width'].rolling(20).mean()
+                        else:
+                            df_full['BB_Width'] = 0.0
+                            df_full['BB_Width_Med'] = 0.0
 
                         df_full = df_full.dropna()
 
