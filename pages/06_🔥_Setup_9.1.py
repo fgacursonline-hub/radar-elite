@@ -82,35 +82,28 @@ aba_padrao, aba_avancado, aba_individual, aba_futuros = st.tabs([
 ])
 
 # ==========================================
-# ABA 1: RADAR PADRÃO 9.1 (CLÁSSICO)
+# ABA 1: RADAR PADRÃO (FAMÍLIA 9.x)
 # ==========================================
 with aba_padrao:
-    st.subheader("📡 Radar 9.1 Clássico (MME9)")
-    st.markdown("Identifica quando a MME9 vira para cima. A entrada ocorre no rompimento da máxima do candle que fez a média virar. Saída quando a média vira para baixo e perde a mínima.")
+    st.subheader("📡 Radar Larry Williams (Família 9.x)")
+    st.markdown("Identifica reversões (9.1) e pullbacks (9.2, 9.3) a favor da tendência. A saída é sempre conduzida pela virada da média.")
     
-    # ... código anterior ...
-c1, c2, c3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        lista_91 = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="p91_lst")
+        periodo_91 = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="p91_per")
+    with c2:
+        capital_91 = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="p91_cap")
+        # CAIXA AZUL ADICIONADA AQUI:
+        setup_escolhido = st.selectbox("Escolha a Estratégia:", ["Setup 9.1 (Virada de Média)", "Setup 9.2 (Pullback Curto)", "Setup 9.3 (Pullback Duplo)"], key="p91_setup")
+    with c3:
+        tempo_91 = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="p91_tmp")
 
-with c1:
-    lista_ativos = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção"])
-    periodo = st.selectbox("Período de Estudo:", ["1 Ano", "6 Meses", "3 Meses"])
-
-with c2:
-    capital = st.number_input("Capital por Trade (R$):", value=10000.0)
-    
-    # AQUI ENTRA A SUA CAIXA AZUL!
-    setup_escolhido = st.selectbox(
-        "Escolha a Estratégia:", 
-        ["Setup 9.1 (Virada de Média)", "Setup 9.2 (Pullback Curto)", "Setup 9.3 (Pullback Duplo)"]
-    )
-
-with c3:
-    tempo_grafico = st.selectbox("Tempo Gráfico:", ["Diário", "15 min", "60 min", "Semanal"])
-# ... botão de Iniciar Varredura ...
-
-    btn_iniciar_91 = st.button("🚀 Iniciar Varredura 9.1", type="primary", use_container_width=True, key="p91_btn")
+    btn_iniciar_91 = st.button(f"🚀 Iniciar Varredura {setup_escolhido.split()[1]}", type="primary", use_container_width=True, key="p91_btn")
 
     if btn_iniciar_91:
+        ativos_91 = bdrs_elite if lista_91 == "BDRs Elite" else ibrx_selecao if lista_91 == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        
         if tempo_91 == '15m' and periodo_91 not in ['1mo', '3mo']: periodo_91 = '60d'
         elif tempo_91 == '60m' and periodo_91 in ['5y', 'max']: periodo_91 = '2y'
 
@@ -122,7 +115,7 @@ with c3:
 
         for idx, ativo_raw in enumerate(ativos_91):
             ativo = ativo_raw.replace('.SA', '')
-            s_text.text(f"🔍 Analisando 9.1 Clássico: {ativo} ({idx+1}/{len(ativos_91)})")
+            s_text.text(f"🔍 Analisando {setup_escolhido.split()[1]}: {ativo} ({idx+1}/{len(ativos_91)})")
             p_bar.progress((idx + 1) / len(ativos_91))
 
             try:
@@ -163,16 +156,25 @@ with c3:
                 df_back = df.reset_index()
                 col_data = df_back.columns[0]
 
-                # --- MOTOR DE BACKTEST DO 9.1 ---
-                for i in range(2, len(df_back)):
-                    # Lógica de Virada da Média
-                    media_virou_cima = (df_back['MME9_Prev1'].iloc[i] < df_back['MME9_Prev2'].iloc[i]) and (df_back['MME9'].iloc[i] > df_back['MME9_Prev1'].iloc[i])
-                    media_virou_baixo = (df_back['MME9_Prev1'].iloc[i] > df_back['MME9_Prev2'].iloc[i]) and (df_back['MME9'].iloc[i] < df_back['MME9_Prev1'].iloc[i])
-                    media_caindo = df_back['MME9'].iloc[i] < df_back['MME9_Prev1'].iloc[i]
-                    media_subindo = df_back['MME9'].iloc[i] > df_back['MME9_Prev1'].iloc[i]
+                # --- MOTOR DE BACKTEST MULTI-SETUP (9.1, 9.2, 9.3) ---
+                for i in range(3, len(df_back)):
+                    # Lógica Comum da Média
+                    mme9_atual = df_back['MME9'].iloc[i]
+                    mme9_p1 = df_back['MME9_Prev1'].iloc[i]
+                    mme9_p2 = df_back['MME9_Prev2'].iloc[i]
+
+                    media_virou_cima = (mme9_p1 < mme9_p2) and (mme9_atual > mme9_p1)
+                    media_virou_baixo = (mme9_p1 > mme9_p2) and (mme9_atual < mme9_p1)
+                    media_caindo = mme9_atual < mme9_p1
+                    media_subindo = mme9_atual > mme9_p1
+
+                    # Gatilhos Exclusivos do 9.2 e 9.3
+                    fechou_abaixo_min_ant = df_back['Close'].iloc[i] < df_back['Low'].iloc[i-1]
+                    fechou_abaixo_fech_ant1 = df_back['Close'].iloc[i] < df_back['Close'].iloc[i-1]
+                    fechou_abaixo_fech_ant2 = df_back['Close'].iloc[i-1] < df_back['Close'].iloc[i-2]
 
                     if em_pos:
-                        # 1. Verifica Stop Loss Original
+                        # 1. Verifica Stop Loss Original (Igual para todos)
                         if df_back['Low'].iloc[i] <= stop_loss:
                             d_sai = df_back[col_data].iloc[i]
                             duracao = (d_sai - d_ent).days
@@ -195,7 +197,6 @@ with c3:
                                 em_pos, saida_armada = False, False
                                 continue
                             elif media_subindo:
-                                # A média voltou a subir antes de perder a mínima. Cancela a saída.
                                 saida_armada = False
 
                         # 3. Arma a saída se a MME9 virar para baixo
@@ -207,21 +208,36 @@ with c3:
                         # Fora da Operação: Buscando Entradas
                         if setup_armado:
                             if df_back['High'].iloc[i] > gatilho_entrada:
+                                # Rompeu! Entra na operação.
                                 em_pos = True
                                 setup_armado = False
                                 d_ent = df_back[col_data].iloc[i]
-                                # Entra 1 centavo acima da máxima, ou no preço de abertura se abrir em gap de alta
                                 preco_entrada = max(gatilho_entrada + 0.01, df_back['Open'].iloc[i])
-                                min_price_in_trade = df_back['Low'].iloc[i]
-                            elif media_caindo:
-                                # Média virou pra baixo antes de ativar. Setup desconfigurado.
-                                setup_armado = False
+                            else:
+                                # Não ativou no candle seguinte. O que fazer?
+                                if "9.1" in setup_escolhido:
+                                    if media_caindo: setup_armado = False
+                                elif "9.2" in setup_escolhido or "9.3" in setup_escolhido:
+                                    if media_subindo:
+                                        # Ajuste Fino do Palex: Abaixa o gatilho para a nova máxima e sobe o stop para a nova mínima
+                                        gatilho_entrada = df_back['High'].iloc[i]
+                                        stop_loss = df_back['Low'].iloc[i] - 0.01
+                                    else:
+                                        setup_armado = False # Média virou pra baixo, desarma tudo
 
-                        # Arma o setup se a MME9 virar para cima
-                        if media_virou_cima:
+                        # --- ARMAR O SETUP BASEADO NA ESCOLHA ---
+                        if "9.1" in setup_escolhido and media_virou_cima:
                             setup_armado = True
                             gatilho_entrada = df_back['High'].iloc[i]
-                            stop_loss = df_back['Low'].iloc[i] - 0.01 # 1 centavo abaixo da mínima
+                            stop_loss = df_back['Low'].iloc[i] - 0.01
+                        elif "9.2" in setup_escolhido and media_subindo and fechou_abaixo_min_ant:
+                            setup_armado = True
+                            gatilho_entrada = df_back['High'].iloc[i]
+                            stop_loss = df_back['Low'].iloc[i] - 0.01
+                        elif "9.3" in setup_escolhido and media_subindo and fechou_abaixo_fech_ant1 and fechou_abaixo_fech_ant2:
+                            setup_armado = True
+                            gatilho_entrada = df_back['High'].iloc[i]
+                            stop_loss = df_back['Low'].iloc[i] - 0.01
 
                 # --- COLETANDO ESTADO ATUAL PARA O PAINEL ---
                 if em_pos:
@@ -234,9 +250,23 @@ with c3:
                         'Resultado Atual': f"+{resultado_atual:.2f}%" if resultado_atual > 0 else f"{resultado_atual:.2f}%"
                     })
                 else:
-                    # Captura quem armou HOJE
-                    media_virou_cima_hoje = (df_full['MME9_Prev1'].iloc[-1] < df_full['MME9_Prev2'].iloc[-1]) and (df_full['MME9'].iloc[-1] > df_full['MME9_Prev1'].iloc[-1])
-                    if media_virou_cima_hoje:
+                    # Captura quem armou HOJE para qualquer um dos setups
+                    mme9_hj = df_full['MME9'].iloc[-1]
+                    mme9_p1_hj = df_full['MME9_Prev1'].iloc[-1]
+                    mme9_p2_hj = df_full['MME9_Prev2'].iloc[-1]
+
+                    subindo_hj = mme9_hj > mme9_p1_hj
+                    virou_cima_hj = (mme9_p1_hj < mme9_p2_hj) and subindo_hj
+                    f_abx_min_hj = df_full['Close'].iloc[-1] < df_full['Low'].iloc[-2]
+                    f_abx_f1_hj = df_full['Close'].iloc[-1] < df_full['Close'].iloc[-2]
+                    f_abx_f2_hj = df_full['Close'].iloc[-2] < df_full['Close'].iloc[-3]
+
+                    armou_hoje = False
+                    if "9.1" in setup_escolhido and virou_cima_hj: armou_hoje = True
+                    elif "9.2" in setup_escolhido and subindo_hj and f_abx_min_hj: armou_hoje = True
+                    elif "9.3" in setup_escolhido and subindo_hj and f_abx_f1_hj and f_abx_f2_hj: armou_hoje = True
+
+                    if armou_hoje:
                         ls_armados.append({'Ativo': ativo, 'Preço Atual': f"R$ {df_full['Close'].iloc[-1]:.2f}", 'Gatilho Compra (Amanhã)': f"R$ {(df_full['High'].iloc[-1] + 0.01):.2f}", 'Stop Loss': f"R$ {(df_full['Low'].iloc[-1] - 0.01):.2f}"})
 
                 if len(trades) > 0:
@@ -253,9 +283,9 @@ with c3:
         p_bar.empty()
 
         # --- EXIBIÇÃO DOS RESULTADOS ---
-        st.subheader("🔥 Setups 9.1 Armados Hoje (Compra Amanhã)")
+        st.subheader(f"🔥 Setups {setup_escolhido.split()[1]} Armados Hoje (Compra Amanhã)")
         if len(ls_armados) > 0: st.dataframe(pd.DataFrame(ls_armados), use_container_width=True, hide_index=True)
-        else: st.info("Nenhuma MME9 virou para cima no último candle.")
+        else: st.info("Nenhum setup identificado no último candle.")
 
         st.subheader("🌊 Operações em Andamento (Condução pela MME9)")
         if len(ls_abertos) > 0:
