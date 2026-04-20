@@ -11,7 +11,6 @@ warnings.filterwarnings('ignore')
 # ==========================================
 # 1. SEGURANÇA E CONEXÃO
 # ==========================================
-# Autenticação via Email para acesso à plataforma
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, inicie sessão na página inicial (Home) para libertar o motor Quant.")
     st.stop()
@@ -52,11 +51,9 @@ ibrx_selecao = [
 def calcular_rolling_poc(df, periodo_lookback=30, num_bins=24):
     """
     Calcula a POC (Point of Control) rolante.
-    Para cada dia, olha o volume passado e encontra o preço de maior interesse institucional.
     """
     poc_list = [np.nan] * len(df)
     
-    # Precisamos da coluna de Volume para calcular
     if 'Volume' not in df.columns:
         return pd.Series(poc_list, index=df.index)
 
@@ -69,18 +66,15 @@ def calcular_rolling_poc(df, periodo_lookback=30, num_bins=24):
             poc_list[i] = df['Close'].iloc[i]
             continue
             
-        # Cria as faixas de preço (bins)
         bin_edges = np.linspace(min_p, max_p, num_bins)
         bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
         vol_profile = np.zeros(num_bins - 1)
         
-        # Distribui o volume do dia para o bin correspondente
         for j in range(len(janela)):
             idx = np.digitize(janela['Close'].iloc[j], bin_edges) - 1
             idx = min(max(idx, 0), num_bins - 2)
             vol_profile[idx] += janela['Volume'].iloc[j]
             
-        # O bin com o maior volume acumulado é a POC
         poc_list[i] = bin_centers[np.argmax(vol_profile)]
         
     return pd.Series(poc_list, index=df.index)
@@ -106,12 +100,11 @@ with c2:
     rx_capital = st.number_input("Capital Operado (R$):", value=10000.0, step=1000.0)
 with c3:
     st.markdown("**Alvos Percentuais**")
-    alvo_pct = st.number_input("Alvo de Lucro (%):", value=5.0, step=0.5, help="Fechamento da operação no lucro.") / 100
+    alvo_pct = st.number_input("Alvo de Lucro (%):", value=5.0, step=0.5) / 100
 with c4:
     st.markdown("**Limites de Perda**")
-    # AQUI ADICIONAMOS A OPÇÃO DE LIGAR/DESLIGAR O STOP LOSS
     usar_stop = st.checkbox("Utilizar Stop Loss", value=True)
-    stop_pct = st.number_input("Stop Loss (%):", value=2.0, step=0.5, help="Proteção do capital.", disabled=not usar_stop) / 100
+    stop_pct = st.number_input("Stop Loss (%):", value=2.0, step=0.5, disabled=not usar_stop) / 100
 
 btn_raiox = st.button("🔍 Rodar Motor Institucional", type="primary", use_container_width=True)
 
@@ -128,16 +121,10 @@ if btn_raiox:
                 else:
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
                     
-                    # --- COMPUTAÇÃO QUANT ---
-                    # 1. POC (Point of Control de 30 períodos)
                     df_full['POC'] = calcular_rolling_poc(df_full, periodo_lookback=30)
-                    
-                    # 2. VWAP Móvel / Institucional (Preço Médio Ponderado por Volume de 20 períodos)
                     df_full['VWAP_Inst'] = ta.vwma(df_full['Close'], df_full['Volume'], length=20)
-                    
                     df_full = df_full.dropna()
 
-                    # Corte de Tempo
                     data_atual = df_full.index[-1]
                     if rx_periodo == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
                     elif rx_periodo == '1y': data_corte = data_atual - pd.DateOffset(years=1)
@@ -157,27 +144,25 @@ if btn_raiox:
                     d_ent = None
                     vitorias, derrotas = 0, 0
 
-                    # --- BACKTEST DO FLUXO ---
                     for i in range(1, len(df_back)):
                         atual = df_back.iloc[i]
                         ontem = df_back.iloc[i-1]
 
-                        # 1. GESTÃO PERCENTUAL
                         if em_pos:
-                            # Verifica Saídas (com ou sem Stop Loss)
                             if usar_stop and atual['Low'] <= stop_loss:
                                 d_sai = atual[col_data]
                                 lucro = rx_capital * ((stop_loss / preco_entrada) - 1)
-                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Lucro (R$)': lucro, 'Resultado': 'Stop Acionado ❌'})
+                                dias_op = (d_sai - d_ent).days
+                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Dias': dias_op, 'Lucro (R$)': lucro, 'Resultado': 'Stop Acionado ❌'})
                                 derrotas += 1; em_pos = False
                             elif atual['High'] >= alvo:
                                 d_sai = atual[col_data]
                                 lucro = rx_capital * ((alvo / preco_entrada) - 1)
-                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Lucro (R$)': lucro, 'Resultado': 'Alvo Atingido 🎯'})
+                                dias_op = (d_sai - d_ent).days
+                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Dias': dias_op, 'Lucro (R$)': lucro, 'Resultado': 'Alvo Atingido 🎯'})
                                 vitorias += 1; em_pos = False
                             continue
 
-                        # 2. GATILHO INSTITUCIONAL (EMBOSCADA)
                         macro_bullish = ontem['Close'] > ontem['POC']
                         toque_vwap = atual['Low'] <= atual['VWAP_Inst']
                         defesa_vwap = atual['Close'] >= atual['VWAP_Inst']
@@ -187,11 +172,9 @@ if btn_raiox:
                             preco_entrada = atual['Close']
                             d_ent = atual[col_data]
                             
-                            # Alvos Matemáticos Baseados na Variação Percentual
                             alvo = preco_entrada * (1 + alvo_pct)
                             stop_loss = preco_entrada * (1 - stop_pct)
 
-                    # --- RESULTADOS ---
                     st.divider()
                     st.markdown(f"### 🛡️ Defesa Institucional: {rx_ativo}")
                     
@@ -200,17 +183,19 @@ if btn_raiox:
                         
                         l_total = df_t['Lucro (R$)'].sum()
                         t_acerto = (vitorias / len(df_t)) * 100
+                        media_dias = df_t['Dias'].mean()
                         
-                        m1, m2, m3, m4 = st.columns(4)
+                        m1, m2, m3, m4, m5 = st.columns(5)
                         m1.metric("Lucro Extraído", f"R$ {l_total:,.2f}", delta=f"{l_total:,.2f}")
-                        m2.metric("Disparos do Robô", len(df_t))
-                        m3.metric("Taxa de Precisão", f"{t_acerto:.1f}%")
+                        m2.metric("Disparos", len(df_t))
+                        m3.metric("Precisão", f"{t_acerto:.1f}%")
                         
-                        # Proteção de cálculo caso não se utilize stop ou não haja perdas
                         if usar_stop and stop_pct > 0:
-                            m4.metric("Relação Risco/Retorno", f"1 para {alvo_pct/stop_pct:.1f}")
+                            m4.metric("Risco/Retorno", f"1 p/ {alvo_pct/stop_pct:.1f}")
                         else:
-                            m4.metric("Relação Risco/Retorno", "N/A (Sem Stop)")
+                            m4.metric("Risco/Retorno", "N/A")
+                            
+                        m5.metric("Tempo Médio (Dias)", f"{media_dias:.1f}")
 
                         if l_total > 0:
                             st.success("🟢 **Dominância Institucional:** O ativo possui fluxo contínuo e respeita os defensores da VWAP. Sistema validado com sucesso.")
