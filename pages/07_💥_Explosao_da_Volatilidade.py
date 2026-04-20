@@ -60,51 +60,53 @@ ibrx_selecao = [
 # ==========================================
 col_titulo, col_botao = st.columns([4, 1])
 with col_titulo:
-    st.title("💥 Explosão da Volatilidade (Mola)")
+    st.title("💥 Explosão da Volatilidade")
 with col_botao:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-    st.link_button("📖 Ler Manual", "https://seusite.com/manual_mola", use_container_width=True)
+    st.link_button("📖 Ler Manual", "https://seusite.com/manual_volatilidade", use_container_width=True)
 
-aba_radar, aba_individual = st.tabs(["📡 Radar (Setups Armados)", "🔬 Raio-X Individual"])
+aba_radar, aba_individual = st.tabs(["📡 Scanner de Volatilidade", "🔬 Raio-X Individual"])
 
 # ==========================================
-# ABA 1: RADAR DE COMPRESSÃO (NR4 / NR7)
+# ABA 1: SCANNER DE COMPRESSÃO DE VOLATILIDADE
 # ==========================================
 with aba_radar:
-    st.subheader("📡 Radar de Mola Comprimida")
-    st.markdown("Varre o mercado em busca de ativos em congestão que formaram o menor candle dos últimos 4 (NR4) ou 7 (NR7) períodos. Uma mola pronta para disparar.")
+    st.subheader("🔍 Scanner de Compressão de Volatilidade")
+    st.markdown("Varre o mercado em busca de Molas Comprimidas (NR4/NR7) e Contra-Golpes Táticos. O objetivo é antecipar a ruptura de zonas de acumulação e engolfos direcionais.")
     
     c1, c2, c3 = st.columns(3)
     with c1:
-        lista_sel = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="lat_lst")
-        tipo_setup = st.selectbox("Setup de Volatilidade:", ["NR4 (Mola Clássica)", "NR7 (Mola Estendida)"], key="lat_setup")
+        lista_sel = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="vol_lst")
+        tipo_setup = st.selectbox("Estratégia de Elite:", [
+            "Mola Comprimida (NR4)", 
+            "Mola Mestra (NR7)", 
+            "Contra-Golpe Tático"
+        ], key="vol_setup")
     with c2:
-        tempo_grafico = st.selectbox("Tempo Gráfico:", ['1d', '1wk', '60m', '15m'], index=0, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="lat_tmp")
-        tipo_filtro = st.selectbox("Filtro de Congestão (Caixote):", [
+        tempo_grafico = st.selectbox("Tempo Gráfico:", ['1d', '1wk', '60m', '15m'], index=0, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="vol_tmp")
+        tipo_filtro = st.selectbox("Filtro de Compressão (Caixote):", [
             "Bollinger Squeeze (Bandas Estreitas)", 
-            "Médias Emboladas (MME9 próxima a MM21)", 
-            "ADX < 25 (Clássico)", 
-            "Sem Filtro (Basta ser NR4/NR7)"
-        ], key="lat_filtro")
+            "Médias Emboladas (MME9 próxima à MM21)", 
+            "Sem Filtro (Sinal Puro)"
+        ], key="vol_filtro", disabled=("Contra-Golpe" in tipo_setup)) 
     with c3:
-        st.info("💡 **Ação:** Rompendo a máxima, é Compra. Perdendo a mínima, é Venda. O Stop inicial fica no outro extremo da 'Mola'.")
+        st.info("💡 **Dica Tática:** O Contra-Golpe exige MM21 inclinada a favor do movimento. A Mola Comprimida prospera na letargia e baixa volatilidade.")
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
-    btn_iniciar = st.button(f"🚀 Caçar Setups {tipo_setup[:3]} Armados Hoje", type="primary", use_container_width=True)
+    nome_botao = tipo_setup.split('(')[0].strip()
+    btn_iniciar = st.button(f"🚀 Iniciar Scanner: {nome_botao}", type="primary", use_container_width=True)
 
     if btn_iniciar:
         ativos_analise = bdrs_elite if lista_sel == "BDRs Elite" else ibrx_selecao if lista_sel == "IBrX Seleção" else bdrs_elite + ibrx_selecao
         intervalo_tv = tradutor_intervalo.get(tempo_grafico, Interval.in_daily)
         
-        janela_nr = 4 if "NR4" in tipo_setup else 7
-
-        ls_armados = []
+        ls_sinais = []
         p_bar = st.progress(0)
         s_text = st.empty()
 
         for idx, ativo_raw in enumerate(ativos_analise):
             ativo = ativo_raw.replace('.SA', '')
-            s_text.text(f"🔍 Medindo volatilidade de {ativo} ({idx+1}/{len(ativos_analise)})")
+            s_text.text(f"🔍 Escaneando o campo de batalha: {ativo} ({idx+1}/{len(ativos_analise)})")
             p_bar.progress((idx + 1) / len(ativos_analise))
 
             try:
@@ -113,65 +115,77 @@ with aba_radar:
 
                 df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 
-                # --- MATEMÁTICA DA MOLA (NR4/NR7) ---
+                # --- INDICADORES BASE ---
                 df['Range'] = df['High'] - df['Low']
-                df[f'Min_Range_{janela_nr}'] = df['Range'].rolling(window=janela_nr).min()
-                df['Is_Latinha'] = df['Range'] == df[f'Min_Range_{janela_nr}']
+                df['MM21'] = ta.sma(df['Close'], length=21)
+                df['MME9'] = ta.ema(df['Close'], length=9)
                 
-                # --- MOTOR DE LEITURA DO CAIXOTE ---
-                df['Mercado_Lateral'] = True # Padrão para "Sem Filtro"
-
-                if "ADX" in tipo_filtro:
-                    adx_df = ta.adx(df['High'], df['Low'], df['Close'], length=14)
-                    if adx_df is not None: df['Mercado_Lateral'] = adx_df['ADX_14'] < 25
-                        
-                elif "Bollinger" in tipo_filtro:
-                    bb = ta.bbands(df['Close'], length=20, std=2)
-                    if bb is not None:
-                        bb_width = (bb['BBU_20_2.0'] - bb['BBL_20_2.0']) / bb['BBM_20_2.0']
-                        bb_width_media = bb_width.rolling(window=20).mean()
-                        df['Mercado_Lateral'] = bb_width < bb_width_media
-                        
-                elif "Médias" in tipo_filtro:
-                    mme9 = ta.ema(df['Close'], length=9)
-                    mm21 = ta.sma(df['Close'], length=21)
-                    if mme9 is not None and mm21 is not None:
-                        distancia_pct = abs(mme9 - mm21) / df['Close'] * 100
-                        df['Mercado_Lateral'] = distancia_pct < 1.5
-
-                # --- VERIFICA O ÚLTIMO CANDLE FECHADO ---
-                ultimo = df.iloc[-1]
+                # Mapeamento de Cores dos Candles
+                df['Cor'] = 'Verde'
+                df.loc[df['Close'] < df['Open'], 'Cor'] = 'Vermelho'
                 
-                if ultimo['Is_Latinha'] and ultimo['Mercado_Lateral']:
-                    gatilho_compra = ultimo['High'] + 0.01
-                    gatilho_venda = ultimo['Low'] - 0.01
+                # --- LÓGICA 1: MOLA COMPRIMIDA (NR4) & MOLA MESTRA (NR7) ---
+                if "Mola" in tipo_setup:
+                    janela = 4 if "NR4" in tipo_setup else 7
+                    df[f'Min_Range'] = df['Range'].rolling(window=janela).min()
                     
-                    ls_armados.append({
-                        'Ativo': ativo,
-                        'Data Formação': df.index[-1].strftime('%d/%m/%Y'),
-                        'Tamanho (R$)': f"R$ {ultimo['Range']:.2f}",
-                        'Gatilho COMPRA': f"R$ {gatilho_compra:.2f}",
-                        'Gatilho VENDA': f"R$ {gatilho_venda:.2f}",
-                        'Fechamento Atual': f"R$ {ultimo['Close']:.2f}"
-                    })
+                    # Filtro Institucional de Caixote
+                    mercado_lateral = True
+                    if "Bollinger" in tipo_filtro:
+                        bb = ta.bbands(df['Close'], length=20, std=2)
+                        bb_width = (bb['BBU_20_2.0'] - bb['BBL_20_2.0']) / bb['BBM_20_2.0']
+                        mercado_lateral = bb_width.iloc[-1] < bb_width.rolling(20).mean().iloc[-1]
+                    elif "Médias" in tipo_filtro:
+                        dist = abs(df['MME9'] - df['MM21']) / df['Close'] * 100
+                        mercado_lateral = dist.iloc[-1] < 1.5
+
+                    if df['Range'].iloc[-1] == df['Min_Range'].iloc[-1] and mercado_lateral:
+                        ls_sinais.append({
+                            'Ativo': ativo, 'Sinal': f"💥 {'Mola Comprimida' if janela == 4 else 'Mola Mestra'}", 
+                            'Direção': 'Compra/Venda', 'Gatilho Compra': f"R$ {df['High'].iloc[-1]+0.01:.2f}",
+                            'Gatilho Venda': f"R$ {df['Low'].iloc[-1]-0.01:.2f}", 'Obs': f"Pressão máxima em {janela} períodos"
+                        })
+
+                # --- LÓGICA 2: CONTRA-GOLPE TÁTICO ---
+                elif "Contra-Golpe" in tipo_setup:
+                    # Direcional da Tendência
+                    tendencia_alta = df['MM21'].iloc[-1] > df['MM21'].iloc[-2]
+                    tendencia_baixa = df['MM21'].iloc[-1] < df['MM21'].iloc[-2]
+                    
+                    # Análise do Conjunto (i-2, i-1, i)
+                    c0, c1, c2 = df['Cor'].iloc[-3], df['Cor'].iloc[-2], df['Cor'].iloc[-1]
+                    
+                    # Sinal Tático de Compra: Tendência Alta + Recuo (Vermelho - Verde - Vermelho)
+                    if tendencia_alta and c0 == 'Vermelho' and c1 == 'Verde' and c2 == 'Vermelho':
+                        max_conjunto = df['High'].iloc[-3:].max()
+                        ls_sinais.append({
+                            'Ativo': ativo, 'Sinal': '🛡️ Contra-Golpe Tático', 
+                            'Direção': 'COMPRA 🟢', 'Gatilho Compra': f"R$ {max_conjunto+0.01:.2f}",
+                            'Gatilho Venda': '-', 'Obs': 'Armadilha para Vendidos Armada'
+                        })
+                    
+                    # Sinal Tático de Venda: Tendência Baixa + Respiro (Verde - Vermelho - Verde)
+                    elif tendencia_baixa and c0 == 'Verde' and c1 == 'Vermelho' and c2 == 'Verde':
+                        min_conjunto = df['Low'].iloc[-3:].min()
+                        ls_sinais.append({
+                            'Ativo': ativo, 'Sinal': '📉 Contra-Golpe Tático', 
+                            'Direção': 'VENDA 🔴', 'Gatilho Compra': '-',
+                            'Gatilho Venda': f"R$ {min_conjunto-0.01:.2f}", 'Obs': 'Armadilha para Compradores Armada'
+                        })
 
             except Exception as e: pass
-            time.sleep(0.05)
+            time.sleep(0.01)
 
         s_text.empty()
         p_bar.empty()
 
-        # --- EXIBIÇÃO DOS RESULTADOS ---
+        # --- EXIBIÇÃO DE RESULTADOS TÁTICOS ---
         st.divider()
-        if len(ls_armados) > 0:
-            st.success(f"🎯 Encontramos {len(ls_armados)} 'Molas' validadas pelo filtro de {tipo_filtro.split()[0]}!")
-            df_res = pd.DataFrame(ls_armados)
-            st.dataframe(df_res, use_container_width=True, hide_index=True)
+        if ls_sinais:
+            st.success(f"🎯 Varredura concluída! {len(ls_sinais)} oportunidades táticas detectadas.")
+            st.dataframe(pd.DataFrame(ls_sinais), use_container_width=True, hide_index=True)
         else:
-            st.warning(f"Nenhuma mola encontrada hoje com as condições do filtro ({tipo_filtro.split()[0]}). O mercado pode estar muito direcional.")
+            st.warning("O campo de batalha está neutro hoje. Nenhum padrão de explosão ou contra-golpe validado.")
 
-# ==========================================
-# ABA 2: RAIO-X INDIVIDUAL (A FAZER)
-# ==========================================
 with aba_individual:
-    st.info("Em breve: Backtest completo para analisar a rentabilidade da mola no passado.")
+    st.info("Aba de Raio-X Individual em desenvolvimento. Próximo passo: Backtest de Alvos Matemáticos.")
