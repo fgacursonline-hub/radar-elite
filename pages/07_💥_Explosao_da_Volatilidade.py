@@ -1,3 +1,72 @@
+import streamlit as st
+from tvDatafeed import TvDatafeed, Interval
+import pandas as pd
+import pandas_ta as ta
+import time
+import warnings
+
+warnings.filterwarnings('ignore')
+
+# ==========================================
+# 1. SEGURANÇA E CONEXÃO
+# ==========================================
+if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
+    st.error("🚫 Por favor, faça login na página inicial (Home).")
+    st.stop()
+
+@st.cache_resource
+def get_tv_connection():
+    return TvDatafeed()
+
+tv = get_tv_connection()
+
+tradutor_intervalo = {
+    '15m': Interval.in_15_minute,
+    '60m': Interval.in_1_hour,
+    '1d': Interval.in_daily,
+    '1wk': Interval.in_weekly
+}
+
+bdrs_elite = [
+    'NVDC34.SA', 'P2LT34.SA', 'ROXO34.SA', 'INBR32.SA', 'M1TA34.SA', 'TSLA34.SA',
+    'LILY34.SA', 'AMZO34.SA', 'AURA33.SA', 'GOGL34.SA', 'MSFT34.SA', 'MUTC34.SA',
+    'MELI34.SA', 'C2OI34.SA', 'ORCL34.SA', 'M2ST34.SA', 'A1MD34.SA', 'NFLX34.SA',
+    'ITLC34.SA', 'AVGO34.SA', 'COCA34.SA', 'JBSS32.SA', 'AAPL34.SA', 'XPBR31.SA',
+    'STOC34.SA'
+]
+
+ibrx_selecao = [
+    'PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA', 'BBAS3.SA', 'B3SA3.SA', 'ABEV3.SA',
+    'WEGE3.SA', 'AXIA3.SA', 'SUZB3.SA', 'RENT3.SA', 'RADL3.SA', 'EQTL3.SA', 'LREN3.SA',
+    'PRIO3.SA', 'HAPV3.SA', 'GGBR4.SA', 'VBBR3.SA', 'SBSP3.SA', 'CMIG4.SA', 'CPLE3.SA',
+    'ENEV3.SA', 'TIMS3.SA', 'TOTS3.SA', 'EGIE3.SA', 'CSAN3.SA', 'ALOS3.SA', 'DIRR3.SA',
+    'VIVT3.SA', 'KLBN11.SA', 'UGPA3.SA', 'PSSA3.SA', 'CYRE3.SA', 'ASAI3.SA', 'RAIL3.SA',
+    'ISAE3.SA', 'CSNA3.SA', 'MGLU3.SA', 'EMBJ3.SA', 'TAEE11.SA', 'BBSE3.SA', 'FLRY3.SA',
+    'MULT3.SA', 'TFCO4.SA', 'LEVE3.SA', 'CPFE3.SA', 'GOAU4.SA', 'MRVE3.SA', 'YDUQ3.SA',
+    'SMTO3.SA', 'SLCE3.SA', 'CVCB3.SA', 'USIM5.SA', 'BRAP4.SA', 'BRAV3.SA', 'EZTC3.SA',
+    'PCAR3.SA', 'AUAU3.SA', 'DXCO3.SA', 'CASH3.SA', 'VAMO3.SA', 'AZZA3.SA', 'AURE3.SA',
+    'BEEF3.SA', 'ECOR3.SA', 'FESA4.SA', 'POMO4.SA', 'CURY3.SA', 'INTB3.SA', 'JHSF3.SA',
+    'LIGT3.SA', 'LOGG3.SA', 'MDIA3.SA', 'MBRF3.SA', 'NEOE3.SA', 'QUAL3.SA', 'RAPT4.SA',
+    'ROMI3.SA', 'SANB11.SA', 'SIMH3.SA', 'TEND3.SA', 'VULC3.SA', 'PLPL3.SA', 'CEAB3.SA',
+    'UNIP6.SA', 'LWSA3.SA', 'BPAC11.SA', 'GMAT3.SA', 'CXSE3.SA', 'ABCB4.SA', 'CSMG3.SA',
+    'SAPR11.SA', 'GRND3.SA', 'BRAP3.SA', 'LAVV3.SA', 'RANI3.SA', 'ITSA3.SA', 'ALUP11.SA',
+    'FIQE3.SA', 'COGN3.SA', 'IRBR3.SA', 'SEER3.SA', 'ANIM3.SA', 'JSLG3.SA', 'POSI3.SA',
+    'MYPK3.SA', 'SOJA3.SA', 'BLAU3.SA', 'PGMN3.SA', 'TUPY3.SA', 'VVEO3.SA', 'MELK3.SA',
+    'SHUL4.SA', 'BRSR6.SA',
+]
+
+# ==========================================
+# 2. INTERFACE E ABAS
+# ==========================================
+col_titulo, col_botao = st.columns([4, 1])
+with col_titulo:
+    st.title("💥 Explosão da Volatilidade (Latinha)")
+with col_botao:
+    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+    st.link_button("📖 Ler Manual", "https://seusite.com/manual_latinha", use_container_width=True)
+
+aba_radar, aba_individual = st.tabs(["📡 Radar (Setups Armados)", "🔬 Raio-X Individual"])
+
 # ==========================================
 # ABA 1: RADAR DE COMPRESSÃO (NR4 / NR7)
 # ==========================================
@@ -11,7 +80,6 @@ with aba_radar:
         tipo_setup = st.selectbox("Setup de Volatilidade:", ["NR4 (Latinha Clássica)", "NR7 (Latinha Estendida)"], key="lat_setup")
     with c2:
         tempo_grafico = st.selectbox("Tempo Gráfico:", ['1d', '1wk', '60m', '15m'], index=0, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="lat_tmp")
-        # --- NOVO MENU DE FILTROS DE CAIXOTE AQUI ---
         tipo_filtro = st.selectbox("Filtro de Congestão (Caixote):", [
             "Bollinger Squeeze (Bandas Estreitas)", 
             "Médias Emboladas (MME9 próxima a MM21)", 
@@ -60,9 +128,7 @@ with aba_radar:
                 elif "Bollinger" in tipo_filtro:
                     bb = ta.bbands(df['Close'], length=20, std=2)
                     if bb is not None:
-                        # Calcula a largura da banda atual
                         bb_width = (bb['BBU_20_2.0'] - bb['BBL_20_2.0']) / bb['BBM_20_2.0']
-                        # Se a largura atual for menor que a média das larguras dos últimos 20 candles, há compressão
                         bb_width_media = bb_width.rolling(window=20).mean()
                         df['Mercado_Lateral'] = bb_width < bb_width_media
                         
@@ -70,7 +136,6 @@ with aba_radar:
                     mme9 = ta.ema(df['Close'], length=9)
                     mm21 = ta.sma(df['Close'], length=21)
                     if mme9 is not None and mm21 is not None:
-                        # Verifica se a diferença percentual entre as médias é menor que 1.5%
                         distancia_pct = abs(mme9 - mm21) / df['Close'] * 100
                         df['Mercado_Lateral'] = distancia_pct < 1.5
 
@@ -104,3 +169,9 @@ with aba_radar:
             st.dataframe(df_res, use_container_width=True, hide_index=True)
         else:
             st.warning(f"Nenhuma latinha encontrada hoje com as condições do filtro ({tipo_filtro.split()[0]}). O mercado pode estar muito direcional.")
+
+# ==========================================
+# ABA 2: RAIO-X INDIVIDUAL (A FAZER)
+# ==========================================
+with aba_individual:
+    st.info("Em breve: Backtest completo para analisar a rentabilidade da Latinha no passado.")
