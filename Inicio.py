@@ -68,43 +68,22 @@ fuso_br = timezone(timedelta(hours=-3))
 agora = datetime.now(fuso_br)
 
 def is_mercado_aberto(data_atual):
-    # 1. Verifica Fim de semana (Sábado=5, Domingo=6)
-    if data_atual.weekday() >= 5:
-        return False
-    # 2. Verifica Horário de pregão (10h às 18h)
-    if not (10 <= data_atual.hour < 18):
-        return False
+    if data_atual.weekday() >= 5: return False
+    if not (10 <= data_atual.hour < 18): return False
     
-    # 3. Feriados Fixos Nacionais (Mês, Dia) em que a B3 fecha
     feriados_fixos = [
-        (1, 1),   # Confraternização Universal
-        (4, 21),  # Tiradentes
-        (5, 1),   # Dia do Trabalhador
-        (9, 7),   # Independência do Brasil
-        (10, 12), # Nossa Sra. Aparecida
-        (11, 2),  # Finados
-        (11, 15), # Proclamação da República
-        (11, 20), # Consciência Negra
-        (12, 25)  # Natal
+        (1, 1), (4, 21), (5, 1), (9, 7), 
+        (10, 12), (11, 2), (11, 15), (11, 20), (12, 25)
     ]
-    if (data_atual.month, data_atual.day) in feriados_fixos:
-        return False
+    if (data_atual.month, data_atual.day) in feriados_fixos: return False
         
-    # 4. Feriados Móveis da B3 (Ex: Ano de 2026)
-    feriados_moveis_2026 = [
-        (2, 16), (2, 17), # Carnaval
-        (4, 3),           # Paixão de Cristo
-        (6, 4)            # Corpus Christi
-    ]
-    if data_atual.year == 2026 and (data_atual.month, data_atual.day) in feriados_moveis_2026:
-        return False
+    feriados_moveis_2026 = [(2, 16), (2, 17), (4, 3), (6, 4)]
+    if data_atual.year == 2026 and (data_atual.month, data_atual.day) in feriados_moveis_2026: return False
         
     return True
 
-if is_mercado_aberto(agora):
-    texto_status = "🟢 Mercado Aberto"
-else:
-    texto_status = "🔴 Mercado Fechado"
+if is_mercado_aberto(agora): texto_status = "🟢 Mercado Aberto"
+else: texto_status = "🔴 Mercado Fechado"
 
 msg_atualizacao = f"{texto_status}. Última atualização: {agora.strftime('%d/%m às %H:%M')}."
 st.caption(msg_atualizacao)
@@ -157,7 +136,33 @@ with c3:
 
 
 # ==========================================
-# 4. RADAR DE NOTÍCIAS MULTI-FONTE (100% BR)
+# 4. INTELIGÊNCIA DE MERCADO E CALENDÁRIOS
+# ==========================================
+st.divider()
+st.subheader("🧭 Inteligência de Mercado & Calendários")
+st.markdown("Acesse rapidamente a agenda macroeconômica, balanços e os movimentos dos grandes tubarões.")
+
+c_link1, c_link2, c_link3, c_link4 = st.columns(4)
+
+with c_link1:
+    st.link_button("📅 Calendário Econômico", "https://br.investing.com/economic-calendar", use_container_width=True)
+    st.caption("Agenda de indicadores e eventos globais.")
+
+with c_link2:
+    st.link_button("📊 Temporada de Balanços", "https://br.investing.com/earnings-calendar", use_container_width=True)
+    st.caption("Fique atento à divulgação de resultados.")
+
+with c_link3:
+    st.link_button("🔍 Filtro de Ações (Screener)", "https://br.investing.com/stock-screener/momentum-masters", use_container_width=True)
+    st.caption("Rastreador de Momentum Masters.")
+
+with c_link4:
+    st.link_button("🐋 Investing Pro Ideas", "https://br.investing.com/pro/ideas", use_container_width=True)
+    st.link_button("🦈 HedgeFollow (Fundos)", "https://hedgefollow.com/", use_container_width=True)
+
+
+# ==========================================
+# 5. RADAR DE NOTÍCIAS MULTI-FONTE (100% BR)
 # ==========================================
 st.divider()
 st.subheader("📰 Radar de Notícias Caçadores de Elite")
