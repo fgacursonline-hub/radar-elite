@@ -72,30 +72,24 @@ def colorir_lucro(row):
 # 2. MOTOR MATEMÁTICO: FIBONACCI
 # ==========================================
 def identificar_fibonacci(df, lookback=60):
-    # Tendência Macro
     df['MM200'] = ta.sma(df['Close'], length=200)
     df['Tendencia_Alta'] = df['Close'] > df['MM200']
     
-    # Identifica o Topo e o Fundo dos últimos N dias
     df['Topo_60d'] = df['High'].rolling(window=lookback).max().shift(1)
     df['Fundo_60d'] = df['Low'].rolling(window=lookback).min().shift(1)
     df['Range_Fibo'] = df['Topo_60d'] - df['Fundo_60d']
     
-    # Exige uma perna de alta visível (mínimo 10% de amplitude)
     df['Perna_Valida'] = (df['Topo_60d'] / df['Fundo_60d']) > 1.10
     
-    # Retrações Matemáticas Clássicas
     df['Fibo_382'] = df['Topo_60d'] - (df['Range_Fibo'] * 0.382)
     df['Fibo_500'] = df['Topo_60d'] - (df['Range_Fibo'] * 0.500)
     df['Fibo_618'] = df['Topo_60d'] - (df['Range_Fibo'] * 0.618)
     df['Fibo_786'] = df['Topo_60d'] - (df['Range_Fibo'] * 0.786)
     
-    # Detecção de Rejeição (Pavio Inferior Forte)
     df['Corpo'] = abs(df['Open'] - df['Close'])
     df['Pavio_Inf'] = df[['Open', 'Close']].min(axis=1) - df['Low']
     df['Rejeicao'] = df['Pavio_Inf'] >= (df['Corpo'] * 1.5)
     
-    # Zona de Gatilho (O pavio tocou a zona de Fibo e o corpo fechou acima dos 61.8%)
     df['Tocou_Zona'] = (df['Low'] <= df['Fibo_382']) & (df['Low'] >= df['Fibo_786'])
     df['Defesa_Institucional'] = df['Close'] >= df['Fibo_618']
     
@@ -150,7 +144,6 @@ with aba_radar:
             p_bar.progress((idx + 1) / len(ativos_analise))
 
             try:
-                # Necessário puxar mais barras para ter a MM200 e a perna de 60d
                 df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
                 if df_full is None or len(df_full) < 250: continue
                 df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
@@ -166,6 +159,7 @@ with aba_radar:
 
                 em_pos = False
                 preco_entrada, stop_loss, alvo, d_ent = 0.0, 0.0, 0.0, None
+                topo_trade, fundo_trade = 0.0, 0.0
                 lucro_total_ativo = 0.0
                 vitorias, total_trades = 0, 0
 
@@ -181,16 +175,17 @@ with aba_radar:
                             total_trades += 1; vitorias += 1; em_pos = False
                         continue
 
-                    # Gatilho de Entrada: Ontem formou o pavio na retração de Fibo e hoje rompeu máxima
                     if ontem['Is_Sinal_Fibo'] and atual['High'] > ontem['High'] and not em_pos:
                         em_pos = True
                         preco_entrada = max(ontem['High'] + 0.01, atual['Open'])
                         d_ent = atual[col_data]
+                        topo_trade = ontem['Topo_60d']
+                        fundo_trade = ontem['Fundo_60d']
                         
                         stop_loss = ontem['Low'] - 0.01 if "Pavio" in tipo_stop else ontem['Fibo_786'] - 0.01
                         
-                        if "Topo" in tipo_alvo: alvo = ontem['Topo_60d'] # Retorno aos 100%
-                        else: alvo = preco_entrada + ((preco_entrada - stop_loss) * alvo_val) # Projeção
+                        if "Topo" in tipo_alvo: alvo = ontem['Topo_60d']
+                        else: alvo = preco_entrada + ((preco_entrada - stop_loss) * alvo_val)
 
                 if total_trades > 0:
                     ls_historico.append({
@@ -204,8 +199,9 @@ with aba_radar:
                     res_pct = (cot_atual / preco_entrada) - 1
                     ls_abertos.append({
                         'Ativo': ativo, 'Entrada': d_ent.strftime('%d/%m/%Y'), 'Dias': (df_back[col_data].iloc[-1] - d_ent).days,
+                        'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo (Fibo)': f"R$ {topo_trade:.2f}",
                         'PM': f"R$ {preco_entrada:.2f}", 'Cotação Atual': f"R$ {cot_atual:.2f}", 
-                        'Alvo (Topo)': f"R$ {alvo:.2f}", 'Resultado Atual': f"+{res_pct*100:.2f}%" if res_pct > 0 else f"{res_pct*100:.2f}%"
+                        'Alvo Programado': f"R$ {alvo:.2f}", 'Resultado Atual': f"+{res_pct*100:.2f}%" if res_pct > 0 else f"{res_pct*100:.2f}%"
                     })
                 else:
                     atual = df_back.iloc[-1]
@@ -281,6 +277,7 @@ with aba_individual:
 
                     trades, em_pos = [], False
                     preco_entrada, stop_loss, alvo, d_ent = 0.0, 0.0, 0.0, None
+                    topo_trade, fundo_trade = 0.0, 0.0
                     vitorias, derrotas, extremo_trade = 0, 0, 0.0 
 
                     for i in range(1, len(df_back)):
@@ -290,16 +287,19 @@ with aba_individual:
                             extremo_trade = min(extremo_trade, atual['Low'])
                             queda_max = (extremo_trade / preco_entrada) - 1
                             if rx_usar_stop and atual['Low'] <= stop_loss:
-                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Duração': (atual[col_data] - d_ent).days, 'Lucro (R$)': rx_capital * ((stop_loss/preco_entrada)-1), 'Queda Máx': queda_max, 'Situação': 'Stop ❌'})
+                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo (Fibo)': f"R$ {topo_trade:.2f}", 'Duração': (atual[col_data] - d_ent).days, 'Lucro (R$)': rx_capital * ((stop_loss/preco_entrada)-1), 'Queda Máx': queda_max, 'Situação': 'Stop ❌'})
                                 derrotas += 1; em_pos = False
                             elif atual['High'] >= alvo:
-                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Duração': (atual[col_data] - d_ent).days, 'Lucro (R$)': rx_capital * ((alvo/preco_entrada)-1), 'Queda Máx': queda_max, 'Situação': 'Gain ✅'})
+                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo (Fibo)': f"R$ {topo_trade:.2f}", 'Duração': (atual[col_data] - d_ent).days, 'Lucro (R$)': rx_capital * ((alvo/preco_entrada)-1), 'Queda Máx': queda_max, 'Situação': 'Gain ✅'})
                                 vitorias += 1; em_pos = False
                             continue
 
                         if ontem['Is_Sinal_Fibo'] and atual['High'] > ontem['High'] and not em_pos:
                             em_pos, preco_entrada, d_ent = True, max(ontem['High'] + 0.01, atual['Open']), atual[col_data]
                             extremo_trade = atual['Low']
+                            topo_trade = ontem['Topo_60d']
+                            fundo_trade = ontem['Fundo_60d']
+                            
                             stop_loss = ontem['Low'] - 0.01 if "Pavio" in rx_tipo_stop else ontem['Fibo_786'] - 0.01
                             if "Topo" in rx_tipo_alvo: alvo = ontem['Topo_60d']
                             else: alvo = preco_entrada + ((preco_entrada - stop_loss) * rx_alvo_val)
@@ -311,9 +311,10 @@ with aba_individual:
                         res_pct = (cot_atual / preco_entrada) - 1
                         queda_max_aberta = (extremo_trade / preco_entrada) - 1
                         st.warning(f"""
-                        **⏳ {rx_ativo}: Em Operação (Buscando Topo Histórico)**
+                        **⏳ {rx_ativo}: Em Operação**
                         * **Entrada:** {d_ent.strftime('%d/%m/%Y')} | **Dias na Operação:** {(df_back[col_data].iloc[-1] - d_ent).days}
-                        * **PM:** R$ {preco_entrada:.2f} | **Cotação Atual:** R$ {cot_atual:.2f}
+                        * **Fundo (Fibo):** R$ {fundo_trade:.2f} | **Topo (Fibo):** R$ {topo_trade:.2f}
+                        * **PM:** R$ {preco_entrada:.2f} | **Cotação Atual:** R$ {cot_atual:.2f} | **Alvo Programado:** R$ {alvo:.2f}
                         * **Queda Máx:** {queda_max_aberta*100:.2f}% | **Resultado Atual:** {res_pct*100:.2f}%
                         """)
                     else:
