@@ -1,7 +1,7 @@
 import streamlit as st
 from tvDatafeed import TvDatafeed, Interval
 import streamlit.components.v1 as components 
-from datetime import datetime, timedelta, timezone # <-- Importação adicionada para o relógio da B3
+from datetime import datetime, timedelta, timezone
 
 # Mantendo sua configuração original de página e proteção
 st.set_page_config(page_title="Caçadores de Elite", layout="wide", page_icon="🎯", initial_sidebar_state="collapsed")
@@ -63,18 +63,51 @@ st.divider()
 # --- TERMÔMETRO DO MERCADO ---
 st.subheader("🌐 Termômetro do Mercado (IBOVESPA)")
 
-# Relógio e Status do Mercado (Lógica B3)
+# Relógio e Status do Mercado (Lógica B3 com Feriados)
 fuso_br = timezone(timedelta(hours=-3))
 agora = datetime.now(fuso_br)
 
-# Verifica se é dia de semana (0 a 4) e entre 10h e 18h
-if agora.weekday() < 5 and 10 <= agora.hour < 18:
+def is_mercado_aberto(data_atual):
+    # 1. Verifica Fim de semana (Sábado=5, Domingo=6)
+    if data_atual.weekday() >= 5:
+        return False
+    # 2. Verifica Horário de pregão (10h às 18h)
+    if not (10 <= data_atual.hour < 18):
+        return False
+    
+    # 3. Feriados Fixos Nacionais (Mês, Dia) em que a B3 fecha
+    feriados_fixos = [
+        (1, 1),   # Confraternização Universal
+        (4, 21),  # Tiradentes
+        (5, 1),   # Dia do Trabalhador
+        (9, 7),   # Independência do Brasil
+        (10, 12), # Nossa Sra. Aparecida
+        (11, 2),  # Finados
+        (11, 15), # Proclamação da República
+        (11, 20), # Consciência Negra
+        (12, 25)  # Natal
+    ]
+    if (data_atual.month, data_atual.day) in feriados_fixos:
+        return False
+        
+    # 4. Feriados Móveis da B3 (Ex: Ano de 2026)
+    feriados_moveis_2026 = [
+        (2, 16), (2, 17), # Carnaval
+        (4, 3),           # Paixão de Cristo
+        (6, 4)            # Corpus Christi
+    ]
+    if data_atual.year == 2026 and (data_atual.month, data_atual.day) in feriados_moveis_2026:
+        return False
+        
+    return True
+
+if is_mercado_aberto(agora):
     texto_status = "🟢 Mercado Aberto"
 else:
     texto_status = "🔴 Mercado Fechado"
 
 msg_atualizacao = f"{texto_status}. Última atualização: {agora.strftime('%d/%m às %H:%M')}."
-st.caption(msg_atualizacao) # Exibe a mensagem em texto menor logo abaixo do título
+st.caption(msg_atualizacao)
 
 try:
     tv = st.session_state.tv
@@ -107,13 +140,20 @@ st.markdown("Selecione sua estratégia no menu lateral à esquerda para iniciar 
 c1, c2, c3 = st.columns(3)
 
 with c1:
-    st.info("### 📉 IFR & Keltner\nDescubra ativos sobrevendidos, esticados e com anomalias de volatilidade usando a regressão à média.")
+    st.info("### 📉 Regressão à Média\nVarreduras de **IFR** e **Canais de Keltner** para caçar ativos esticados e exaustos.")
+    st.success("### 📊 Fluxo Institucional\nEncontre defesas de tubarões na **VWAP** com cruzamento da **POC** de Volume.")
 
 with c2:
-    st.warning("### 🔥 Setup 9.1\nO rastreador de inércia e tendência do lendário Larry Williams. Compre a força e venda a fraqueza.")
+    st.warning("### 🔥 Seguidores de Tendência\nMonitore o **Setup 9.1**, **Rompimentos** e **Explosão de Volatilidade**.")
+    st.error("### 📐 Fibo & Smart Money\nOpere a proporção áurea com o **Rastreador Fibonacci** e falhas de **FVG**.")
 
 with c3:
-    st.success("### 🕳️ Smart Money (FVG)\nOpere exatamente como os bancos institucionais, encontrando vácuos de liquidez e armadilhas.")
+    st.markdown("""
+    <div style='background-color: #2b2b2b; padding: 15px; border-radius: 10px; border-left: 5px solid #a3a3a3;'>
+        <h3 style='margin-top: 0;'>🕯️ Price Action</h3>
+        Encontre os gatilhos gráficos perfeitos em zonas de valor (Martelos, Haramis e afins).
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ==========================================
@@ -126,14 +166,13 @@ st.markdown("Fique por dentro de tudo o que acontece nas principais fontes de ec
 import xml.etree.ElementTree as ET
 import requests
 
-# Função mestre para buscar e processar as notícias
 def carregar_feed(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, headers=headers, timeout=10)
         root = ET.fromstring(response.content)
         itens = []
-        for item in root.findall('./channel/item')[:8]: # Pega as 8 últimas de cada
+        for item in root.findall('./channel/item')[:8]: 
             titulo = item.find('title').text
             link = item.find('link').text
             itens.append({"titulo": titulo, "link": link})
@@ -141,7 +180,6 @@ def carregar_feed(url):
     except:
         return None
 
-# Criação das Sub-Abas de Notícias
 tab_info, tab_inv, tab_g1 = st.tabs(["💰 InfoMoney", "📈 Investing.com", "🌍 G1 Economia"])
 
 with tab_info:
@@ -154,7 +192,6 @@ with tab_info:
         st.error("Erro ao carregar InfoMoney.")
 
 with tab_inv:
-    # O Investing.com às vezes bloqueia bots, por isso o timeout e headers são vitais
     noticias_inv = carregar_feed("https://br.investing.com/rss/news_25.rss")
     if noticias_inv:
         for n in noticias_inv:
