@@ -95,8 +95,12 @@ def identificar_padroes(df):
     # 3. Estrela Cadente
     df['Is_Estrela'] = (df['Tendencia'] == 'Alta') & (df['Pavio_Sup'] >= 2 * df['Corpo']) & (df['Pavio_Inf'] <= 0.15 * df['Range']) & (df['Corpo'] <= 0.3 * df['Range'])
     
-    # 4. Harami (A "mãe" engole o corpo real do "filho")
-    df['Is_Harami'] = (df['Corpo_Max'] < df['Corpo_Max'].shift(1)) & (df['Corpo_Min'] > df['Corpo_Min'].shift(1))
+    # 4. Harami (Corpo engolido + Cores Opostas)
+    vela_ontem_alta = df['Close'].shift(1) > df['Open'].shift(1)
+    vela_hoje_alta = df['Close'] > df['Open']
+    cores_opostas = vela_ontem_alta != vela_hoje_alta
+    
+    df['Is_Harami'] = (df['Corpo_Max'] < df['Corpo_Max'].shift(1)) & (df['Corpo_Min'] > df['Corpo_Min'].shift(1)) & cores_opostas
     
     return df
 
@@ -242,21 +246,18 @@ with aba_radar:
         s_text.empty(); p_bar.empty()
         st.divider()
 
-        # 1. TOP 20 HISTÓRICO
         st.subheader(f"🏆 TOP 20 Histórico ({tradutor_periodo_nome[rad_periodo]})")
         st.markdown(f"Ativos mais lucrativos operando o **{padrao_sel.split('(')[0]}** com a gestão de risco selecionada.")
         if ls_historico:
-            df_hist = pd.DataFrame(ls_historico).sort_values(by='Lucro Total (R$)', ascending=False).head(20)
+            df_hist = pd.DataFrame(ls_historico).sort_values(by='Lucro Total (R$)  ', ascending=False).head(20)
             df_hist['Lucro Total (R$)'] = df_hist['Lucro Total (R$)'].apply(lambda x: f"R$ {x:,.2f}")
             st.dataframe(df_hist.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
         else: st.info("Sem dados históricos validados neste período.")
 
-        # 2. OPORTUNIDADES HOJE
         st.subheader("🚀 Oportunidades Hoje")
         if ls_armados: st.dataframe(pd.DataFrame(ls_armados), use_container_width=True, hide_index=True)
         else: st.info("Nenhum padrão armado na última barra.")
 
-        # 3. OPERAÇÕES EM ANDAMENTO
         st.subheader("⏳ Operações em Andamento")
         if ls_abertos: 
             df_abertos = pd.DataFrame(ls_abertos).sort_values(by='Dias', ascending=False)
