@@ -110,7 +110,7 @@ with col_botao:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     st.link_button("📖 Ler Manual Quant", "https://seusite.com/manual_institucional", use_container_width=True)
 
-aba_radar, aba_individual, aba_blindada = st.tabs(["📡 Radar Institucional (Ao Vivo)", "🔬 Raio-X Original", "🛡️ Raio-X Blindado (Filtros)"])
+aba_radar, aba_individual, aba_blindada = st.tabs(["📡 Radar Institucional (Ao Vivo)", "🔬 Raio-X Original"])
 
 # ==========================================
 # ABA 1: RADAR (MÚLTIPLOS ATIVOS)
