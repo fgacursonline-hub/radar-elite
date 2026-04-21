@@ -69,17 +69,38 @@ def colorir_lucro(row):
     except: return [''] * len(row)
 
 # ==========================================
-# 2. MOTOR MATEMÁTICO: FIBONACCI
+# 2. MOTOR MATEMÁTICO: FIBONACCI ESTRUTURAL
 # ==========================================
 def identificar_fibonacci(df, lookback=120):
     df['MM200'] = ta.sma(df['Close'], length=200)
     df['Tendencia_Alta'] = df['Close'] > df['MM200']
     
-    # Procura o Topo e Fundo na janela definida pelo usuário
-    df['Topo_Ref'] = df['High'].rolling(window=lookback).max().shift(1)
+    # --- FUNDO ESTRUTURAL (Âncora Base) ---
+    # Mantemos o fundo absoluto da janela, pois inicia o movimento
     df['Fundo_Ref'] = df['Low'].rolling(window=lookback).min().shift(1)
-    df['Range_Fibo'] = df['Topo_Ref'] - df['Fundo_Ref']
     
+    # --- TOPO ESTRUTURAL (Lógica de Price Action com Confirmação) ---
+    # 1. Encontra a máxima no momento exato
+    df['Rolling_Max'] = df['High'].rolling(window=lookback).max()
+    df['Is_Novo_Topo'] = df['High'] == df['Rolling_Max']
+    
+    # 2. Guarda a mínima exata do candle que fez essa máxima
+    df['Min_do_Topo'] = np.where(df['Is_Novo_Topo'], df['Low'], np.nan)
+    df['Min_do_Topo'] = df['Min_do_Topo'].ffill()
+    
+    # 3. Guarda o valor da Máxima em si
+    df['Valor_do_Topo'] = np.where(df['Is_Novo_Topo'], df['High'], np.nan)
+    df['Valor_do_Topo'] = df['Valor_do_Topo'].ffill()
+    
+    # 4. A CONFIRMAÇÃO: Um topo só é válido se a sua mínima foi rompida posteriormente
+    df['Rompeu_Minima'] = (df['Low'] < df['Min_do_Topo']) & (~df['Is_Novo_Topo'])
+    
+    # 5. Valida e crava o Topo Confirmado (shift 1 para operar no dia seguinte)
+    df['Topo_Confirmado'] = np.where(df['Rompeu_Minima'], df['Valor_do_Topo'], np.nan)
+    df['Topo_Ref'] = df['Topo_Confirmado'].ffill().shift(1)
+    
+    # --- CÁLCULO DAS RETRAÇÕES ---
+    df['Range_Fibo'] = df['Topo_Ref'] - df['Fundo_Ref']
     df['Perna_Valida'] = (df['Topo_Ref'] / df['Fundo_Ref']) > 1.10
     
     df['Fibo_382'] = df['Topo_Ref'] - (df['Range_Fibo'] * 0.382)
@@ -87,6 +108,7 @@ def identificar_fibonacci(df, lookback=120):
     df['Fibo_618'] = df['Topo_Ref'] - (df['Range_Fibo'] * 0.618)
     df['Fibo_786'] = df['Topo_Ref'] - (df['Range_Fibo'] * 0.786)
     
+    # --- REJEIÇÃO NA ZONA DE OURO ---
     df['Corpo'] = abs(df['Open'] - df['Close'])
     df['Pavio_Inf'] = df[['Open', 'Close']].min(axis=1) - df['Low']
     df['Rejeicao'] = df['Pavio_Inf'] >= (df['Corpo'] * 1.5)
@@ -103,7 +125,7 @@ def identificar_fibonacci(df, lookback=120):
 # ==========================================
 col_titulo, col_botao = st.columns([4, 1])
 with col_titulo:
-    st.title("📐 Rastreador de Fibonacci (Retração de 61.8%)")
+    st.title("📐 Rastreador de Fibonacci (Retração Confirmada)")
 with col_botao:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     st.link_button("📖 Ler Manual", "https://seusite.com/manual_fibo", use_container_width=True)
@@ -126,8 +148,7 @@ with aba_radar:
             tipo_alvo = st.selectbox("Tipo de Alvo:", ["Retorno ao Topo (100%)", "Risco Projetado (Ex: 2x)"], key="rad_f_tipo_alvo")
             alvo_val = st.number_input("Múltiplo de Risco (Se aplicável):", value=2.0, step=0.5, key="rad_f_alvo")
         with c4:
-            # NOVO SLIDER DE TAMANHO DE PERNA
-            rad_lookback = st.slider("Tamanho da Perna (Dias de Busca):", min_value=20, max_value=250, value=120, step=10, help="Quantidade de pregões para trás que o robô vai olhar para encontrar o Fundo e o Topo da perna principal.")
+            rad_lookback = st.slider("Tamanho da Perna (Dias):", min_value=20, max_value=250, value=120, step=10, help="Quantidade de pregões para procurar o fundo e as máximas estruturais.")
             usar_stop_rad = st.checkbox("Usar Stop Loss", value=True, key="rad_f_chk")
             tipo_stop = st.selectbox("Tipo de Stop:", ["Técnico (Abaixo do Pavio)", "Abaixo dos 78.6% (Fibo)"], disabled=not usar_stop_rad, key="rad_f_tipo_stop")
             
@@ -143,7 +164,7 @@ with aba_radar:
 
         for idx, ativo_raw in enumerate(ativos_analise):
             ativo = ativo_raw.replace('.SA', '')
-            s_text.text(f"🔍 Medindo Fibo em {ativo} ({idx+1}/{len(ativos_analise)})")
+            s_text.text(f"🔍 Medindo Fibo Estrutural em {ativo} ({idx+1}/{len(ativos_analise)})")
             p_bar.progress((idx + 1) / len(ativos_analise))
 
             try:
@@ -151,7 +172,6 @@ with aba_radar:
                 if df_full is None or len(df_full) < 250: continue
                 df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 
-                # Passamos a janela definida pelo usuário
                 df_full = identificar_fibonacci(df_full, lookback=rad_lookback).dropna()
 
                 if rad_periodo == '6mo': data_corte = df_full.index[-1] - pd.DateOffset(months=6)
@@ -203,7 +223,7 @@ with aba_radar:
                     res_pct = (cot_atual / preco_entrada) - 1
                     ls_abertos.append({
                         'Ativo': ativo, 'Entrada': d_ent.strftime('%d/%m/%Y'), 'Dias': (df_back[col_data].iloc[-1] - d_ent).days,
-                        'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo (Fibo)': f"R$ {topo_trade:.2f}",
+                        'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo Confirmado': f"R$ {topo_trade:.2f}",
                         'PM': f"R$ {preco_entrada:.2f}", 'Cotação Atual': f"R$ {cot_atual:.2f}", 
                         'Alvo Programado': f"R$ {alvo:.2f}", 'Resultado Atual': f"+{res_pct*100:.2f}%" if res_pct > 0 else f"{res_pct*100:.2f}%"
                     })
@@ -244,7 +264,7 @@ with aba_radar:
 # ABA 2: RAIO-X INDIVIDUAL (BACKTEST DETALHADO)
 # ==========================================
 with aba_individual:
-    st.subheader("🔬 Raio-X Individual: Laboratório de Fibonacci")
+    st.subheader("🔬 Raio-X Individual: Laboratório de Fibonacci Estrutural")
     
     cr1, cr2, cr3, cr4 = st.columns(4)
     with cr1:
@@ -257,8 +277,7 @@ with aba_individual:
         rx_tipo_alvo = st.selectbox("Tipo de Alvo:", ["Retorno ao Topo (100%)", "Risco Projetado (Ex: 2x)"], key="rx_f_tipo_alvo")
         rx_alvo_val = st.number_input("Múltiplo de Risco:", value=2.0, step=0.5, key="rx_f_alvo")
     with cr4:
-        # NOVO SLIDER AQUI TAMBÉM
-        rx_lookback = st.slider("Tamanho da Perna (Dias de Busca):", min_value=20, max_value=250, value=120, step=10, key="rx_lookback")
+        rx_lookback = st.slider("Tamanho da Perna (Dias):", min_value=20, max_value=250, value=120, step=10, key="rx_lookback")
         rx_usar_stop = st.checkbox("Usar Stop Loss", value=True, key="rx_f_chk")
         rx_tipo_stop = st.selectbox("Tipo de Stop:", ["Técnico (Abaixo do Pavio)", "Abaixo dos 78.6% (Fibo)"], disabled=not rx_usar_stop, key="rx_f_tipo_stop")
 
@@ -267,7 +286,7 @@ with aba_individual:
     if btn_raiox:
         if not rx_ativo: st.error("Digite o código de um ativo.")
         else:
-            with st.spinner(f'A calcular proporções áureas de {rx_ativo}...'):
+            with st.spinner(f'A mapear estrutura gráfica e retrações em {rx_ativo}...'):
                 try:
                     df_full = tv.get_hist(symbol=rx_ativo, exchange='BMFBOVESPA', interval=tradutor_intervalo.get(rx_tempo, Interval.in_daily), n_bars=5000)
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
@@ -293,10 +312,10 @@ with aba_individual:
                             extremo_trade = min(extremo_trade, atual['Low'])
                             queda_max = (extremo_trade / preco_entrada) - 1
                             if rx_usar_stop and atual['Low'] <= stop_loss:
-                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo (Fibo)': f"R$ {topo_trade:.2f}", 'Duração': (atual[col_data] - d_ent).days, 'Lucro (R$)': rx_capital * ((stop_loss/preco_entrada)-1), 'Queda Máx': queda_max, 'Situação': 'Stop ❌'})
+                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo Confirmado': f"R$ {topo_trade:.2f}", 'Duração': (atual[col_data] - d_ent).days, 'Lucro (R$)': rx_capital * ((stop_loss/preco_entrada)-1), 'Queda Máx': queda_max, 'Situação': 'Stop ❌'})
                                 derrotas += 1; em_pos = False
                             elif atual['High'] >= alvo:
-                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo (Fibo)': f"R$ {topo_trade:.2f}", 'Duração': (atual[col_data] - d_ent).days, 'Lucro (R$)': rx_capital * ((alvo/preco_entrada)-1), 'Queda Máx': queda_max, 'Situação': 'Gain ✅'})
+                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo Confirmado': f"R$ {topo_trade:.2f}", 'Duração': (atual[col_data] - d_ent).days, 'Lucro (R$)': rx_capital * ((alvo/preco_entrada)-1), 'Queda Máx': queda_max, 'Situação': 'Gain ✅'})
                                 vitorias += 1; em_pos = False
                             continue
 
@@ -319,12 +338,12 @@ with aba_individual:
                         st.warning(f"""
                         **⏳ {rx_ativo}: Em Operação**
                         * **Entrada:** {d_ent.strftime('%d/%m/%Y')} | **Dias na Operação:** {(df_back[col_data].iloc[-1] - d_ent).days}
-                        * **Fundo (Fibo):** R$ {fundo_trade:.2f} | **Topo (Fibo):** R$ {topo_trade:.2f}
+                        * **Fundo (Fibo):** R$ {fundo_trade:.2f} | **Topo Confirmado:** R$ {topo_trade:.2f}
                         * **PM:** R$ {preco_entrada:.2f} | **Cotação Atual:** R$ {cot_atual:.2f} | **Alvo Programado:** R$ {alvo:.2f}
                         * **Queda Máx:** {queda_max_aberta*100:.2f}% | **Resultado Atual:** {res_pct*100:.2f}%
                         """)
                     else:
-                        st.success(f"✅ **{rx_ativo}: Aguardando Novo Sinal de Retração**")
+                        st.success(f"✅ **{rx_ativo}: Aguardando Novo Sinal de Retração Estrutural**")
                     
                     st.markdown(f"### 📊 Resultado Consolidado: {rx_ativo}")
                     if len(trades) > 0:
@@ -338,5 +357,5 @@ with aba_individual:
                         df_t['Queda Máx'] = df_t['Queda Máx'].apply(lambda x: f"{x*100:.2f}%")
                         st.dataframe(df_t, use_container_width=True, hide_index=True)
                     else:
-                        st.info(f"Nenhuma defesa de Fibonacci validada no período.")
+                        st.info(f"Nenhum pullback estrutural defendido no período.")
                 except Exception as e: st.error(f"Erro: {e}")
