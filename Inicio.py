@@ -1,6 +1,7 @@
 import streamlit as st
 from tvDatafeed import TvDatafeed, Interval
-import streamlit.components.v1 as components # <-- Importação adicionada para as Notícias
+import streamlit.components.v1 as components 
+from datetime import datetime, timedelta, timezone # <-- Importação adicionada para o relógio da B3
 
 # Mantendo sua configuração original de página e proteção
 st.set_page_config(page_title="Caçadores de Elite", layout="wide", page_icon="🎯", initial_sidebar_state="collapsed")
@@ -61,7 +62,19 @@ st.divider()
 
 # --- TERMÔMETRO DO MERCADO ---
 st.subheader("🌐 Termômetro do Mercado (IBOVESPA)")
-st.markdown("Visão geral de como está a força do mercado brasileiro hoje.")
+
+# Relógio e Status do Mercado (Lógica B3)
+fuso_br = timezone(timedelta(hours=-3))
+agora = datetime.now(fuso_br)
+
+# Verifica se é dia de semana (0 a 4) e entre 10h e 18h
+if agora.weekday() < 5 and 10 <= agora.hour < 18:
+    texto_status = "🟢 Mercado Aberto"
+else:
+    texto_status = "🔴 Mercado Fechado"
+
+msg_atualizacao = f"{texto_status}. Última atualização: {agora.strftime('%d/%m às %H:%M')}."
+st.caption(msg_atualizacao) # Exibe a mensagem em texto menor logo abaixo do título
 
 try:
     tv = st.session_state.tv
@@ -101,7 +114,6 @@ with c2:
 
 with c3:
     st.success("### 🕳️ Smart Money (FVG)\nOpere exatamente como os bancos institucionais, encontrando vácuos de liquidez e armadilhas.")
-
 
 
 # ==========================================
