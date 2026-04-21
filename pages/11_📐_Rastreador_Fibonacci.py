@@ -71,20 +71,21 @@ def colorir_lucro(row):
 # ==========================================
 # 2. MOTOR MATEMÁTICO: FIBONACCI
 # ==========================================
-def identificar_fibonacci(df, lookback=60):
+def identificar_fibonacci(df, lookback=120):
     df['MM200'] = ta.sma(df['Close'], length=200)
     df['Tendencia_Alta'] = df['Close'] > df['MM200']
     
-    df['Topo_60d'] = df['High'].rolling(window=lookback).max().shift(1)
-    df['Fundo_60d'] = df['Low'].rolling(window=lookback).min().shift(1)
-    df['Range_Fibo'] = df['Topo_60d'] - df['Fundo_60d']
+    # Procura o Topo e Fundo na janela definida pelo usuário
+    df['Topo_Ref'] = df['High'].rolling(window=lookback).max().shift(1)
+    df['Fundo_Ref'] = df['Low'].rolling(window=lookback).min().shift(1)
+    df['Range_Fibo'] = df['Topo_Ref'] - df['Fundo_Ref']
     
-    df['Perna_Valida'] = (df['Topo_60d'] / df['Fundo_60d']) > 1.10
+    df['Perna_Valida'] = (df['Topo_Ref'] / df['Fundo_Ref']) > 1.10
     
-    df['Fibo_382'] = df['Topo_60d'] - (df['Range_Fibo'] * 0.382)
-    df['Fibo_500'] = df['Topo_60d'] - (df['Range_Fibo'] * 0.500)
-    df['Fibo_618'] = df['Topo_60d'] - (df['Range_Fibo'] * 0.618)
-    df['Fibo_786'] = df['Topo_60d'] - (df['Range_Fibo'] * 0.786)
+    df['Fibo_382'] = df['Topo_Ref'] - (df['Range_Fibo'] * 0.382)
+    df['Fibo_500'] = df['Topo_Ref'] - (df['Range_Fibo'] * 0.500)
+    df['Fibo_618'] = df['Topo_Ref'] - (df['Range_Fibo'] * 0.618)
+    df['Fibo_786'] = df['Topo_Ref'] - (df['Range_Fibo'] * 0.786)
     
     df['Corpo'] = abs(df['Open'] - df['Close'])
     df['Pavio_Inf'] = df[['Open', 'Close']].min(axis=1) - df['Low']
@@ -125,6 +126,8 @@ with aba_radar:
             tipo_alvo = st.selectbox("Tipo de Alvo:", ["Retorno ao Topo (100%)", "Risco Projetado (Ex: 2x)"], key="rad_f_tipo_alvo")
             alvo_val = st.number_input("Múltiplo de Risco (Se aplicável):", value=2.0, step=0.5, key="rad_f_alvo")
         with c4:
+            # NOVO SLIDER DE TAMANHO DE PERNA
+            rad_lookback = st.slider("Tamanho da Perna (Dias de Busca):", min_value=20, max_value=250, value=120, step=10, help="Quantidade de pregões para trás que o robô vai olhar para encontrar o Fundo e o Topo da perna principal.")
             usar_stop_rad = st.checkbox("Usar Stop Loss", value=True, key="rad_f_chk")
             tipo_stop = st.selectbox("Tipo de Stop:", ["Técnico (Abaixo do Pavio)", "Abaixo dos 78.6% (Fibo)"], disabled=not usar_stop_rad, key="rad_f_tipo_stop")
             
@@ -148,7 +151,8 @@ with aba_radar:
                 if df_full is None or len(df_full) < 250: continue
                 df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 
-                df_full = identificar_fibonacci(df_full, lookback=60).dropna()
+                # Passamos a janela definida pelo usuário
+                df_full = identificar_fibonacci(df_full, lookback=rad_lookback).dropna()
 
                 if rad_periodo == '6mo': data_corte = df_full.index[-1] - pd.DateOffset(months=6)
                 elif rad_periodo == 'max': data_corte = df_full.index[0]
@@ -179,12 +183,12 @@ with aba_radar:
                         em_pos = True
                         preco_entrada = max(ontem['High'] + 0.01, atual['Open'])
                         d_ent = atual[col_data]
-                        topo_trade = ontem['Topo_60d']
-                        fundo_trade = ontem['Fundo_60d']
+                        topo_trade = ontem['Topo_Ref']
+                        fundo_trade = ontem['Fundo_Ref']
                         
                         stop_loss = ontem['Low'] - 0.01 if "Pavio" in tipo_stop else ontem['Fibo_786'] - 0.01
                         
-                        if "Topo" in tipo_alvo: alvo = ontem['Topo_60d']
+                        if "Topo" in tipo_alvo: alvo = ontem['Topo_Ref']
                         else: alvo = preco_entrada + ((preco_entrada - stop_loss) * alvo_val)
 
                 if total_trades > 0:
@@ -207,7 +211,7 @@ with aba_radar:
                     atual = df_back.iloc[-1]
                     if atual['Is_Sinal_Fibo']:
                         gatilho = atual['High'] + 0.01
-                        alvo_proj = atual['Topo_60d'] if "Topo" in tipo_alvo else gatilho + ((gatilho - (atual['Low'] - 0.01)) * alvo_val)
+                        alvo_proj = atual['Topo_Ref'] if "Topo" in tipo_alvo else gatilho + ((gatilho - (atual['Low'] - 0.01)) * alvo_val)
                         ls_armados.append({
                             'Ativo': ativo, 'Sinal': 'Rejeição em 61.8% 🎯', 'Gatilho (Start)': f"R$ {gatilho:.2f}", 
                             'Alvo': f"R$ {alvo_proj:.2f}", 'Status': "Aguardando Rompimento"
@@ -220,7 +224,6 @@ with aba_radar:
         st.divider()
 
         st.subheader(f"🏆 TOP 20 Histórico: Retrações ({tradutor_periodo_nome[rad_periodo]})")
-        st.markdown(f"Ativos mais lucrativos comprando o recuo de Fibonacci com a gestão atual.")
         if ls_historico:
             df_hist = pd.DataFrame(ls_historico).sort_values(by='Lucro Total (R$)', ascending=False).head(20)
             df_hist['Lucro Total (R$)'] = df_hist['Lucro Total (R$)'].apply(lambda x: f"R$ {x:,.2f}")
@@ -254,6 +257,8 @@ with aba_individual:
         rx_tipo_alvo = st.selectbox("Tipo de Alvo:", ["Retorno ao Topo (100%)", "Risco Projetado (Ex: 2x)"], key="rx_f_tipo_alvo")
         rx_alvo_val = st.number_input("Múltiplo de Risco:", value=2.0, step=0.5, key="rx_f_alvo")
     with cr4:
+        # NOVO SLIDER AQUI TAMBÉM
+        rx_lookback = st.slider("Tamanho da Perna (Dias de Busca):", min_value=20, max_value=250, value=120, step=10, key="rx_lookback")
         rx_usar_stop = st.checkbox("Usar Stop Loss", value=True, key="rx_f_chk")
         rx_tipo_stop = st.selectbox("Tipo de Stop:", ["Técnico (Abaixo do Pavio)", "Abaixo dos 78.6% (Fibo)"], disabled=not rx_usar_stop, key="rx_f_tipo_stop")
 
@@ -266,7 +271,8 @@ with aba_individual:
                 try:
                     df_full = tv.get_hist(symbol=rx_ativo, exchange='BMFBOVESPA', interval=tradutor_intervalo.get(rx_tempo, Interval.in_daily), n_bars=5000)
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                    df_full = identificar_fibonacci(df_full, lookback=60).dropna()
+                    
+                    df_full = identificar_fibonacci(df_full, lookback=rx_lookback).dropna()
 
                     if rx_periodo == '6mo': data_corte = df_full.index[-1] - pd.DateOffset(months=6)
                     elif rx_periodo == 'max': data_corte = df_full.index[0]
@@ -297,11 +303,11 @@ with aba_individual:
                         if ontem['Is_Sinal_Fibo'] and atual['High'] > ontem['High'] and not em_pos:
                             em_pos, preco_entrada, d_ent = True, max(ontem['High'] + 0.01, atual['Open']), atual[col_data]
                             extremo_trade = atual['Low']
-                            topo_trade = ontem['Topo_60d']
-                            fundo_trade = ontem['Fundo_60d']
+                            topo_trade = ontem['Topo_Ref']
+                            fundo_trade = ontem['Fundo_Ref']
                             
                             stop_loss = ontem['Low'] - 0.01 if "Pavio" in rx_tipo_stop else ontem['Fibo_786'] - 0.01
-                            if "Topo" in rx_tipo_alvo: alvo = ontem['Topo_60d']
+                            if "Topo" in rx_tipo_alvo: alvo = ontem['Topo_Ref']
                             else: alvo = preco_entrada + ((preco_entrada - stop_loss) * rx_alvo_val)
                                     
                     st.divider()
