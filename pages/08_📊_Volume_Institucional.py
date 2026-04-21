@@ -241,7 +241,7 @@ with aba_individual:
     cr1, cr2, cr3, cr4 = st.columns(4)
     with cr1:
         rx_ativo = st.text_input("Ativo Base (Ex: PETR4):", value="PETR4", key="rx_inst_ativo").upper().replace('.SA', '')
-        rx_periodo = st.selectbox("Período do Backtest:", options=['6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=1, key="rx_inst_per")
+        rx_periodo = st.selectbox("Período de Estudo:", options=['6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=1, key="rx_inst_per")
     with cr2:
         rx_tempo = st.selectbox("Tempo Gráfico:", ['60m', '1d', '1wk'], index=1, format_func=lambda x: {'60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="rx_inst_tmp")
         rx_capital = st.number_input("Capital Operado (R$):", value=10000.0, step=1000.0, key="rx_inst_cap")
@@ -253,7 +253,7 @@ with aba_individual:
         usar_stop = st.checkbox("Utilizar Stop Loss", value=True, key="rx_inst_chk")
         stop_pct = st.number_input("Stop Loss (%):", value=2.0, step=0.5, disabled=not usar_stop, key="rx_inst_stop") / 100
 
-    btn_raiox = st.button("🔍 Rodar Motor Institucional", type="primary", use_container_width=True, key="rx_inst_btn")
+    btn_raiox = st.button("🔍 Rodar Análise Completa", type="primary", use_container_width=True, key="rx_inst_btn")
 
     if btn_raiox:
         if not rx_ativo: st.error("Digite o código de um ativo.")
@@ -283,6 +283,7 @@ with aba_individual:
 
                         trades, em_pos = [], False
                         preco_entrada, stop_loss, alvo = 0.0, 0.0, 0.0
+                        min_price_in_trade = 0.0
                         d_ent, vitorias, derrotas = None, 0, 0
 
                         for i in range(1, len(df_back)):
@@ -290,17 +291,22 @@ with aba_individual:
                             ontem = df_back.iloc[i-1]
 
                             if em_pos:
+                                # Regista o pior preço alcançado durante o trade
+                                min_price_in_trade = min(min_price_in_trade, atual['Low'])
+                                
                                 if usar_stop and atual['Low'] <= stop_loss:
                                     d_sai = atual[col_data]
                                     lucro = rx_capital * ((stop_loss / preco_entrada) - 1)
                                     dias_op = (d_sai - d_ent).days
-                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Dias': dias_op, 'Lucro (R$)': lucro, 'Resultado': 'Stop Acionado ❌'})
+                                    queda_max = (min_price_in_trade / preco_entrada) - 1
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Duração': dias_op, 'Lucro (R$)': lucro, 'Queda Máx': queda_max, 'Situação': 'Stop ❌'})
                                     derrotas += 1; em_pos = False
                                 elif atual['High'] >= alvo:
                                     d_sai = atual[col_data]
                                     lucro = rx_capital * ((alvo / preco_entrada) - 1)
                                     dias_op = (d_sai - d_ent).days
-                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Dias': dias_op, 'Lucro (R$)': lucro, 'Resultado': 'Alvo Atingido 🎯'})
+                                    queda_max = (min_price_in_trade / preco_entrada) - 1
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Duração': dias_op, 'Lucro (R$)': lucro, 'Queda Máx': queda_max, 'Situação': 'Gain ✅'})
                                     vitorias += 1; em_pos = False
                                 continue
 
@@ -311,27 +317,39 @@ with aba_individual:
                             if macro_bullish and toque_vwap and defesa_vwap and not em_pos:
                                 em_pos = True
                                 preco_entrada = atual['Close']
+                                min_price_in_trade = atual['Close'] # Inicia a medição de queda
                                 d_ent = atual[col_data]
                                 alvo = preco_entrada * (1 + alvo_pct)
                                 stop_loss = preco_entrada * (1 - stop_pct)
 
                         st.divider()
-                        st.markdown(f"### 🛡️ Backtest: {rx_ativo}")
+                        
+                        # --- BARRA DE ESTADO (NOVA) ---
+                        if em_pos:
+                            st.warning(f"⏳ **{rx_ativo}: Em Operação (Aguardando Alvo)**")
+                        else:
+                            st.success(f"✅ **{rx_ativo}: Aguardando Novo Sinal de Entrada**")
+                            
+                        st.markdown(f"### 📊 Resultado Consolidado: {rx_ativo}")
                         
                         if len(trades) > 0:
                             df_t = pd.DataFrame(trades)
-                            l_total = df_t['Lucro (R$)'].sum()
-                            t_acerto = (vitorias / len(df_t)) * 100
-                            media_dias = df_t['Dias'].mean()
                             
-                            m1, m2, m3, m4, m5 = st.columns(5)
-                            m1.metric("Lucro Extraído", f"R$ {l_total:,.2f}", delta=f"{l_total:,.2f}")
-                            m2.metric("Disparos", len(df_t))
-                            m3.metric("Precisão", f"{t_acerto:.1f}%")
-                            m4.metric("Risco/Retorno", f"1 p/ {alvo_pct/stop_pct:.1f}" if usar_stop and stop_pct > 0 else "N/A")
-                            m5.metric("Tempo Médio (Dias)", f"{media_dias:.1f}")
+                            l_total = df_t['Lucro (R$)'].sum()
+                            media_dias = df_t['Duração'].mean()
+                            pior_queda = df_t['Queda Máx'].min() # Pega o valor mais negativo
+                            
+                            # Formatação para exibição na tabela
+                            df_t['Queda Máx'] = df_t['Queda Máx'].apply(lambda x: f"{x*100:.2f}%")
+                            
+                            # --- MÉTRICAS ALINHADAS COM A IMAGEM ---
+                            m1, m2, m3, m4 = st.columns(4)
+                            m1.metric("Lucro Total", f"R$ {l_total:,.2f}")
+                            m2.metric("Duração Média", f"{media_dias:.1f} dias")
+                            m3.metric("Operações Fechadas", len(df_t))
+                            m4.metric("Pior Queda", f"{pior_queda*100:.2f}%")
 
                             st.dataframe(df_t, use_container_width=True, hide_index=True)
                         else:
-                            st.warning("O algoritmo não detetou entradas no período especificado.")
+                            st.info("O algoritmo não detetou entradas finalizadas no período especificado.")
                 except Exception as e: st.error(f"Erro: {e}")
