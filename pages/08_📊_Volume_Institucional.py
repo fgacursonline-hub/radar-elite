@@ -93,7 +93,6 @@ def calcular_rolling_poc(df, periodo_lookback=30, num_bins=24):
         
     return pd.Series(poc_list, index=df.index)
 
-# Função para colorir o DataFrame no Streamlit
 def colorir_lucro(row):
     try:
         val = float(row['Resultado Atual'].replace('%', '').replace('+', ''))
@@ -152,7 +151,6 @@ with aba_radar:
             p_bar.progress((idx + 1) / len(ativos_analise))
 
             try:
-                # Puxa 1 ano de dados para o Radar (suficiente para POC e estar posicionado)
                 df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=300)
                 if df_full is None or len(df_full) < 50: continue
 
@@ -172,22 +170,19 @@ with aba_radar:
                 min_price_in_trade = 0.0
                 d_ent = None
 
-                # Roda o histórico para saber onde estamos HOJE
                 for i in range(1, len(df_back)):
                     atual = df_back.iloc[i]
                     ontem = df_back.iloc[i-1]
 
                     if em_pos:
-                        # Regista a pior cotação alcançada enquanto a operação está aberta
                         min_price_in_trade = min(min_price_in_trade, atual['Low'])
                         
                         if usar_stop_rad and atual['Low'] <= stop_loss:
                             em_pos = False
                         elif atual['High'] >= alvo:
                             em_pos = False
-                        continue # Se fechou a posição, continua o loop. Se não fechou, também continua.
+                        continue
 
-                    # Lógica de Entrada
                     macro_bullish = ontem['Close'] > ontem['POC']
                     toque_vwap = atual['Low'] <= atual['VWAP_Inst']
                     defesa_vwap = atual['Close'] >= atual['VWAP_Inst']
@@ -195,14 +190,12 @@ with aba_radar:
                     if macro_bullish and toque_vwap and defesa_vwap and not em_pos:
                         em_pos = True
                         preco_entrada = atual['Close']
-                        min_price_in_trade = atual['Close'] # Reinicia o marcador de queda no ponto de entrada
+                        min_price_in_trade = atual['Close']
                         d_ent = atual[col_data]
                         alvo = preco_entrada * (1 + alvo_pct_rad)
                         stop_loss = preco_entrada * (1 - stop_pct_rad)
 
-                # FORA DO LOOP: Avalia o estado no momento atual (último candle)
                 if em_pos:
-                    # Operação está em andamento!
                     cotacao_atual = df_back['Close'].iloc[-1]
                     res_pct = (cotacao_atual / preco_entrada) - 1
                     dias_aberto = (df_back[col_data].iloc[-1] - d_ent).days
@@ -219,7 +212,6 @@ with aba_radar:
                         'Resultado Atual': f"+{res_pct*100:.2f}%" if res_pct > 0 else f"{res_pct*100:.2f}%"
                     })
                 else:
-                    # Não está em operação. O setup armou HOJE?
                     atual = df_back.iloc[-1]
                     ontem = df_back.iloc[-2]
                     
@@ -242,7 +234,6 @@ with aba_radar:
         s_text.empty()
         p_bar.empty()
 
-        # --- EXIBIÇÃO ---
         st.subheader(f"🚀 Oportunidades Hoje (Fluxo Institucional | Alvo {alvo_pct_rad*100:.1f}%)")
         if ls_armados:
             st.dataframe(pd.DataFrame(ls_armados), use_container_width=True, hide_index=True)
@@ -315,7 +306,6 @@ with aba_individual:
                             ontem = df_back.iloc[i-1]
 
                             if em_pos:
-                                # Regista o pior preço alcançado durante o trade
                                 min_price_in_trade = min(min_price_in_trade, atual['Low'])
                                 
                                 if usar_stop and atual['Low'] <= stop_loss:
@@ -341,16 +331,26 @@ with aba_individual:
                             if macro_bullish and toque_vwap and defesa_vwap and not em_pos:
                                 em_pos = True
                                 preco_entrada = atual['Close']
-                                min_price_in_trade = atual['Close'] # Inicia a medição de queda
+                                min_price_in_trade = atual['Close']
                                 d_ent = atual[col_data]
                                 alvo = preco_entrada * (1 + alvo_pct)
                                 stop_loss = preco_entrada * (1 - stop_pct)
 
                         st.divider()
                         
-                        # --- BARRA DE ESTADO (NOVA) ---
+                        # --- BARRA DE ESTADO DETALHADA (NOVA) ---
                         if em_pos:
-                            st.warning(f"⏳ **{rx_ativo}: Em Operação (Aguardando Alvo)**")
+                            cotacao_atual = df_back['Close'].iloc[-1]
+                            dias_aberto = (df_back[col_data].iloc[-1] - d_ent).days
+                            res_pct = (cotacao_atual / preco_entrada) - 1
+                            queda_max_aberta = (min_price_in_trade / preco_entrada) - 1
+                            
+                            st.warning(f"""
+                            **⏳ {rx_ativo}: Em Operação (Aguardando Alvo)**
+                            * **Entrada:** {d_ent.strftime('%d/%m/%Y')} | **Dias na Operação:** {dias_aberto}
+                            * **PM:** R$ {preco_entrada:.2f} | **Cotação Atual:** R$ {cotacao_atual:.2f}
+                            * **Queda Máx:** {queda_max_aberta*100:.2f}% | **Resultado Atual:** {res_pct*100:.2f}%
+                            """)
                         else:
                             st.success(f"✅ **{rx_ativo}: Aguardando Novo Sinal de Entrada**")
                             
@@ -361,12 +361,10 @@ with aba_individual:
                             
                             l_total = df_t['Lucro (R$)'].sum()
                             media_dias = df_t['Duração'].mean()
-                            pior_queda = df_t['Queda Máx'].min() # Pega o valor mais negativo
+                            pior_queda = df_t['Queda Máx'].min()
                             
-                            # Formatação para exibição na tabela
                             df_t['Queda Máx'] = df_t['Queda Máx'].apply(lambda x: f"{x*100:.2f}%")
                             
-                            # --- MÉTRICAS ALINHADAS COM A IMAGEM ---
                             m1, m2, m3, m4 = st.columns(4)
                             m1.metric("Lucro Total", f"R$ {l_total:,.2f}")
                             m2.metric("Duração Média", f"{media_dias:.1f} dias")
