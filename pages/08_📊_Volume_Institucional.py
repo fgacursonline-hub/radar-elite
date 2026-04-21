@@ -152,6 +152,7 @@ with aba_radar:
                 preco_entrada = 0.0
                 stop_loss = 0.0
                 alvo = 0.0
+                min_price_in_trade = 0.0
                 d_ent = None
 
                 # Roda o histórico para saber onde estamos HOJE
@@ -160,6 +161,9 @@ with aba_radar:
                     ontem = df_back.iloc[i-1]
 
                     if em_pos:
+                        # Regista a pior cotação alcançada enquanto a operação está aberta
+                        min_price_in_trade = min(min_price_in_trade, atual['Low'])
+                        
                         if usar_stop_rad and atual['Low'] <= stop_loss:
                             em_pos = False
                         elif atual['High'] >= alvo:
@@ -174,6 +178,7 @@ with aba_radar:
                     if macro_bullish and toque_vwap and defesa_vwap and not em_pos:
                         em_pos = True
                         preco_entrada = atual['Close']
+                        min_price_in_trade = atual['Close'] # Reinicia o marcador de queda no ponto de entrada
                         d_ent = atual[col_data]
                         alvo = preco_entrada * (1 + alvo_pct_rad)
                         stop_loss = preco_entrada * (1 - stop_pct_rad)
@@ -184,6 +189,7 @@ with aba_radar:
                     cotacao_atual = df_back['Close'].iloc[-1]
                     res_pct = (cotacao_atual / preco_entrada) - 1
                     dias_aberto = (df_back[col_data].iloc[-1] - d_ent).days
+                    queda_max = (min_price_in_trade / preco_entrada) - 1
                     
                     ls_abertos.append({
                         'Ativo': ativo,
@@ -191,6 +197,7 @@ with aba_radar:
                         'Dias': dias_aberto,
                         'PM (Entrada)': f"R$ {preco_entrada:.2f}",
                         'Cotação Atual': f"R$ {cotacao_atual:.2f}",
+                        'Queda Máx': f"{queda_max*100:.2f}%",
                         'Alvo Programado': f"R$ {alvo:.2f}",
                         'Resultado Atual': f"+{res_pct*100:.2f}%" if res_pct > 0 else f"{res_pct*100:.2f}%"
                     })
