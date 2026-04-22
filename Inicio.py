@@ -121,7 +121,6 @@ def buscar_ranking_ativos(ativos):
                 c = df['close']
                 hj = c.iloc[-1]
                 
-                # Cálculos de Variação (Dia=2 barras, Semana=6, Mês=22, Ano=253)
                 v_dia = ((hj - c.iloc[-2]) / c.iloc[-2]) * 100 if len(c) >= 2 else 0
                 v_sem = ((hj - c.iloc[-6]) / c.iloc[-6]) * 100 if len(c) >= 6 else v_dia
                 v_mes = ((hj - c.iloc[-22]) / c.iloc[-22]) * 100 if len(c) >= 22 else v_sem
@@ -208,7 +207,6 @@ st.divider()
 # ==========================================
 # 4. PAINEL DE DESTAQUES (ALTAS, QUEDAS E TOPOS)
 # ==========================================
-# Container do título integrado com o seletor horizontal
 col_title, col_menu = st.columns([1, 1], vertical_alignment="center")
 
 with col_title:
@@ -216,12 +214,11 @@ with col_title:
     st.markdown("Monitoramento das maiores forças e fraquezas do mercado de capitais brasileiro.")
 
 with col_menu:
-    # O SELETOR HORIZONTAL EXATO DA IMAGEM! (segmented_control)
     horizonte = st.segmented_control(
-        "Prazo Analítico", # Label oculto
+        "Prazo Analítico",
         options=["Dia", "Semana", "Mês", "Ano"],
         default="Dia",
-        label_visibility="collapsed" # Deixa limpo como na imagem
+        label_visibility="collapsed" 
     )
 
 with st.spinner("Varrendo o mercado em busca de oportunidades extremas..."):
@@ -230,7 +227,6 @@ with st.spinner("Varrendo o mercado em busca de oportunidades extremas..."):
 col_altas, col_quedas, col_topos = st.columns(3)
 
 if not df_ranking.empty:
-    # Filtra e organiza com base no Horizonte selecionado (Dia, Semana, etc)
     df_altas = df_ranking[['Ativo', 'Preço', horizonte]].sort_values(by=horizonte, ascending=False).head(5).copy()
     df_altas.rename(columns={horizonte: 'Variação (%)'}, inplace=True)
     df_altas['Preço'] = df_altas['Preço'].apply(lambda x: formata_moeda_pct(x))
@@ -242,11 +238,11 @@ if not df_ranking.empty:
     df_quedas['Variação (%)'] = df_quedas['Variação (%)'].apply(lambda x: formata_moeda_pct(x, True))
 
     with col_altas:
-        st.success("### 🚀 Maiores Altas") # Título estático restaurado
+        st.success("### 🚀 Maiores Altas") 
         st.dataframe(df_altas.style.apply(colorir_tabela, axis=1), use_container_width=True, hide_index=True)
 
     with col_quedas:
-        st.error("### 🩸 Maiores Quedas") # Título estático restaurado
+        st.error("### 🩸 Maiores Quedas") 
         st.dataframe(df_quedas.style.apply(colorir_tabela, axis=1), use_container_width=True, hide_index=True)
 
     with col_topos:
@@ -285,8 +281,8 @@ with c3:
 
 st.divider()
 
-# --- NOVA SEÇÃO DE INTELIGÊNCIA ---
-st.subheader("🧭 Inteligência de Mercado & Calendários")
+# --- NOVA SEÇÃO DE INTELIGÊNCIA (EXPANDIDA) ---
+st.subheader("🧭 Inteligência de Mercado & Dados de Ativos")
 
 cl1, cl2, cl3 = st.columns(3)
 
@@ -305,6 +301,27 @@ with cl3:
     st.link_button("Investing Pro Ideas", "https://br.investing.com/pro/ideas", use_container_width=True)
     st.link_button("HedgeFollow (Fundos)", "https://hedgefollow.com/", use_container_width=True)
     st.caption("Investidores famosos, hedge funds e assessores de investimento.")
+
+st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
+# Nova Linha focada em Suporte Fundamentalista
+cl4, cl5, cl6 = st.columns(3)
+
+with cl4:
+    st.markdown("#### 📊 Plataformas de Dados")
+    st.link_button("StatusInvest", "https://statusinvest.com.br/", use_container_width=True)
+    st.link_button("Investidor10", "https://investidor10.com.br/", use_container_width=True)
+
+with cl5:
+    st.markdown("#### 🏢 Raio-X Fundamentalista")
+    st.link_button("Fundamentus", "https://www.fundamentus.com.br/", use_container_width=True)
+    st.link_button("Oceans14", "https://www.oceans14.com.br/", use_container_width=True)
+
+with cl6:
+    st.markdown("#### 🌍 Portais Globais")
+    st.link_button("Investing.com", "https://br.investing.com/", use_container_width=True)
+    st.link_button("Google Finance", "https://www.google.com/finance/", use_container_width=True)
+
 
 # ==========================================
 # 6. RADAR DE NOTÍCIAS MULTI-FONTE
