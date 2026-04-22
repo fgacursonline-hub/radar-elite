@@ -1,306 +1,389 @@
 import streamlit as st
-import streamlit.components.v1 as components
 from tvDatafeed import TvDatafeed, Interval
+import streamlit.components.v1 as components 
+from datetime import datetime, timedelta, timezone
 import pandas as pd
-import pandas_ta as ta
 import time
-import warnings
-
-warnings.filterwarnings('ignore')
+import xml.etree.ElementTree as ET
+import requests
 
 # ==========================================
-# 1. SEGURANÇA E BLOQUEIO
+# 1. CONFIGURAÇÃO DA PÁGINA
 # ==========================================
-if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
-    st.error("🚫 Por favor, faça login na página inicial (Home).")
-    st.stop()
+st.set_page_config(page_title="Caçadores de Elite", layout="wide", page_icon="🎯", initial_sidebar_state="collapsed")
 
-@st.cache_resource
-def get_tv_connection():
-    return TvDatafeed()
+if 'autenticado' not in st.session_state:
+    st.session_state['autenticado'] = False
 
-tv = get_tv_connection()
-
-tradutor_periodo_nome = {
-    '6mo': '6 Meses', '1y': '1 Ano', '2y': '2 Anos', 
-    '5y': '5 Anos', '10y': '10 Anos', 'max': 'Máximo'
+alunos_cadastrados = {
+    "aluno": "elite123",
+    "joao": "senha123",
+    "maria": "bolsadevalores",
+    "admin": "suasenhaforte"
 }
 
+aviso_risco = "⚠️ **AVISO DE COMANDO:** Esta plataforma foi forjada exclusivamente para fins educacionais e de estudo quantitativo. Não emitimos recomendações de compra, venda ou manutenção de ativos. Toda operação no mercado financeiro gera risco real de perda de capital. Seja um Caçador com disciplina implacável e responsabilidade: o seu maior patrimônio é o seu gerenciamento de risco."
+
+if not st.session_state['autenticado']:
+    st.markdown("<style>[data-testid='stSidebar'] {display: none;} [data-testid='stSidebarNav'] {display: none;}</style>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("<br><br><h1 style='text-align: center;'>🎯 Caçadores de Elite</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center;'>Área Restrita do Radar Quantitativo</p>", unsafe_allow_html=True)
+        
+        with st.form("form_login"):
+            usuario = st.text_input("Usuário").lower().strip()
+            senha = st.text_input("Senha", type="password")
+            if st.form_submit_button("Entrar no Sistema", use_container_width=True):
+                if usuario in alunos_cadastrados and alunos_cadastrados[usuario] == senha:
+                    st.session_state['autenticado'] = True
+                    st.rerun()
+                else:
+                    st.error("❌ Usuário ou senha incorretos.")
+                    
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.warning(aviso_risco)
+    st.stop()
+
+# ==========================================
+# 2. CONEXÃO E CACHE DE DADOS
+# ==========================================
+if 'tv' not in st.session_state:
+    try:
+        st.session_state.tv = TvDatafeed()
+    except Exception:
+        pass
+
 bdrs_elite = [
-    'NVDC34.SA', 'P2LT34.SA', 'ROXO34.SA', 'INBR32.SA', 'M1TA34.SA', 'TSLA34.SA',
-    'LILY34.SA', 'AMZO34.SA', 'AURA33.SA', 'GOGL34.SA', 'MSFT34.SA', 'MUTC34.SA',
-    'MELI34.SA', 'C2OI34.SA', 'ORCL34.SA', 'M2ST34.SA', 'A1MD34.SA', 'NFLX34.SA',
-    'ITLC34.SA', 'AVGO34.SA', 'COCA34.SA', 'JBSS32.SA', 'AAPL34.SA', 'XPBR31.SA',
-    'STOC34.SA'
+    'NVDC34', 'P2LT34', 'ROXO34', 'INBR32', 'M1TA34', 'TSLA34', 'LILY34', 'AMZO34', 
+    'AURA33', 'GOGL34', 'MSFT34', 'MUTC34', 'MELI34', 'C2OI34', 'ORCL34', 'M2ST34', 
+    'A1MD34', 'NFLX34', 'ITLC34', 'AVGO34', 'COCA34', 'JBSS32', 'AAPL34', 'XPBR31', 'STOC34'
 ]
 
 ibrx_selecao = [
-    'PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA', 'BBAS3.SA', 'B3SA3.SA', 'ABEV3.SA',
-    'WEGE3.SA', 'AXIA3.SA', 'SUZB3.SA', 'RENT3.SA', 'RADL3.SA', 'EQTL3.SA', 'LREN3.SA',
-    'PRIO3.SA', 'HAPV3.SA', 'GGBR4.SA', 'VBBR3.SA', 'SBSP3.SA', 'CMIG4.SA', 'CPLE3.SA',
-    'ENEV3.SA', 'TIMS3.SA', 'TOTS3.SA', 'EGIE3.SA', 'CSAN3.SA', 'ALOS3.SA', 'DIRR3.SA',
-    'VIVT3.SA', 'KLBN11.SA', 'UGPA3.SA', 'PSSA3.SA', 'CYRE3.SA', 'ASAI3.SA', 'RAIL3.SA',
-    'ISAE3.SA', 'CSNA3.SA', 'MGLU3.SA', 'EMBJ3.SA', 'TAEE11.SA', 'BBSE3.SA', 'FLRY3.SA',
-    'MULT3.SA', 'TFCO4.SA', 'LEVE3.SA', 'CPFE3.SA', 'GOAU4.SA', 'MRVE3.SA', 'YDUQ3.SA',
-    'SMTO3.SA', 'SLCE3.SA', 'CVCB3.SA', 'USIM5.SA', 'BRAP4.SA', 'BRAV3.SA', 'EZTC3.SA',
-    'PCAR3.SA', 'AUAU3.SA', 'DXCO3.SA', 'CASH3.SA', 'VAMO3.SA', 'AZZA3.SA', 'AURE3.SA',
-    'BEEF3.SA', 'ECOR3.SA', 'FESA4.SA', 'POMO4.SA', 'CURY3.SA', 'INTB3.SA', 'JHSF3.SA',
-    'LIGT3.SA', 'LOGG3.SA', 'MDIA3.SA', 'MBRF3.SA', 'NEOE3.SA', 'QUAL3.SA', 'RAPT4.SA',
-    'ROMI3.SA', 'SANB11.SA', 'SIMH3.SA', 'TEND3.SA', 'VULC3.SA', 'PLPL3.SA', 'CEAB3.SA',
-    'UNIP6.SA', 'LWSA3.SA', 'BPAC11.SA', 'GMAT3.SA', 'CXSE3.SA', 'ABCB4.SA', 'CSMG3.SA',
-    'SAPR11.SA', 'GRND3.SA', 'BRAP3.SA', 'LAVV3.SA', 'RANI3.SA', 'ITSA3.SA', 'ALUP11.SA',
-    'FIQE3.SA', 'COGN3.SA', 'IRBR3.SA', 'SEER3.SA', 'ANIM3.SA', 'JSLG3.SA', 'POSI3.SA',
-    'MYPK3.SA', 'SOJA3.SA', 'BLAU3.SA', 'PGMN3.SA', 'TUPY3.SA', 'VVEO3.SA', 'MELK3.SA',
-    'SHUL4.SA', 'BRSR6.SA',
+    'PETR4', 'VALE3', 'ITUB4', 'BBDC4', 'BBAS3', 'B3SA3', 'ABEV3', 'WEGE3', 'AXIA3', 
+    'SUZB3', 'RENT3', 'RADL3', 'EQTL3', 'LREN3', 'PRIO3', 'HAPV3', 'GGBR4', 'VBBR3', 
+    'SBSP3', 'CMIG4', 'CPLE3', 'ENEV3', 'TIMS3', 'TOTS3', 'EGIE3', 'CSAN3', 'ALOS3', 
+    'DIRR3', 'VIVT3', 'KLBN11', 'UGPA3', 'PSSA3', 'CYRE3', 'ASAI3', 'RAIL3', 'ISAE3', 
+    'CSNA3', 'MGLU3', 'EMBJ3', 'TAEE11', 'BBSE3', 'FLRY3', 'MULT3', 'TFCO4', 'LEVE3', 
+    'CPFE3', 'GOAU4', 'MRVE3', 'YDUQ3', 'SMTO3', 'SLCE3', 'CVCB3', 'USIM5', 'BRAP4', 
+    'BRAV3', 'EZTC3', 'PCAR3', 'AUAU3', 'DXCO3', 'CASH3', 'VAMO3', 'AZZA3', 'AURE3', 
+    'BEEF3', 'ECOR3', 'FESA4', 'POMO4', 'CURY3', 'INTB3', 'JHSF3', 'LIGT3', 'LOGG3', 
+    'MDIA3', 'MBRF3', 'NEOE3', 'QUAL3', 'RAPT4', 'ROMI3', 'SANB11', 'SIMH3', 'TEND3', 
+    'VULC3', 'PLPL3', 'CEAB3', 'UNIP6', 'LWSA3', 'BPAC11', 'GMAT3', 'CXSE3', 'ABCB4', 
+    'CSMG3', 'SAPR11', 'GRND3', 'BRAP3', 'LAVV3', 'RANI3', 'ITSA3', 'ALUP11', 'FIQE3', 
+    'COGN3', 'IRBR3', 'SEER3', 'ANIM3', 'JSLG3', 'POSI3', 'MYPK3', 'SOJA3', 'BLAU3', 
+    'PGMN3', 'TUPY3', 'VVEO3', 'MELK3', 'SHUL4', 'BRSR6'
 ]
+todos_ativos = list(set(bdrs_elite + ibrx_selecao))
 
-def colorir_lucro(row):
-    try:
-        val_str = str(row.get('Resultado Atual', row.get('Lucro (R$)', '0')))
-        val = float(val_str.replace('R$', '').replace('%', '').replace('+', '').replace(',', '').strip())
-        cor = 'lightgreen' if val > 0 else 'lightcoral' if val < 0 else 'white'
-        return [f'color: {cor}'] * len(row)
-    except: return [''] * len(row)
+@st.cache_data(ttl=300) 
+def buscar_dados_macro():
+    tv_local = TvDatafeed()
+    macros = {
+        'IBOV': {'symbol': 'IBOV', 'exchange': 'BMFBOVESPA', 'nome': 'IBOVESPA', 'prefix': 'pts', 'formato': '{:,.0f}', 'url': 'https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3AIBOV'},
+        'WIN': {'symbol': 'WIN1!', 'exchange': 'BMFBOVESPA', 'nome': 'Mini Índice', 'prefix': 'pts', 'formato': '{:,.0f}', 'url': 'https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3AWIN1%21'},
+        'WDO': {'symbol': 'WDO1!', 'exchange': 'BMFBOVESPA', 'nome': 'Mini Dólar', 'prefix': 'R$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3AWDO1%21'},
+        'DI1': {'symbol': 'DI11!', 'exchange': 'BMFBOVESPA', 'nome': 'Juros BR (DI1)', 'prefix': '%', 'formato': '{:.3f}', 'url': 'https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3ADI11%21'},
+        'EWZ': {'symbol': 'EWZ', 'exchange': 'AMEX', 'nome': 'EWZ (ETF Brasil)', 'prefix': '$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=AMEX%3AEWZ'},
+        'MINERIO': {'symbol': 'FEF2!', 'exchange': 'SGX', 'nome': 'Minério de Ferro', 'prefix': '$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=SGX%3AFEF2%21'},
+        'BRENT': {'symbol': 'UKOIL', 'exchange': 'TVC', 'nome': 'Petróleo Brent', 'prefix': '$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=TVC%3AUKOIL'},
+        'GOLD': {'symbol': 'XAUUSD', 'exchange': 'OANDA', 'nome': 'Ouro (Spot)', 'prefix': '$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=OANDA%3AXAUUSD'},
+        'BTC': {'symbol': 'BTCUSD', 'exchange': 'BITSTAMP', 'nome': 'Bitcoin (BTC)', 'prefix': '$', 'formato': '{:,.0f}', 'url': 'https://br.tradingview.com/chart/?symbol=BITSTAMP%3ABTCUSD'},
+        'VIX': {'symbol': 'VIX', 'exchange': 'CBOE', 'nome': 'Índice VIX (Medo)', 'prefix': 'pts', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=CBOE%3AVIX'}
+    }
+    
+    resultados = []
+    for chave, config in macros.items():
+        try:
+            df = tv_local.get_hist(symbol=config['symbol'], exchange=config['exchange'], interval=Interval.in_daily, n_bars=2)
+            if df is not None and len(df) >= 2:
+                fecho_hj = df['close'].iloc[-1]
+                fecho_ontem = df['close'].iloc[-2]
+                variacao = ((fecho_hj - fecho_ontem) / fecho_ontem) * 100
+                valor_formatado = f"{config['prefix']} " + config['formato'].format(fecho_hj)
+                resultados.append({'nome': config['nome'], 'valor': valor_formatado, 'variacao': variacao, 'url': config['url']})
+            else:
+                resultados.append({'nome': config['nome'], 'valor': 'N/A', 'variacao': 0, 'url': config['url']})
+        except:
+            resultados.append({'nome': config['nome'], 'valor': 'N/A', 'variacao': 0, 'url': config['url']})
+    return resultados
 
-def renderizar_grafico_tv(simbolo_tv, altura=600):
-    html_tv = f"""
-    <div class="tradingview-widget-container">
-      <div id="tradingview_turtle"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-      <script type="text/javascript">
-      new TradingView.widget(
-      {{
-      "width": "100%",
-      "height": {altura},
-      "symbol": "{simbolo_tv}",
-      "interval": "D",
-      "timezone": "America/Sao_Paulo",
-      "theme": "dark",
-      "style": "1",
-      "locale": "br",
-      "enable_publishing": false,
-      "allow_symbol_change": true,
-      "container_id": "tradingview_turtle"
-    }}
-      );
-      </script>
+@st.cache_data(ttl=900)
+def buscar_ranking_ativos(ativos):
+    tv_local = TvDatafeed()
+    lista_rank = []
+    rompendo_topo = []
+    
+    for ativo in ativos:
+        try:
+            df = tv_local.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=4000)
+            if df is not None and len(df) >= 2:
+                c = df['close']
+                hj = c.iloc[-1]
+                
+                v_dia = ((hj - c.iloc[-2]) / c.iloc[-2]) * 100 if len(c) >= 2 else 0
+                v_sem = ((hj - c.iloc[-6]) / c.iloc[-6]) * 100 if len(c) >= 6 else v_dia
+                v_mes = ((hj - c.iloc[-22]) / c.iloc[-22]) * 100 if len(c) >= 22 else v_sem
+                v_ano = ((hj - c.iloc[-253]) / c.iloc[-253]) * 100 if len(c) >= 253 else v_mes
+                
+                lista_rank.append({
+                    'Ativo': ativo, 'Preço': hj, 
+                    'Dia': v_dia, 'Semana': v_sem, 'Mês': v_mes, 'Ano': v_ano
+                })
+                
+                max_historica = df['high'].iloc[:-1].max()
+                if df['high'].iloc[-1] > max_historica:
+                    rompendo_topo.append({
+                        'Ativo': ativo, 'Preço': hj, 
+                        'Dia': v_dia, 'Semana': v_sem, 'Mês': v_mes, 'Ano': v_ano
+                    })
+        except Exception: pass
+        time.sleep(0.01)
+        
+    return pd.DataFrame(lista_rank), pd.DataFrame(rompendo_topo)
+
+def formata_moeda_pct(val, is_pct=False):
+    if is_pct: return f"+{val:.2f}%" if val > 0 else f"{val:.2f}%"
+    return f"R$ {val:.2f}"
+
+def colorir_tabela(row):
+    val_float = float(row['Variação (%)'].replace('%', '').replace('+', ''))
+    cor = 'lightgreen' if val_float > 0 else 'lightcoral' if val_float < 0 else 'white'
+    return [f'color: {cor}'] * len(row)
+
+# ==========================================
+# 3. TELA APÓS LOGIN (DASHBOARD)
+# ==========================================
+c_tit, c_sair = st.columns([8, 1])
+with c_tit:
+    st.title("🎯 Terminal Caçadores de Elite")
+    st.markdown("Bem-vindo ao seu Quartel-General de Operações Institucionais.")
+with c_sair:
+    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+    if st.button("🚪 Sair", use_container_width=True):
+        st.session_state['autenticado'] = False
+        st.rerun()
+
+st.divider()
+
+# --- TERMÔMETRO MACRO GLOBAL ---
+st.subheader("🌐 Termômetro Macro Global")
+
+fuso_br = timezone(timedelta(hours=-3))
+agora = datetime.now(fuso_br)
+
+def is_mercado_aberto(data_atual):
+    if data_atual.weekday() >= 5: return False
+    if not (10 <= data_atual.hour < 18): return False
+    feriados_fixos = [(1, 1), (4, 21), (5, 1), (9, 7), (10, 12), (11, 2), (11, 15), (11, 20), (12, 25)]
+    if (data_atual.month, data_atual.day) in feriados_fixos: return False
+    feriados_moveis_2026 = [(2, 16), (2, 17), (4, 3), (6, 4)]
+    if data_atual.year == 2026 and (data_atual.month, data_atual.day) in feriados_moveis_2026: return False
+    return True
+
+texto_status = "🟢 B3 Aberta" if is_mercado_aberto(agora) else "🔴 B3 Fechada"
+st.caption(f"{texto_status} | Globais 24h. Última atualização: {agora.strftime('%d/%m às %H:%M')}.")
+
+with st.spinner("Conectando com as bolsas globais..."):
+    dados_macro = buscar_dados_macro()
+
+if dados_macro:
+    for i in range(0, len(dados_macro), 5):
+        cols = st.columns(5)
+        for j, col in enumerate(cols):
+            if i + j < len(dados_macro):
+                item = dados_macro[i + j]
+                with col:
+                    st.metric(
+                        label=item['nome'], 
+                        value=item['valor'], 
+                        delta=f"{item['variacao']:.2f}%" if item['valor'] != 'N/A' else None
+                    )
+                    st.markdown(f"<a href='{item['url']}' target='_blank' style='text-decoration: none; font-size: 13px; color: #4da6ff;'>📊 Ver Gráfico</a>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
+st.divider()
+
+# ==========================================
+# 4. PAINEL DE DESTAQUES (ALTAS, QUEDAS E TOPOS)
+# ==========================================
+col_title, col_menu = st.columns([1, 1], vertical_alignment="center")
+
+with col_title:
+    st.subheader("🔥 Radar de Destaques (IBrX + BDRs)")
+    st.markdown("Monitoramento das maiores forças e fraquezas do mercado de capitais brasileiro.")
+
+with col_menu:
+    horizonte = st.segmented_control(
+        "Prazo Analítico",
+        options=["Dia", "Semana", "Mês", "Ano"],
+        default="Dia",
+        label_visibility="collapsed" 
+    )
+
+with st.spinner("Varrendo o mercado em busca de oportunidades extremas..."):
+    df_ranking, df_topos = buscar_ranking_ativos(todos_ativos)
+
+col_altas, col_quedas, col_topos = st.columns(3)
+
+if not df_ranking.empty:
+    df_altas = df_ranking[['Ativo', 'Preço', horizonte]].sort_values(by=horizonte, ascending=False).head(5).copy()
+    df_altas.rename(columns={horizonte: 'Variação (%)'}, inplace=True)
+    df_altas['Preço'] = df_altas['Preço'].apply(lambda x: formata_moeda_pct(x))
+    df_altas['Variação (%)'] = df_altas['Variação (%)'].apply(lambda x: formata_moeda_pct(x, True))
+
+    df_quedas = df_ranking[['Ativo', 'Preço', horizonte]].sort_values(by=horizonte, ascending=True).head(5).copy()
+    df_quedas.rename(columns={horizonte: 'Variação (%)'}, inplace=True)
+    df_quedas['Preço'] = df_quedas['Preço'].apply(lambda x: formata_moeda_pct(x))
+    df_quedas['Variação (%)'] = df_quedas['Variação (%)'].apply(lambda x: formata_moeda_pct(x, True))
+
+    with col_altas:
+        st.success("### 🚀 Maiores Altas") 
+        st.dataframe(df_altas.style.apply(colorir_tabela, axis=1), use_container_width=True, hide_index=True)
+
+    with col_quedas:
+        st.error("### 🩸 Maiores Quedas") 
+        st.dataframe(df_quedas.style.apply(colorir_tabela, axis=1), use_container_width=True, hide_index=True)
+
+    with col_topos:
+        st.warning("### 👑 Rompendo Topo Histórico")
+        if not df_topos.empty:
+            df_topos_fmt = df_topos[['Ativo', 'Preço', horizonte]].sort_values(by=horizonte, ascending=False).copy()
+            df_topos_fmt.rename(columns={horizonte: 'Variação (%)'}, inplace=True)
+            df_topos_fmt['Preço'] = df_topos_fmt['Preço'].apply(lambda x: formata_moeda_pct(x))
+            df_topos_fmt['Variação (%)'] = df_topos_fmt['Variação (%)'].apply(lambda x: formata_moeda_pct(x, True))
+            st.dataframe(df_topos_fmt.style.apply(colorir_tabela, axis=1), use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum ativo está a romper o topo histórico hoje.")
+else:
+    st.info("Aguardando cotações para gerar o ranking.")
+
+st.divider()
+
+# ==========================================
+# 5. O SEU ARSENAL E LINKS ÚTEIS
+# ==========================================
+st.subheader("🛠️ O Seu Arsenal de Ferramentas")
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.info("### 📉 Regressão à Média\nVarreduras de **IFR** e **Canais de Keltner** para caçar ativos esticados e exaustos.")
+    st.success("### 📊 Fluxo Institucional\nEncontre defesas de tubarões na **VWAP** com cruzamento da **POC** de Volume.")
+with c2:
+    st.warning("### 🔥 Seguidores de Tendência\nMonitore o **Setup 9.1**, **Fura-Teto (Momentum)** e **Volatilidade**.")
+    st.error("### 📐 Fibo & Smart Money\nOpere a proporção áurea com o **Rastreador Fibonacci** e falhas de **FVG**.")
+with c3:
+    st.markdown("""
+    <div style='background-color: #2b2b2b; padding: 15px; border-radius: 10px; border-left: 5px solid #a3a3a3;'>
+        <h3 style='margin-top: 0;'>🕯️ Price Action</h3>
+        Encontre os gatilhos gráficos perfeitos em zonas de valor (Martelos, Haramis e afins).
     </div>
-    """
-    components.html(html_tv, height=altura)
+    """, unsafe_allow_html=True)
+
+st.divider()
+
+# --- NOVA SEÇÃO DE INTELIGÊNCIA (EXPANDIDA) ---
+st.subheader("🧭 Inteligência de Mercado & Dados de Ativos")
+
+cl1, cl2, cl3 = st.columns(3)
+
+with cl1:
+    st.markdown("#### 📅 Central de Calendários")
+    st.link_button("Acessar Calendários", "https://br.investing.com/economic-calendar", use_container_width=True)
+    st.caption("Econômico, Feriados, Balanços e Resultados, Dividendos, Desdobramento, IPO e Contratos Futuros.")
+
+with cl2:
+    st.markdown("#### 🔍 Rastreadores")
+    st.link_button("Filtro | Comparador de Ações", "https://br.investing.com/stock-screener", use_container_width=True)
+    st.caption("Filtre o mercado através de múltiplos indicadores técnicos e fundamentalistas.")
+
+with cl3:
+    st.markdown("#### 🐋 Smart Money")
+    st.link_button("Investing Pro Ideas", "https://br.investing.com/pro/ideas", use_container_width=True)
+    st.link_button("HedgeFollow (Fundos)", "https://hedgefollow.com/", use_container_width=True)
+    st.caption("Investidores famosos, hedge funds e assessores de investimento.")
+
+st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
+cl4, cl5, cl6 = st.columns(3)
+
+with cl4:
+    st.markdown("#### 📊 Plataformas de Dados")
+    st.link_button("StatusInvest", "https://statusinvest.com.br/", use_container_width=True)
+    st.link_button("Investidor10", "https://investidor10.com.br/", use_container_width=True)
+
+with cl5:
+    st.markdown("#### 🏢 Raio-X Fundamentalista")
+    st.link_button("Fundamentus", "https://www.fundamentus.com.br/", use_container_width=True)
+    st.link_button("Oceans14", "https://www.oceans14.com.br/", use_container_width=True)
+
+with cl6:
+    st.markdown("#### 🌍 Portais Globais")
+    st.link_button("Investing.com", "https://br.investing.com/", use_container_width=True)
+    st.link_button("Google Finance", "https://www.google.com/finance/", use_container_width=True)
+
 
 # ==========================================
-# 2. INTERFACE DE ABAS
+# 6. RADAR DE NOTÍCIAS MULTI-FONTE (CORRIGIDO ANTI-BLOQUEIO)
 # ==========================================
-col_titulo, col_botao = st.columns([4, 1])
-with col_titulo:
-    st.title("🐢 O Sistema Turtle (Trend Following)")
-with col_botao:
-    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-    st.link_button("📖 Ler Regras", "https://seusite.com/manual_turtle", use_container_width=True)
+st.divider()
+st.subheader("📰 Radar de Notícias Caçadores de Elite")
 
-aba_radar, aba_individual = st.tabs(["📡 Radar do Cardume (Varredura)", "🔬 Raio-X Individual"])
-
-# ==========================================
-# ABA 1: RADAR DO CARDUME
-# ==========================================
-with aba_radar:
-    st.markdown("Varredura de quebra de máximas históricas usando as regras puras de Richard Dennis.")
-    
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        lista_sel = st.selectbox("Lista de Ativos:", ["IBrX Seleção", "BDRs Elite", "Todos"], key="rad_tur_lst")
-    with c2:
-        sistema_sel = st.selectbox("Sistema Turtle:", ["Sistema 1 (20 Ent / 10 Sai)", "Sistema 2 (55 Ent / 20 Sai)"], key="rad_tur_sys")
-    with c3:
-        periodo_sel = st.selectbox("Período Histórico:", ['1y', '2y', '5y', '10y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=2, key="rad_tur_per")
-    with c4:
-        capital_sel = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="rad_tur_cap")
-
-    btn_iniciar = st.button("🚀 Iniciar Varredura de Rompimentos", type="primary", use_container_width=True)
-
-    if btn_iniciar:
-        ativos_analise = bdrs_elite if lista_sel == "BDRs Elite" else ibrx_selecao if lista_sel == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+@st.cache_data(ttl=600) # Cache de 10 min para não sobrecarregar as requisições
+def carregar_feed(url):
+    try:
+        # Cabeçalhos blindados para simular um navegador real e passar por alguns firewalls
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        root = ET.fromstring(response.content)
+        itens = []
         
-        janela_entrada = 20 if "Sistema 1" in sistema_sel else 55
-        janela_saida = 10 if "Sistema 1" in sistema_sel else 20
-
-        ls_armados, ls_abertos, ls_resumo = [], [], []
-        p_bar = st.progress(0); s_text = st.empty()
-
-        for idx, ativo_raw in enumerate(ativos_analise):
-            ativo = ativo_raw.replace('.SA', '')
-            s_text.text(f"🔍 Caçando tendências em {ativo} ({idx+1}/{len(ativos_analise)})")
-            p_bar.progress((idx + 1) / len(ativos_analise))
-
-            try:
-                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=5000)
-                if df_full is None or len(df_full) < janela_entrada * 2: continue
-
-                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+        palavras_proibidas = ['futebol', 'copa', 'assistir', 'corinthians', 'vasco', 'palmeiras', 'flamengo', 'brasileirão', 'fofoca', 'bbb', 'novela', 'filme']
+        
+        for item in root.findall('./channel/item'): 
+            titulo = item.find('title').text
+            link = item.find('link').text
+            
+            titulo_lower = titulo.lower()
+            if any(palavra in titulo_lower for palavra in palavras_proibidas):
+                continue
                 
-                # --- CÁLCULO DOS CANAIS DE DONCHIAN (Regras Turtle) ---
-                df_full['Canal_Compra'] = df_full['High'].rolling(window=janela_entrada).max().shift(1)
-                df_full['Canal_Venda'] = df_full['Low'].rolling(window=janela_saida).min().shift(1)
-                df_full = df_full.dropna()
-
-                if periodo_sel == 'max': data_corte = df_full.index[0]
-                else: data_corte = df_full.index[-1] - pd.DateOffset(years=int(periodo_sel.replace('y','')))
+            itens.append({"titulo": titulo, "link": link})
+            if len(itens) >= 8: break
                 
-                df = df_full[df_full.index >= data_corte].copy().reset_index()
-                col_data = df.columns[0]
+        return itens
+    except: return None
 
-                em_pos = False
-                preco_entrada = 0.0
-                vitorias, total_trades, lucro_total = 0, 0, 0.0
+tab_info, tab_inv, tab_mt = st.tabs(["💰 InfoMoney", "📈 Investing.com", "🗞️ Money Times"])
 
-                for i in range(1, len(df)):
-                    atual = df.iloc[i]
+with tab_info:
+    n_im = carregar_feed("https://www.infomoney.com.br/feed/")
+    if n_im:
+        for n in n_im: st.markdown(f"• **{n['titulo']}** [Ler mais]({n['link']})")
+    else: st.info("Buscando notícias...")
 
-                    if em_pos:
-                        # Regra de Saída: Rompeu a mínima de N dias?
-                        if atual['Low'] <= atual['Canal_Venda']:
-                            preco_saida = min(atual['Canal_Venda'] - 0.01, atual['Open'])
-                            lucro_rs = capital_sel * ((preco_saida / preco_entrada) - 1)
-                            lucro_total += lucro_rs
-                            total_trades += 1
-                            if lucro_rs > 0: vitorias += 1
-                            em_pos = False
-                    else:
-                        # Regra de Entrada: Rompeu a máxima de N dias?
-                        if atual['High'] >= atual['Canal_Compra']:
-                            em_pos = True
-                            preco_entrada = max(atual['Canal_Compra'] + 0.01, atual['Open'])
-                            d_ent = atual[col_data]
+with tab_inv:
+    # O PULO DO GATO: Usamos o Google News como 'Proxy' para buscar notícias do Investing.com sem sermos bloqueados pelo Cloudflare deles.
+    n_inv = carregar_feed("https://news.google.com/rss/search?q=site:br.investing.com+mercado+financeiro&hl=pt-BR&gl=BR&ceid=BR:pt-419")
+    if n_inv:
+        for n in n_inv:
+            # O Google News adiciona o nome do site ao final do título, limpamos isso para ficar elegante
+            titulo_limpo = n['titulo'].replace(" - Investing.com Brasil", "")
+            st.markdown(f"• **{titulo_limpo}** [Ler mais]({n['link']})")
+    else: st.info("Buscando notícias...")
 
-                if em_pos:
-                    cot_atual = df['Close'].iloc[-1]
-                    res_pct = ((cot_atual / preco_entrada) - 1) * 100
-                    stop_atual = df['Canal_Venda'].iloc[-1]
-                    ls_abertos.append({
-                        'Ativo': ativo, 'Dias Surfando': (df[col_data].iloc[-1] - d_ent).days,
-                        'PM': f"R$ {preco_entrada:.2f}", 'Stop Móvel (Saída)': f"R$ {stop_atual:.2f}",
-                        'Cotação': f"R$ {cot_atual:.2f}", 'Resultado Atual': f"+{res_pct:.2f}%" if res_pct > 0 else f"{res_pct:.2f}%"
-                    })
-                else:
-                    # Verifica se armou HOJE
-                    hoje = df.iloc[-1]
-                    distancia = ((hoje['Canal_Compra'] / hoje['Close']) - 1) * 100
-                    if distancia > 0 and distancia < 2.0: # Está a menos de 2% de romper
-                        ls_armados.append({
-                            'Ativo': ativo, 'Gatilho de Compra': f"R$ {hoje['Canal_Compra'] + 0.01:.2f}",
-                            'Distância Atual': f"{distancia:.2f}%", 'Status': "Pronto para Romper"
-                        })
-
-                if total_trades > 0:
-                    ls_resumo.append({
-                        'Ativo': ativo, 'Trades': total_trades, 'Acertos': f"{(vitorias/total_trades)*100:.1f}%", 'Lucro Total R$': lucro_total
-                    })
-
-            except Exception as e: pass
-            time.sleep(0.01)
-
-        s_text.empty(); p_bar.empty()
-        
-        st.divider()
-        st.subheader(f"🚀 Quase Rompendo! (Gatilhos a menos de 2% da máxima de {janela_entrada}d)")
-        if ls_armados: st.dataframe(pd.DataFrame(ls_armados).sort_values(by='Distância Atual'), use_container_width=True, hide_index=True)
-        else: st.info("Nenhum ativo próximo do ponto de explosão hoje.")
-
-        st.subheader(f"🌊 Posições Abertas (Surfando a Tendência)")
-        if ls_abertos: st.dataframe(pd.DataFrame(ls_abertos).style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
-        else: st.info("Sua carteira está limpa.")
-
-        st.subheader(f"🏆 Top 20 Histórico Turtle ({tradutor_periodo_nome[periodo_sel]})")
-        if ls_resumo:
-            df_hist = pd.DataFrame(ls_resumo).sort_values(by='Lucro Total R$', ascending=False).head(20)
-            df_hist['Lucro Total R$'] = df_hist['Lucro Total R$'].apply(lambda x: f"R$ {x:,.2f}")
-            st.dataframe(df_hist, use_container_width=True, hide_index=True)
+with tab_mt:
+    n_mt = carregar_feed("https://www.moneytimes.com.br/feed/")
+    if n_mt:
+        for n in n_mt: st.markdown(f"• **{n['titulo']}** [Ler mais]({n['link']})")
+    else: st.info("Buscando notícias...")
 
 # ==========================================
-# ABA 2: RAIO-X INDIVIDUAL
+# 7. RODAPÉ DE SEGURANÇA E RESPONSABILIDADE
 # ==========================================
-with aba_individual:
-    st.subheader("🔬 Laboratório Turtle (Estresse do Sistema)")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    with col1: rx_ativo = st.text_input("Ativo (Ex: PRIO3):", value="PRIO3", key="rx_tur_atv").upper().replace('.SA', '')
-    with col2: rx_sys = st.selectbox("Sistema:", ["Sistema 1 (20/10)", "Sistema 2 (55/20)"], key="rx_tur_sys")
-    with col3: rx_per = st.selectbox("Período de Backtest:", ['1y', '2y', '5y', '10y', 'max'], index=2, format_func=lambda x: tradutor_periodo_nome[x], key="rx_tur_per")
-    with col4: rx_cap = st.number_input("Capital (R$):", value=10000.0, step=1000.0, key="rx_tur_cap")
-
-    btn_rx = st.button("🔍 Iniciar Backtest Turtle", type="primary", use_container_width=True)
-
-    if btn_rx and rx_ativo:
-        janela_ent = 20 if "Sistema 1" in rx_sys else 55
-        janela_sai = 10 if "Sistema 1" in rx_sys else 20
-        
-        with st.spinner(f'Calculando a matemática das Tartarugas em {rx_ativo}...'):
-            try:
-                df_full = tv.get_hist(symbol=rx_ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=5000)
-                if df_full is None or len(df_full) < janela_ent * 2: st.error("Dados insuficientes.")
-                else:
-                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                    df_full['Canal_Compra'] = df_full['High'].rolling(window=janela_ent).max().shift(1)
-                    df_full['Canal_Venda'] = df_full['Low'].rolling(window=janela_sai).min().shift(1)
-                    df_full = df_full.dropna()
-
-                    if rx_per == 'max': data_corte = df_full.index[0]
-                    else: data_corte = df_full.index[-1] - pd.DateOffset(years=int(rx_per.replace('y','')))
-                    df = df_full[df_full.index >= data_corte].copy().reset_index()
-                    col_data = df.columns[0]
-
-                    trades, em_pos, vitorias = [], False, 0
-                    preco_entrada = 0.0
-
-                    for i in range(1, len(df)):
-                        atual = df.iloc[i]
-                        if em_pos:
-                            if atual['Low'] <= atual['Canal_Venda']:
-                                preco_saida = min(atual['Canal_Venda'] - 0.01, atual['Open'])
-                                luc_rs = rx_cap * ((preco_saida / preco_entrada) - 1)
-                                trades.append({
-                                    'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'),
-                                    'Duração (Dias)': (atual[col_data] - d_ent).days, 'Lucro (R$)': luc_rs,
-                                    'Situação': 'Gain ✅' if luc_rs > 0 else 'Loss ❌'
-                                })
-                                if luc_rs > 0: vitorias += 1
-                                em_pos = False
-                        else:
-                            if atual['High'] >= atual['Canal_Compra']:
-                                em_pos = True
-                                preco_entrada = max(atual['Canal_Compra'] + 0.01, atual['Open'])
-                                d_ent = atual[col_data]
-
-                    st.divider()
-                    st.markdown(f"### 📊 Resultado Turtle: {rx_ativo} ({rx_sys})")
-                    
-                    url_tv_turtle = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{rx_ativo}"
-                    st.markdown(f"<a href='{url_tv_turtle}' target='_blank' style='text-decoration: none; font-size: 14px; color: #4da6ff;'>🔗 Abrir no TradingView</a>", unsafe_allow_html=True)
-                    
-                    if trades:
-                        df_t = pd.DataFrame(trades)
-                        c_m1, c_m2, c_m3, c_m4 = st.columns(4)
-                        l_tot = df_t['Lucro (R$)'].sum()
-                        
-                        m_ganho = df_t[df_t['Lucro (R$)'] > 0]['Lucro (R$)'].mean() if vitorias > 0 else 0
-                        m_perda = abs(df_t[df_t['Lucro (R$)'] <= 0]['Lucro (R$)'].mean()) if (len(df_t) - vitorias) > 0 else 1
-                        payoff = m_ganho / m_perda
-                        
-                        c_m1.metric("Lucro Total", f"R$ {l_tot:,.2f}")
-                        c_m2.metric("Operações Fechadas", len(df_t))
-                        c_m3.metric("Taxa de Acerto", f"{(vitorias/len(df_t))*100:.1f}%")
-                        c_m4.metric("Payoff (Risco/Retorno)", f"{payoff:.2f}")
-
-                        if payoff > 2.0 and l_tot > 0: st.success("🎯 **Excelente!** O sistema confirmou o seu poder. Poucos acertos, mas vitórias esmagadoras que cobrem as perdas.")
-                        elif l_tot < 0: st.error("🚨 **Cuidado:** Este ativo passou os últimos anos lateralizado. O sistema Turtle sangra quando não há tendência clara.")
-
-                        st.dataframe(df_t.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
-                    else:
-                        st.warning("Nenhuma operação finalizada.")
-                        
-                    # Integração do Gráfico
-                    st.divider()
-                    st.markdown(f"### 📈 Gráfico Interativo: {rx_ativo}")
-                    renderizar_grafico_tv(f"BMFBOVESPA:{rx_ativo}")
-
-            except Exception as e: st.error(f"Erro ao processar: {e}")
+st.divider()
+st.info(aviso_risco)
