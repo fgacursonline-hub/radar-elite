@@ -6,6 +6,23 @@ import pandas as pd
 import time
 
 # ==========================================
+# INJEÇÃO CSS PARA CORREÇÃO DO TERMÔMETRO
+# ==========================================
+# Força as fontes dos Metrics a ficarem menores para caber nas colunas
+st.markdown("""
+    <style>
+    /* Reduz o tamanho do número principal para caber na coluna */
+    [data-testid="stMetricValue"] {
+        font-size: 1.4rem !important;
+    }
+    /* Reduz ligeiramente o nome do ativo para ficar proporcional */
+    [data-testid="stMetricLabel"] {
+        font-size: 0.9rem !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# ==========================================
 # 1. CONFIGURAÇÃO DA PÁGINA
 # ==========================================
 st.set_page_config(page_title="Caçadores de Elite", layout="wide", page_icon="🎯", initial_sidebar_state="collapsed")
