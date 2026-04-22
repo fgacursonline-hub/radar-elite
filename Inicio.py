@@ -1,215 +1,370 @@
 import streamlit as st
 from tvDatafeed import TvDatafeed, Interval
-import streamlit.components.v1 as components 
-from datetime import datetime, timedelta, timezone
+import pandas as pd
+import numpy as np
+import pandas_ta as ta
+import time
+import warnings
+from datetime import datetime
 
-# Mantendo sua configuração original de página e proteção
-st.set_page_config(page_title="Caçadores de Elite", layout="wide", page_icon="🎯", initial_sidebar_state="collapsed")
+warnings.filterwarnings('ignore')
 
-if 'autenticado' not in st.session_state:
-    st.session_state['autenticado'] = False
-
-# Seus alunos cadastrados originais
-alunos_cadastrados = {
-    "aluno": "elite123",
-    "joao": "senha123",
-    "maria": "bolsadevalores",
-    "admin": "suasenhaforte"
-}
-
-if not st.session_state['autenticado']:
-    # CSS para esconder o menu antes do login
-    st.markdown("<style>[data-testid='stSidebar'] {display: none;} [data-testid='stSidebarNav'] {display: none;}</style>", unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("<br><br><h1 style='text-align: center;'>🎯 Caçadores de Elite</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center;'>Área Restrita do Radar Quantitativo</p>", unsafe_allow_html=True)
-        with st.form("form_login"):
-            usuario = st.text_input("Usuário").lower().strip()
-            senha = st.text_input("Senha", type="password")
-            if st.form_submit_button("Entrar no Sistema", use_container_width=True):
-                if usuario in alunos_cadastrados and alunos_cadastrados[usuario] == senha:
-                    st.session_state['autenticado'] = True
-                    st.rerun()
-                else:
-                    st.error("❌ Usuário ou senha incorretos.")
+# ==========================================
+# 1. SEGURANÇA E CONEXÃO
+# ==========================================
+if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
+    st.error("🚫 Por favor, inicie sessão na página inicial (Home) com o seu Email.")
     st.stop()
 
-# ==========================================
-# TELA APÓS LOGIN (DASHBOARD DE ELITE)
-# ==========================================
+@st.cache_resource
+def get_tv_connection():
+    return TvDatafeed()
 
-# Inicializa o TradingView na sessão global APENAS se estiver logado
-if 'tv' not in st.session_state:
+tv = get_tv_connection()
+
+tradutor_intervalo = {
+    '15m': Interval.in_15_minute, '60m': Interval.in_1_hour,
+    '1d': Interval.in_daily, '1wk': Interval.in_weekly
+}
+
+tradutor_periodo_nome = {
+    '6mo': '6 Meses', '1y': '1 Ano', '2y': '2 Anos', 
+    '5y': '5 Anos', 'max': 'Máximo'
+}
+
+bdrs_elite = [
+    'NVDC34.SA', 'P2LT34.SA', 'ROXO34.SA', 'INBR32.SA', 'M1TA34.SA', 'TSLA34.SA',
+    'LILY34.SA', 'AMZO34.SA', 'AURA33.SA', 'GOGL34.SA', 'MSFT34.SA', 'MUTC34.SA',
+    'MELI34.SA', 'C2OI34.SA', 'ORCL34.SA', 'M2ST34.SA', 'A1MD34.SA', 'NFLX34.SA',
+    'ITLC34.SA', 'AVGO34.SA', 'COCA34.SA', 'JBSS32.SA', 'AAPL34.SA', 'XPBR31.SA',
+    'STOC34.SA'
+]
+
+ibrx_selecao = [
+    'PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA', 'BBAS3.SA', 'B3SA3.SA', 'ABEV3.SA',
+    'WEGE3.SA', 'AXIA3.SA', 'SUZB3.SA', 'RENT3.SA', 'RADL3.SA', 'EQTL3.SA', 'LREN3.SA',
+    'PRIO3.SA', 'HAPV3.SA', 'GGBR4.SA', 'VBBR3.SA', 'SBSP3.SA', 'CMIG4.SA', 'CPLE3.SA',
+    'ENEV3.SA', 'TIMS3.SA', 'TOTS3.SA', 'EGIE3.SA', 'CSAN3.SA', 'ALOS3.SA', 'DIRR3.SA',
+    'VIVT3.SA', 'KLBN11.SA', 'UGPA3.SA', 'PSSA3.SA', 'CYRE3.SA', 'ASAI3.SA', 'RAIL3.SA',
+    'ISAE3.SA', 'CSNA3.SA', 'MGLU3.SA', 'EMBJ3.SA', 'TAEE11.SA', 'BBSE3.SA', 'FLRY3.SA',
+    'MULT3.SA', 'TFCO4.SA', 'LEVE3.SA', 'CPFE3.SA', 'GOAU4.SA', 'MRVE3.SA', 'YDUQ3.SA',
+    'SMTO3.SA', 'SLCE3.SA', 'CVCB3.SA', 'USIM5.SA', 'BRAP4.SA', 'BRAV3.SA', 'EZTC3.SA',
+    'PCAR3.SA', 'AUAU3.SA', 'DXCO3.SA', 'CASH3.SA', 'VAMO3.SA', 'AZZA3.SA', 'AURE3.SA',
+    'BEEF3.SA', 'ECOR3.SA', 'FESA4.SA', 'POMO4.SA', 'CURY3.SA', 'INTB3.SA', 'JHSF3.SA',
+    'LIGT3.SA', 'LOGG3.SA', 'MDIA3.SA', 'MBRF3.SA', 'NEOE3.SA', 'QUAL3.SA', 'RAPT4.SA',
+    'ROMI3.SA', 'SANB11.SA', 'SIMH3.SA', 'TEND3.SA', 'VULC3.SA', 'PLPL3.SA', 'CEAB3.SA',
+    'UNIP6.SA', 'LWSA3.SA', 'BPAC11.SA', 'GMAT3.SA', 'CXSE3.SA', 'ABCB4.SA', 'CSMG3.SA',
+    'SAPR11.SA', 'GRND3.SA', 'BRAP3.SA', 'LAVV3.SA', 'RANI3.SA', 'ITSA3.SA', 'ALUP11.SA',
+    'FIQE3.SA', 'COGN3.SA', 'IRBR3.SA', 'SEER3.SA', 'ANIM3.SA', 'JSLG3.SA', 'POSI3.SA',
+    'MYPK3.SA', 'SOJA3.SA', 'BLAU3.SA', 'PGMN3.SA', 'TUPY3.SA', 'VVEO3.SA', 'MELK3.SA',
+    'SHUL4.SA', 'BRSR6.SA',
+]
+
+def colorir_lucro(row):
     try:
-        st.session_state.tv = TvDatafeed()
-    except Exception:
-        pass
+        val_str = str(row.get('Resultado Atual', row.get('Lucro Total (R$)', '0')))
+        val = float(val_str.replace('R$', '').replace('%', '').replace('+', '').replace(',', '').strip())
+        cor = 'lightgreen' if val > 0 else 'lightcoral' if val < 0 else 'white'
+        return [f'color: {cor}'] * len(row)
+    except: return [''] * len(row)
 
-# Cabeçalho com o seu botão de saída
-c_tit, c_sair = st.columns([8, 1])
-with c_tit:
-    st.title("🎯 Terminal Caçadores de Elite")
-    st.markdown("Bem-vindo ao seu Quartel-General de Operações Institucionais.")
-with c_sair:
-    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-    if st.button("🚪 Sair", use_container_width=True):
-        st.session_state['autenticado'] = False
-        st.rerun()
-
-st.divider()
-
-# --- TERMÔMETRO DO MERCADO ---
-st.subheader("🌐 Termômetro do Mercado (IBOVESPA)")
-
-# Relógio e Status do Mercado (Lógica B3 com Feriados)
-fuso_br = timezone(timedelta(hours=-3))
-agora = datetime.now(fuso_br)
-
-def is_mercado_aberto(data_atual):
-    if data_atual.weekday() >= 5: return False
-    if not (10 <= data_atual.hour < 18): return False
+# ==========================================
+# 2. MOTOR MATEMÁTICO: FIBONACCI DE MICRO-SWINGS
+# ==========================================
+def identificar_fibonacci_estrutural(df, periodo_piv=2):
+    df['MM200'] = ta.sma(df['Close'], length=200)
+    df['Tendencia_Alta'] = df['Close'] > df['MM200']
     
-    feriados_fixos = [
-        (1, 1), (4, 21), (5, 1), (9, 7), 
-        (10, 12), (11, 2), (11, 15), (11, 20), (12, 25)
-    ]
-    if (data_atual.month, data_atual.day) in feriados_fixos: return False
-        
-    feriados_moveis_2026 = [(2, 16), (2, 17), (4, 3), (6, 4)]
-    if data_atual.year == 2026 and (data_atual.month, data_atual.day) in feriados_moveis_2026: return False
-        
-    return True
-
-if is_mercado_aberto(agora): texto_status = "🟢 Mercado Aberto"
-else: texto_status = "🔴 Mercado Fechado"
-
-msg_atualizacao = f"{texto_status}. Última atualização: {agora.strftime('%d/%m às %H:%M')}."
-st.caption(msg_atualizacao)
-
-try:
-    tv = st.session_state.tv
-    df_ibov = tv.get_hist(symbol='IBOV', exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=2)
+    # 1. Encontrar Pivôs (Zigue-Zague) idêntico ao Profit
+    is_top = pd.Series(True, index=df.index)
+    is_bottom = pd.Series(True, index=df.index)
     
-    if df_ibov is not None and len(df_ibov) >= 2:
-        fecho_hoje = df_ibov['close'].iloc[-1]
-        fecho_ontem = df_ibov['close'].iloc[-2]
-        variacao = ((fecho_hoje - fecho_ontem) / fecho_ontem) * 100
+    for i in range(1, periodo_piv + 1):
+        is_top = is_top & (df['High'] > df['High'].shift(i)) & (df['High'] > df['High'].shift(-i))
+        is_bottom = is_bottom & (df['Low'] < df['Low'].shift(i)) & (df['Low'] < df['Low'].shift(-i))
         
-        col_m1, col_m2, col_m3 = st.columns(3)
-        with col_m1:
-            st.metric(label="Pontuação Atual", value=f"{fecho_hoje:,.0f} pts", delta=f"{variacao:.2f}%")
-        with col_m2:
-            estado_mercado = "🐂 Bull Market (Comprador)" if variacao > 0 else "🐻 Bear Market (Vendedor)"
-            st.info(f"**Sentimento:** {estado_mercado}")
-        with col_m3:
-            st.warning("💡 **Dica de Ouro:** Não lute contra a tendência principal do IBOV.")
-    else:
-        st.caption("Aguardando conexão com os dados da B3...")
-except Exception as e:
-    st.caption("Sem conexão com os dados do mercado no momento.")
-
-st.divider()
-
-# --- O SEU ARSENAL ---
-st.subheader("🛠️ O Seu Arsenal de Ferramentas")
-st.markdown("Selecione sua estratégia no menu lateral à esquerda para iniciar as varreduras.")
-
-c1, c2, c3 = st.columns(3)
-
-with c1:
-    st.info("### 📉 Regressão à Média\nVarreduras de **IFR** e **Canais de Keltner** para caçar ativos esticados e exaustos.")
-    st.success("### 📊 Fluxo Institucional\nEncontre defesas de tubarões na **VWAP** com cruzamento da **POC** de Volume.")
-
-with c2:
-    st.warning("### 🔥 Seguidores de Tendência\nMonitore o **Setup 9.1**, **Rompimentos** e **Explosão de Volatilidade**.")
-    st.error("### 📐 Fibo & Smart Money\nOpere a proporção áurea com o **Rastreador Fibonacci** e falhas de **FVG**.")
-
-with c3:
-    st.markdown("""
-    <div style='background-color: #2b2b2b; padding: 15px; border-radius: 10px; border-left: 5px solid #a3a3a3;'>
-        <h3 style='margin-top: 0;'>🕯️ Price Action</h3>
-        Encontre os gatilhos gráficos perfeitos em zonas de valor (Martelos, Haramis e afins).
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# ==========================================
-# 4. INTELIGÊNCIA DE MERCADO E CALENDÁRIOS
-# ==========================================
-st.divider()
-st.subheader("🧭 Inteligência de Mercado & Calendários")
-st.markdown("Acesse rapidamente a agenda macroeconômica, balanços e os movimentos dos grandes tubarões.")
-
-c_link1, c_link2, c_link3, c_link4 = st.columns(4)
-
-with c_link1:
-    st.link_button("📅 Calendário Econômico", "https://br.investing.com/economic-calendar", use_container_width=True)
-    st.caption("Agenda de indicadores e eventos globais.")
-
-with c_link2:
-    st.link_button("📊 Temporada de Balanços", "https://br.investing.com/earnings-calendar", use_container_width=True)
-    st.caption("Fique atento à divulgação de resultados.")
-
-with c_link3:
-    st.link_button("🔍 Filtro de Ações (Screener)", "https://br.investing.com/stock-screener/momentum-masters", use_container_width=True)
-    st.caption("Rastreador de Momentum Masters.")
-
-with c_link4:
-    st.link_button("🐋 Investing Pro Ideas", "https://br.investing.com/pro/ideas", use_container_width=True)
-    st.link_button("🦈 HedgeFollow (Fundos)", "https://hedgefollow.com/", use_container_width=True)
-
+    # 2. Impedir Viés do Futuro: Deslocamos a leitura para o dia em que o pivô é fechado/confirmado
+    df['Top_Confirmado_Hoje'] = is_top.shift(periodo_piv)
+    df['Bot_Confirmado_Hoje'] = is_bottom.shift(periodo_piv)
+    
+    # 3. Guarda o valor do Topo e Fundo confirmados
+    df['Top_Val'] = np.where(df['Top_Confirmado_Hoje'], df['High'].shift(periodo_piv), np.nan)
+    df['Bot_Val'] = np.where(df['Bot_Confirmado_Hoje'], df['Low'].shift(periodo_piv), np.nan)
+    
+    # 4. A Memória do Mercado (A âncora do Swing)
+    df['Ultimo_Fundo_Conhecido'] = df['Bot_Val'].ffill()
+    
+    # 5. Congelar a Perna de Impulsão: No dia que o Topo sai, amarramos ele ao último Fundo conhecido
+    df['Active_Top'] = np.where(df['Top_Confirmado_Hoje'], df['Top_Val'], np.nan)
+    df['Active_Bot'] = np.where(df['Top_Confirmado_Hoje'], df['Ultimo_Fundo_Conhecido'], np.nan)
+    
+    # Preenche para manter a perna ativa até ao próximo topo
+    df['Active_Top'] = df['Active_Top'].ffill()
+    df['Active_Bot'] = df['Active_Bot'].ffill()
+    
+    # --- CÁLCULO DAS RETRAÇÕES (Agora acompanha as suas linhas azuis) ---
+    df['Range_Fibo'] = df['Active_Top'] - df['Active_Bot']
+    
+    # Filtro relaxado (3%) para apanhar as micro-pernas que você desenhou
+    df['Perna_Valida'] = (df['Active_Top'] > df['Active_Bot']) & ((df['Active_Top'] / df['Active_Bot']) > 1.03) 
+    
+    df['Fibo_382'] = df['Active_Top'] - (df['Range_Fibo'] * 0.382)
+    df['Fibo_500'] = df['Active_Top'] - (df['Range_Fibo'] * 0.500)
+    df['Fibo_618'] = df['Active_Top'] - (df['Range_Fibo'] * 0.618)
+    df['Fibo_786'] = df['Active_Top'] - (df['Range_Fibo'] * 0.786)
+    
+    # --- ZONA DE GATILHO ---
+    df['Tocou_Zona'] = (df['Low'] <= df['Fibo_382']) & (df['Low'] >= df['Fibo_786'])
+    
+    # Condição de Reversão (Pavio inferior ou simplesmente um Candle Verde saindo da zona)
+    df['Candle_Verde'] = df['Close'] > df['Open']
+    df['Corpo'] = abs(df['Open'] - df['Close'])
+    df['Pavio_Inf'] = df[['Open', 'Close']].min(axis=1) - df['Low']
+    df['Tem_Pavio'] = df['Pavio_Inf'] > df['Corpo']
+    
+    df['Defesa_Institucional'] = df['Close'] >= df['Fibo_618']
+    df['Abaixo_do_Topo'] = df['Close'] < df['Active_Top'] # Impede entradas se o preço já estiver rompendo o topo
+    
+    df['Is_Sinal_Fibo'] = df['Tendencia_Alta'] & df['Perna_Valida'] & df['Abaixo_do_Topo'] & df['Tocou_Zona'] & df['Defesa_Institucional'] & (df['Candle_Verde'] | df['Tem_Pavio'])
+    
+    return df
 
 # ==========================================
-# 5. RADAR DE NOTÍCIAS MULTI-FONTE (100% BR)
+# 3. INTERFACE E ABAS
 # ==========================================
-st.divider()
-st.subheader("📰 Radar de Notícias Caçadores de Elite")
-st.markdown("Fique por dentro de tudo o que acontece nas principais fontes de economia do Brasil.")
+col_titulo, col_botao = st.columns([4, 1])
+with col_titulo:
+    st.title("📐 Rastreador de Fibonacci (Micro-Swings)")
+with col_botao:
+    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+    st.link_button("📖 Ler Manual", "https://seusite.com/manual_fibo", use_container_width=True)
 
-import xml.etree.ElementTree as ET
-import requests
+aba_radar, aba_individual = st.tabs(["📡 Radar Completo (Histórico + Hoje)", "🔬 Raio-X Individual"])
 
-def carregar_feed(url):
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers, timeout=10)
-        root = ET.fromstring(response.content)
-        itens = []
-        for item in root.findall('./channel/item')[:8]: 
-            titulo = item.find('title').text
-            link = item.find('link').text
-            itens.append({"titulo": titulo, "link": link})
-        return itens
-    except:
-        return None
+# ==========================================
+# ABA 1: RADAR COMPLETO
+# ==========================================
+with aba_radar:
+    with st.expander("⚙️ Configurações do Fibo e Backtest", expanded=True):
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            lista_sel = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="rad_f_lst")
+            rad_capital = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="rad_f_cap")
+        with c2:
+            tempo_grafico = st.selectbox("Tempo Gráfico:", ['1d', '60m'], format_func=lambda x: {'60m': '60 min', '1d': 'Diário'}[x], key="rad_f_tmp")
+            rad_periodo = st.selectbox("Período de Backtest:", ['6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=1, key="rad_f_per")
+        with c3:
+            tipo_alvo = st.selectbox("Tipo de Alvo:", ["Retorno ao Topo (100%)", "Risco Projetado (Ex: 2x)"], key="rad_f_tipo_alvo")
+            alvo_val = st.number_input("Múltiplo de Risco (Se aplicável):", value=2.0, step=0.5, key="rad_f_alvo")
+        with c4:
+            rad_piv_period = st.number_input("Período Topos/Fundos (Igual Profit):", min_value=1, max_value=10, value=2, step=1, help="Configure com o mesmo período do seu indicador nativo do ProfitChart.", key="rad_piv_period")
+            usar_stop_rad = st.checkbox("Usar Stop Loss", value=True, key="rad_f_chk")
+            tipo_stop = st.selectbox("Tipo de Stop:", ["Técnico (Abaixo do Pavio)", "Abaixo dos 78.6% (Fibo)"], disabled=not usar_stop_rad, key="rad_f_tipo_stop")
+            
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        btn_iniciar_radar = st.button("🚀 Escanear Retrações Institucionais", type="primary", use_container_width=True)
 
-tab_info, tab_inv, tab_g1 = st.tabs(["💰 InfoMoney", "📈 Investing.com", "🌍 G1 Economia"])
+    if btn_iniciar_radar:
+        ativos_analise = bdrs_elite if lista_sel == "BDRs Elite" else ibrx_selecao if lista_sel == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        intervalo_tv = tradutor_intervalo.get(tempo_grafico, Interval.in_daily)
+        
+        ls_armados, ls_abertos, ls_historico = [], [], []
+        p_bar = st.progress(0); s_text = st.empty()
 
-with tab_info:
-    noticias_im = carregar_feed("https://www.infomoney.com.br/feed/")
-    if noticias_im:
-        for n in noticias_im:
-            st.markdown(f"• **{n['titulo']}** \n[Ler mais]({n['link']})")
-            st.divider()
-    else:
-        st.error("Erro ao carregar InfoMoney.")
+        for idx, ativo_raw in enumerate(ativos_analise):
+            ativo = ativo_raw.replace('.SA', '')
+            s_text.text(f"🔍 Medindo Swings em {ativo} ({idx+1}/{len(ativos_analise)})")
+            p_bar.progress((idx + 1) / len(ativos_analise))
 
-with tab_inv:
-    noticias_inv = carregar_feed("https://br.investing.com/rss/news_25.rss")
-    if noticias_inv:
-        for n in noticias_inv:
-            st.markdown(f"• **{n['titulo']}** \n[Ler mais]({n['link']})")
-            st.divider()
-    else:
-        st.warning("Investing.com temporariamente indisponível.")
+            try:
+                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                if df_full is None or len(df_full) < 250: continue
+                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                
+                df_full = identificar_fibonacci_estrutural(df_full, periodo_piv=rad_piv_period).dropna()
 
-with tab_g1:
-    noticias_g1 = carregar_feed("https://g1.globo.com/rss/g1/economia/")
-    if noticias_g1:
-        for n in noticias_g1:
-            st.markdown(f"• **{n['titulo']}** \n[Ler mais]({n['link']})")
-            st.divider()
-    else:
-        st.error("Erro ao carregar G1 Economia.")
+                if rad_periodo == '6mo': data_corte = df_full.index[-1] - pd.DateOffset(months=6)
+                elif rad_periodo == 'max': data_corte = df_full.index[0]
+                else: data_corte = df_full.index[-1] - pd.DateOffset(years=int(rad_periodo[0]))
+                
+                df_back = df_full[df_full.index >= data_corte].copy().reset_index()
+                col_data = df_back.columns[0]
+
+                em_pos = False
+                preco_entrada, stop_loss, alvo, d_ent = 0.0, 0.0, 0.0, None
+                topo_trade, fundo_trade = 0.0, 0.0
+                lucro_total_ativo = 0.0
+                vitorias, total_trades = 0, 0
+
+                for i in range(1, len(df_back)):
+                    atual, ontem = df_back.iloc[i], df_back.iloc[i-1]
+                    
+                    if em_pos:
+                        if usar_stop_rad and atual['Low'] <= stop_loss:
+                            lucro_total_ativo += rad_capital * ((stop_loss/preco_entrada)-1)
+                            total_trades += 1; em_pos = False
+                        elif atual['High'] >= alvo:
+                            lucro_total_ativo += rad_capital * ((alvo/preco_entrada)-1)
+                            total_trades += 1; vitorias += 1; em_pos = False
+                        continue
+
+                    if ontem['Is_Sinal_Fibo'] and atual['High'] > ontem['High'] and not em_pos:
+                        em_pos = True
+                        preco_entrada = max(ontem['High'] + 0.01, atual['Open'])
+                        d_ent = atual[col_data]
+                        topo_trade = ontem['Active_Top']
+                        fundo_trade = ontem['Active_Bot']
+                        
+                        stop_loss = ontem['Low'] - 0.01 if "Pavio" in tipo_stop else ontem['Fibo_786'] - 0.01
+                        
+                        if "Topo" in tipo_alvo: alvo = ontem['Active_Top']
+                        else: alvo = preco_entrada + ((preco_entrada - stop_loss) * alvo_val)
+
+                if total_trades > 0:
+                    ls_historico.append({
+                        'Ativo': ativo, 'Operações Fechadas': total_trades,
+                        'Taxa de Acerto': f"{(vitorias/total_trades)*100:.1f}%",
+                        'Lucro Total (R$)': lucro_total_ativo
+                    })
+
+                if em_pos:
+                    cot_atual = df_back['Close'].iloc[-1]
+                    res_pct = (cot_atual / preco_entrada) - 1
+                    ls_abertos.append({
+                        'Ativo': ativo, 'Entrada': d_ent.strftime('%d/%m/%Y'), 'Dias': (df_back[col_data].iloc[-1] - d_ent).days,
+                        'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo (Fibo)': f"R$ {topo_trade:.2f}",
+                        'PM': f"R$ {preco_entrada:.2f}", 'Cotação Atual': f"R$ {cot_atual:.2f}", 
+                        'Alvo Programado': f"R$ {alvo:.2f}", 'Resultado Atual': f"+{res_pct*100:.2f}%" if res_pct > 0 else f"{res_pct*100:.2f}%"
+                    })
+                else:
+                    atual = df_back.iloc[-1]
+                    if atual['Is_Sinal_Fibo']:
+                        gatilho = atual['High'] + 0.01
+                        alvo_proj = atual['Active_Top'] if "Topo" in tipo_alvo else gatilho + ((gatilho - (atual['Low'] - 0.01)) * alvo_val)
+                        ls_armados.append({
+                            'Ativo': ativo, 'Sinal': 'Defesa na Golden Zone 🎯', 'Gatilho (Start)': f"R$ {gatilho:.2f}", 
+                            'Alvo': f"R$ {alvo_proj:.2f}", 'Status': "Aguardando Rompimento"
+                        })
+
+            except Exception as e: pass
+            time.sleep(0.01)
+
+        s_text.empty(); p_bar.empty()
+        st.divider()
+
+        st.subheader(f"🏆 TOP 20 Histórico: Retrações ({tradutor_periodo_nome[rad_periodo]})")
+        if ls_historico:
+            df_hist = pd.DataFrame(ls_historico).sort_values(by='Lucro Total (R$)', ascending=False).head(20)
+            df_hist['Lucro Total (R$)'] = df_hist['Lucro Total (R$)'].apply(lambda x: f"R$ {x:,.2f}")
+            st.dataframe(df_hist.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
+        else: st.info("Sem dados históricos validados neste período.")
+
+        st.subheader("🚀 Oportunidades Hoje na Golden Zone")
+        if ls_armados: st.dataframe(pd.DataFrame(ls_armados), use_container_width=True, hide_index=True)
+        else: st.info("Nenhum ativo defendeu a zona de Fibonacci hoje.")
+
+        st.subheader("⏳ Operações Fibo em Andamento")
+        if ls_abertos: 
+            df_abertos = pd.DataFrame(ls_abertos).sort_values(by='Dias', ascending=False)
+            st.dataframe(df_abertos.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
+        else: st.info("Sem operações abertas para este setup no momento.")
+
+# ==========================================
+# ABA 2: RAIO-X INDIVIDUAL (BACKTEST DETALHADO)
+# ==========================================
+with aba_individual:
+    st.subheader("🔬 Raio-X Individual: Laboratório de Fibonacci Estrutural")
+    
+    cr1, cr2, cr3, cr4 = st.columns(4)
+    with cr1:
+        rx_ativo = st.text_input("Ativo Base:", value="PRIO3", key="rx_f_ativo").upper().replace('.SA', '')
+        rx_capital = st.number_input("Capital Operado (R$):", value=10000.0, step=1000.0, key="rx_f_cap")
+    with cr2:
+        rx_periodo = st.selectbox("Período:", options=['6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=1, key="rx_f_per")
+        rx_tempo = st.selectbox("Tempo Gráfico:", ['60m', '1d', '1wk'], index=1, format_func=lambda x: {'60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="rx_f_tmp")
+    with cr3:
+        rx_tipo_alvo = st.selectbox("Tipo de Alvo:", ["Retorno ao Topo (100%)", "Risco Projetado (Ex: 2x)"], key="rx_f_tipo_alvo")
+        rx_alvo_val = st.number_input("Múltiplo de Risco:", value=2.0, step=0.5, key="rx_f_alvo")
+    with cr4:
+        rx_piv_period = st.number_input("Período Topos/Fundos (Igual Profit):", min_value=1, max_value=10, value=2, step=1, key="rx_piv_period")
+        rx_usar_stop = st.checkbox("Usar Stop Loss", value=True, key="rx_f_chk")
+        rx_tipo_stop = st.selectbox("Tipo de Stop:", ["Técnico (Abaixo do Pavio)", "Abaixo dos 78.6% (Fibo)"], disabled=not rx_usar_stop, key="rx_f_tipo_stop")
+
+    btn_raiox = st.button("🔍 Rodar Backtest Fibo", type="primary", use_container_width=True, key="rx_f_btn")
+
+    if btn_raiox:
+        if not rx_ativo: st.error("Digite o código de um ativo.")
+        else:
+            with st.spinner(f'A mapear Micro-Swings em {rx_ativo}...'):
+                try:
+                    df_full = tv.get_hist(symbol=rx_ativo, exchange='BMFBOVESPA', interval=tradutor_intervalo.get(rx_tempo, Interval.in_daily), n_bars=5000)
+                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                    
+                    df_full = identificar_fibonacci_estrutural(df_full, periodo_piv=rx_piv_period).dropna()
+
+                    if rx_periodo == '6mo': data_corte = df_full.index[-1] - pd.DateOffset(months=6)
+                    elif rx_periodo == 'max': data_corte = df_full.index[0]
+                    else: data_corte = df_full.index[-1] - pd.DateOffset(years=int(rx_periodo[0]))
+                    
+                    df_back = df_full[df_full.index >= data_corte].copy().reset_index()
+                    col_data = df_back.columns[0]
+
+                    trades, em_pos = [], False
+                    preco_entrada, stop_loss, alvo, d_ent = 0.0, 0.0, 0.0, None
+                    topo_trade, fundo_trade = 0.0, 0.0
+                    vitorias, derrotas, extremo_trade = 0, 0, 0.0 
+
+                    for i in range(1, len(df_back)):
+                        atual, ontem = df_back.iloc[i], df_back.iloc[i-1]
+
+                        if em_pos:
+                            extremo_trade = min(extremo_trade, atual['Low'])
+                            queda_max = (extremo_trade / preco_entrada) - 1
+                            if rx_usar_stop and atual['Low'] <= stop_loss:
+                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo (Fibo)': f"R$ {topo_trade:.2f}", 'Duração': (atual[col_data] - d_ent).days, 'Lucro (R$)': rx_capital * ((stop_loss/preco_entrada)-1), 'Queda Máx': queda_max, 'Situação': 'Stop ❌'})
+                                derrotas += 1; em_pos = False
+                            elif atual['High'] >= alvo:
+                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo (Fibo)': f"R$ {topo_trade:.2f}", 'Duração': (atual[col_data] - d_ent).days, 'Lucro (R$)': rx_capital * ((alvo/preco_entrada)-1), 'Queda Máx': queda_max, 'Situação': 'Gain ✅'})
+                                vitorias += 1; em_pos = False
+                            continue
+
+                        if ontem['Is_Sinal_Fibo'] and atual['High'] > ontem['High'] and not em_pos:
+                            em_pos, preco_entrada, d_ent = True, max(ontem['High'] + 0.01, atual['Open']), atual[col_data]
+                            extremo_trade = atual['Low']
+                            topo_trade = ontem['Active_Top']
+                            fundo_trade = ontem['Active_Bot']
+                            
+                            stop_loss = ontem['Low'] - 0.01 if "Pavio" in rx_tipo_stop else ontem['Fibo_786'] - 0.01
+                            if "Topo" in rx_tipo_alvo: alvo = ontem['Active_Top']
+                            else: alvo = preco_entrada + ((preco_entrada - stop_loss) * rx_alvo_val)
+                                    
+                    st.divider()
+                    
+                    if em_pos:
+                        cot_atual = df_back['Close'].iloc[-1]
+                        res_pct = (cot_atual / preco_entrada) - 1
+                        queda_max_aberta = (extremo_trade / preco_entrada) - 1
+                        st.warning(f"""
+                        **⏳ {rx_ativo}: Em Operação**
+                        * **Entrada:** {d_ent.strftime('%d/%m/%Y')} | **Dias na Operação:** {(df_back[col_data].iloc[-1] - d_ent).days}
+                        * **Fundo (Fibo):** R$ {fundo_trade:.2f} | **Topo (Fibo):** R$ {topo_trade:.2f}
+                        * **PM:** R$ {preco_entrada:.2f} | **Cotação Atual:** R$ {cot_atual:.2f} | **Alvo Programado:** R$ {alvo:.2f}
+                        * **Queda Máx:** {queda_max_aberta*100:.2f}% | **Resultado Atual:** {res_pct*100:.2f}%
+                        """)
+                    else:
+                        st.success(f"✅ **{rx_ativo}: Aguardando Novo Sinal de Retração Estrutural**")
+                    
+                    st.markdown(f"### 📊 Resultado Consolidado: {rx_ativo}")
+                    if len(trades) > 0:
+                        df_t = pd.DataFrame(trades)
+                        m1, m2, m3, m4 = st.columns(4)
+                        m1.metric("Lucro Total", f"R$ {df_t['Lucro (R$)'].sum():,.2f}")
+                        m2.metric("Taxa de Acerto", f"{(vitorias / len(df_t)) * 100:.1f}%")
+                        m3.metric("Operações Fechadas", len(df_t))
+                        m4.metric("Pior Queda", f"{df_t['Queda Máx'].min()*100:.2f}%")
+
+                        df_t['Queda Máx'] = df_t['Queda Máx'].apply(lambda x: f"{x*100:.2f}%")
+                        st.dataframe(df_t, use_container_width=True, hide_index=True)
+                    else:
+                        st.info(f"Nenhum pullback estrutural defendido no período.")
+                except Exception as e: st.error(f"Erro: {e}")
