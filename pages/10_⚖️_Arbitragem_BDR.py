@@ -20,7 +20,7 @@ def get_tv_connection():
 tv = get_tv_connection()
 
 # ==========================================
-# 2. DICIONÁRIO DE PARIDADES (MATEMÁTICA CORRIGIDA)
+# 2. DICIONÁRIO DE PARIDADES (CALIBRADO B3)
 # ==========================================
 bdr_setup = {
     'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ', 'paridade': 48},
@@ -34,7 +34,7 @@ bdr_setup = {
     'AURA33': {'us': 'ORA', 'exchange': 'TSX', 'paridade': 1},       
     'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ', 'paridade': 12}, 
     'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ', 'paridade': 24},  
-    'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 6},     # Corrigido o dedo gordo (era 16)
+    'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 6},    
     'MELI34': {'us': 'MELI', 'exchange': 'NASDAQ', 'paridade': 120},
     'C2OI34': {'us': 'COIN', 'exchange': 'NASDAQ', 'paridade': 25},
     'ORCL34': {'us': 'ORCL', 'exchange': 'NYSE', 'paridade': 6},
@@ -211,7 +211,7 @@ with aba_radar:
 # ==========================================
 with aba_historico:
     st.subheader("📉 Arbitragem Histórica (Z-Score & Mean Reversion)")
-    st.markdown("O robô calcula o *Ratio* diário dos últimos 250 dias e extrai o **Z-Score**. Se o Z-Score passar de +2.0 ou cair de -2.0, o elástico estatístico estourou.")
+    st.markdown("O robô calcula o *Ratio* diário dos últimos 250 dias e extrai o **Z-Score** para revelar as anomalias estruturais.")
 
     c_h1, c_h2, c_h3 = st.columns(3)
     with c_h1:
@@ -240,17 +240,14 @@ with aba_historico:
                 df_ny = df_ny[['close']].rename(columns={'close': 'US_Close'})
                 df_usd = df_usd[['close']].rename(columns={'close': 'BRL_Close'})
 
-                # A MÁGICA DA SINCRONIZAÇÃO: Cortamos as horas e deixamos só o Dia, removendo fusos conflitantes.
                 df_b3.index = pd.to_datetime(df_b3.index).tz_localize(None).normalize()
                 df_ny.index = pd.to_datetime(df_ny.index).tz_localize(None).normalize()
                 df_usd.index = pd.to_datetime(df_usd.index).tz_localize(None).normalize()
 
-                # Limpamos dias repetidos caso existam
                 df_b3 = df_b3[~df_b3.index.duplicated(keep='last')]
                 df_ny = df_ny[~df_ny.index.duplicated(keep='last')]
                 df_usd = df_usd[~df_usd.index.duplicated(keep='last')]
 
-                # Juntamos as tabelas cruzando exatamente os dias em que houve pregão simultâneo no BR e EUA
                 df_master = df_b3.join(df_ny, how='inner').join(df_usd, how='inner')
                 
                 if df_master.empty:
@@ -284,7 +281,18 @@ with aba_historico:
                     m3.metric("Z-Score Atual", f"{z_atual:.2f}", delta="Dentro da Normalidade", delta_color="off")
                 
                 m4.metric("Ratio Base", f"{ratio_atual:.4f}")
+                
+                # --- INTERPRETAÇÃO DINÂMICA DO RATIO ---
+                if ratio_atual < 1.0:
+                    distancia_pct = (1 - ratio_atual) * 100
+                    st.success(f"💡 **Tradução do Ratio:** O BDR está **{distancia_pct:.2f}% mais barato** que o justo.")
+                elif ratio_atual > 1.0:
+                    distancia_pct = (ratio_atual - 1) * 100
+                    st.error(f"💡 **Tradução do Ratio:** O BDR está **{distancia_pct:.2f}% mais caro** que o justo.")
+                else:
+                    st.info("💡 **Tradução do Ratio:** O BDR está milimetricamente no preço justo.")
 
+                st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown("#### 🌊 Oscilador Z-Score (Desvios da Média)")
                 
                 df_chart = df_master[['Z-Score']].copy()
@@ -293,6 +301,19 @@ with aba_historico:
                 df_chart['Média (Zero)'] = 0.0
                 
                 st.line_chart(df_chart, color=["#4da6ff", "#ff4d4d", "#00FF00", "#ffffff"])
+
+                # --- TEXTO EXPLICATIVO EDUCACIONAL ---
+                st.markdown(f"""
+                ---
+                ### 📖 Como interpretar este gráfico?
+                
+                * **O Z-Score não mede o preço em Reais ou em Dólares;** ele mede o nível de anomalia. 
+                * **Z-Score de 0 significa:** Está tudo exatamente na média. Cerca de 95% de todos os movimentos de mercado normais acontecem entre os Z-Scores de -2.0 e +2.0. 
+                
+                🔴 **Se o gráfico azul bater na linha vermelha (+{zscore_alvo}):** O BDR ficou caro no Brasil em relação aos EUA. O "elástico" (a diferença de preços) esticou ao limite máximo. A força vendedora vai atuar para corrigir esse erro matemático. **Venda.**
+                
+                🟢 **Se o gráfico bater na linha verde (-{zscore_alvo}):** O pânico ou a falta de liquidez deixou o BDR barato. O elástico esticou para baixo. **Compra.**
+                """)
 
             except Exception as e:
                 st.error(f"Erro inesperado no processamento: {e}")
