@@ -258,7 +258,7 @@ if not df_ranking.empty:
 else:
     st.info("Aguardando cotações para gerar o ranking.")
 
-st.divider()
+
 
 # ==========================================
 # 🦉 RADAR DO AFTER-MARKET (INÍCIO)
