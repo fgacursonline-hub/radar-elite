@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from tvDatafeed import TvDatafeed, Interval
 import pandas as pd
 import pandas_ta as ta
@@ -64,6 +65,33 @@ def colorir_lucro(row):
     if 'Resultado Atual' in row and isinstance(row['Resultado Atual'], str) and row['Resultado Atual'].startswith('+'):
         return ['color: #00FF00; font-weight: bold'] * len(row)
     return [''] * len(row)
+
+# Função para renderizar o Widget Oficial do TradingView
+def renderizar_grafico_tv(simbolo_tv, altura=600):
+    html_tv = f"""
+    <div class="tradingview-widget-container">
+      <div id="tradingview_elite"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+      <script type="text/javascript">
+      new TradingView.widget(
+      {{
+      "width": "100%",
+      "height": {altura},
+      "symbol": "{simbolo_tv}",
+      "interval": "D",
+      "timezone": "America/Sao_Paulo",
+      "theme": "dark",
+      "style": "1",
+      "locale": "br",
+      "enable_publishing": false,
+      "allow_symbol_change": true,
+      "container_id": "tradingview_elite"
+    }}
+      );
+      </script>
+    </div>
+    """
+    components.html(html_tv, height=altura)
 
 # 3. INTERFACE DE ABAS
 col_titulo, col_botao = st.columns([4, 1])
@@ -692,9 +720,8 @@ with aba_individual:
                         st.divider()
                         st.markdown(f"### 📊 Resultado: {ativo} ({setup_escolhido_i.split()[1]})")
                         
-                        # --- LINK PARA O TRADINGVIEW INSERIDO AQUI ---
                         url_tv_individual = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{ativo}"
-                        st.markdown(f"<a href='{url_tv_individual}' target='_blank' style='text-decoration: none; font-size: 14px; color: #4da6ff;'>📊 Visualizar Gráfico de {ativo} no TradingView</a>", unsafe_allow_html=True)
+                        st.markdown(f"<a href='{url_tv_individual}' target='_blank' style='text-decoration: none; font-size: 14px; color: #4da6ff;'>🔗 Abrir no TradingView</a>", unsafe_allow_html=True)
                         
                         if len(trades) > 0:
                             df_t = pd.DataFrame(trades)
@@ -709,6 +736,12 @@ with aba_individual:
                             st.dataframe(df_t, use_container_width=True, hide_index=True)
                         else:
                             st.warning("Nenhuma operação concluída usando essa configuração neste período.")
+
+                        # --- AQUI ESTÁ A INJEÇÃO DO GRÁFICO INTERATIVO NA TELA ---
+                        st.divider()
+                        st.markdown(f"### 📈 Gráfico Interativo: {ativo}")
+                        renderizar_grafico_tv(f"BMFBOVESPA:{ativo}")
+
                 except Exception as e: st.error(f"Erro: {e}")
 
 # ==========================================
@@ -939,9 +972,8 @@ with aba_futuros:
                         st.markdown(f"### 📊 Resultado: {fut_selecionado} ({setup_escolhido_f.split()[1]} - {direcao_fut})")
                         st.caption(f"📅 Período: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
                         
-                        # --- LINK PARA O TRADINGVIEW INSERIDO AQUI (MERCADO FUTURO) ---
                         url_fut_individual = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{fut_ativo.replace('!', '%21')}"
-                        st.markdown(f"<a href='{url_fut_individual}' target='_blank' style='text-decoration: none; font-size: 14px; color: #4da6ff;'>📊 Visualizar Gráfico no TradingView</a>", unsafe_allow_html=True)
+                        st.markdown(f"<a href='{url_fut_individual}' target='_blank' style='text-decoration: none; font-size: 14px; color: #4da6ff;'>🔗 Abrir no TradingView</a>", unsafe_allow_html=True)
                         
                         l_total = df_t['Lucro (R$)'].sum()
                         vits_df = df_t[df_t['Lucro (R$)'] > 0]
@@ -971,6 +1003,12 @@ with aba_futuros:
                             st.error(f"🚨 **Expectativa Negativa:** Saldo de R$ {l_total:,.2f}. O 'Efeito Serrote' ou falsos rompimentos machucaram o robô. Se o Payoff não cobrir a taxa de erro natural, a conta não fecha.")
 
                         st.dataframe(df_t, use_container_width=True, hide_index=True)
+                        
+                        # --- AQUI ESTÁ A INJEÇÃO DO GRÁFICO INTERATIVO PARA FUTUROS ---
+                        st.divider()
+                        st.markdown(f"### 📈 Gráfico Interativo: {fut_selecionado}")
+                        renderizar_grafico_tv(f"BMFBOVESPA:{fut_ativo.replace('!', '')}")
+                        
                     else:
                         st.warning("Nenhuma operação concluída usando essa configuração neste período.")
             except Exception as e: st.error(f"Erro: {e}")
