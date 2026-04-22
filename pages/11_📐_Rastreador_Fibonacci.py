@@ -69,39 +69,35 @@ def colorir_lucro(row):
     except: return [''] * len(row)
 
 # ==========================================
-# 2. MOTOR MATEMÁTICO: FIBONACCI ESTRUTURAL
+# 2. MOTOR MATEMÁTICO: INDICADOR DE TOPOS E FUNDOS (IDÊNTICO AO PROFIT)
 # ==========================================
-def identificar_fibonacci(df, lookback=120):
+def identificar_fibonacci_estrutural(df, periodo_piv=2):
     df['MM200'] = ta.sma(df['Close'], length=200)
     df['Tendencia_Alta'] = df['Close'] > df['MM200']
     
-    # --- FUNDO ESTRUTURAL (Âncora Base) ---
-    # Mantemos o fundo absoluto da janela, pois inicia o movimento
-    df['Fundo_Ref'] = df['Low'].rolling(window=lookback).min().shift(1)
+    # 1. Lógica do Detector de Topos e Fundos
+    is_top = pd.Series(True, index=df.index)
+    is_bottom = pd.Series(True, index=df.index)
     
-    # --- TOPO ESTRUTURAL (Lógica de Price Action com Confirmação) ---
-    # 1. Encontra a máxima no momento exato
-    df['Rolling_Max'] = df['High'].rolling(window=lookback).max()
-    df['Is_Novo_Topo'] = df['High'] == df['Rolling_Max']
+    # Verifica N dias para trás e N dias para a frente
+    for i in range(1, periodo_piv + 1):
+        is_top = is_top & (df['High'] > df['High'].shift(i)) & (df['High'] > df['High'].shift(-i))
+        is_bottom = is_bottom & (df['Low'] < df['Low'].shift(i)) & (df['Low'] < df['Low'].shift(-i))
+        
+    df['Is_Pivot_Top'] = is_top
+    df['Is_Pivot_Bottom'] = is_bottom
     
-    # 2. Guarda a mínima exata do candle que fez essa máxima
-    df['Min_do_Topo'] = np.where(df['Is_Novo_Topo'], df['Low'], np.nan)
-    df['Min_do_Topo'] = df['Min_do_Topo'].ffill()
+    # 2. Cravar o valor e "empurrá-lo" para a frente (sem lookahead bias no backtest)
+    # No dia T, o robô só sabe que T-periodo_piv foi topo/fundo!
+    df['Top_Val'] = np.where(df['Is_Pivot_Top'], df['High'], np.nan)
+    df['Topo_Ref'] = df['Top_Val'].shift(periodo_piv).ffill() # O robô só fica sabendo do topo X dias depois
     
-    # 3. Guarda o valor da Máxima em si
-    df['Valor_do_Topo'] = np.where(df['Is_Novo_Topo'], df['High'], np.nan)
-    df['Valor_do_Topo'] = df['Valor_do_Topo'].ffill()
+    df['Bot_Val'] = np.where(df['Is_Pivot_Bottom'], df['Low'], np.nan)
+    df['Fundo_Ref'] = df['Bot_Val'].shift(periodo_piv).ffill()
     
-    # 4. A CONFIRMAÇÃO: Um topo só é válido se a sua mínima foi rompida posteriormente
-    df['Rompeu_Minima'] = (df['Low'] < df['Min_do_Topo']) & (~df['Is_Novo_Topo'])
-    
-    # 5. Valida e crava o Topo Confirmado (shift 1 para operar no dia seguinte)
-    df['Topo_Confirmado'] = np.where(df['Rompeu_Minima'], df['Valor_do_Topo'], np.nan)
-    df['Topo_Ref'] = df['Topo_Confirmado'].ffill().shift(1)
-    
-    # --- CÁLCULO DAS RETRAÇÕES ---
+    # --- CÁLCULO DAS RETRAÇÕES (Baseado apenas em Topos e Fundos Confirmados pelo Indicador) ---
     df['Range_Fibo'] = df['Topo_Ref'] - df['Fundo_Ref']
-    df['Perna_Valida'] = (df['Topo_Ref'] / df['Fundo_Ref']) > 1.10
+    df['Perna_Valida'] = (df['Topo_Ref'] > df['Fundo_Ref']) & ((df['Topo_Ref'] / df['Fundo_Ref']) > 1.10)
     
     df['Fibo_382'] = df['Topo_Ref'] - (df['Range_Fibo'] * 0.382)
     df['Fibo_500'] = df['Topo_Ref'] - (df['Range_Fibo'] * 0.500)
@@ -125,7 +121,7 @@ def identificar_fibonacci(df, lookback=120):
 # ==========================================
 col_titulo, col_botao = st.columns([4, 1])
 with col_titulo:
-    st.title("📐 Rastreador de Fibonacci (Retração Confirmada)")
+    st.title("📐 Rastreador de Fibonacci (Topos e Fundos)")
 with col_botao:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     st.link_button("📖 Ler Manual", "https://seusite.com/manual_fibo", use_container_width=True)
@@ -148,7 +144,8 @@ with aba_radar:
             tipo_alvo = st.selectbox("Tipo de Alvo:", ["Retorno ao Topo (100%)", "Risco Projetado (Ex: 2x)"], key="rad_f_tipo_alvo")
             alvo_val = st.number_input("Múltiplo de Risco (Se aplicável):", value=2.0, step=0.5, key="rad_f_alvo")
         with c4:
-            rad_lookback = st.slider("Tamanho da Perna (Dias):", min_value=20, max_value=250, value=120, step=10, help="Quantidade de pregões para procurar o fundo e as máximas estruturais.")
+            # NOVO PARÂMETRO IGUAL AO DO PROFIT
+            rad_piv_period = st.number_input("Período Topos/Fundos (Igual Profit):", min_value=1, max_value=10, value=2, step=1, key="rad_piv_period")
             usar_stop_rad = st.checkbox("Usar Stop Loss", value=True, key="rad_f_chk")
             tipo_stop = st.selectbox("Tipo de Stop:", ["Técnico (Abaixo do Pavio)", "Abaixo dos 78.6% (Fibo)"], disabled=not usar_stop_rad, key="rad_f_tipo_stop")
             
@@ -172,7 +169,7 @@ with aba_radar:
                 if df_full is None or len(df_full) < 250: continue
                 df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 
-                df_full = identificar_fibonacci(df_full, lookback=rad_lookback).dropna()
+                df_full = identificar_fibonacci_estrutural(df_full, periodo_piv=rad_piv_period).dropna()
 
                 if rad_periodo == '6mo': data_corte = df_full.index[-1] - pd.DateOffset(months=6)
                 elif rad_periodo == 'max': data_corte = df_full.index[0]
@@ -223,7 +220,7 @@ with aba_radar:
                     res_pct = (cot_atual / preco_entrada) - 1
                     ls_abertos.append({
                         'Ativo': ativo, 'Entrada': d_ent.strftime('%d/%m/%Y'), 'Dias': (df_back[col_data].iloc[-1] - d_ent).days,
-                        'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo Confirmado': f"R$ {topo_trade:.2f}",
+                        'Fundo (Fibo)': f"R$ {fundo_trade:.2f}", 'Topo (Fibo)': f"R$ {topo_trade:.2f}",
                         'PM': f"R$ {preco_entrada:.2f}", 'Cotação Atual': f"R$ {cot_atual:.2f}", 
                         'Alvo Programado': f"R$ {alvo:.2f}", 'Resultado Atual': f"+{res_pct*100:.2f}%" if res_pct > 0 else f"{res_pct*100:.2f}%"
                     })
@@ -264,7 +261,7 @@ with aba_radar:
 # ABA 2: RAIO-X INDIVIDUAL (BACKTEST DETALHADO)
 # ==========================================
 with aba_individual:
-    st.subheader("🔬 Raio-X Individual: Laboratório de Fibonacci Estrutural")
+    st.subheader("🔬 Raio-X Individual: Laboratório de Fibonacci")
     
     cr1, cr2, cr3, cr4 = st.columns(4)
     with cr1:
@@ -277,7 +274,8 @@ with aba_individual:
         rx_tipo_alvo = st.selectbox("Tipo de Alvo:", ["Retorno ao Topo (100%)", "Risco Projetado (Ex: 2x)"], key="rx_f_tipo_alvo")
         rx_alvo_val = st.number_input("Múltiplo de Risco:", value=2.0, step=0.5, key="rx_f_alvo")
     with cr4:
-        rx_lookback = st.slider("Tamanho da Perna (Dias):", min_value=20, max_value=250, value=120, step=10, key="rx_lookback")
+        # PARÂMETRO TOPOS/FUNDOS NO RAIO-X
+        rx_piv_period = st.number_input("Período Topos/Fundos (Igual Profit):", min_value=1, max_value=10, value=2, step=1, key="rx_piv_period")
         rx_usar_stop = st.checkbox("Usar Stop Loss", value=True, key="rx_f_chk")
         rx_tipo_stop = st.selectbox("Tipo de Stop:", ["Técnico (Abaixo do Pavio)", "Abaixo dos 78.6% (Fibo)"], disabled=not rx_usar_stop, key="rx_f_tipo_stop")
 
@@ -286,12 +284,12 @@ with aba_individual:
     if btn_raiox:
         if not rx_ativo: st.error("Digite o código de um ativo.")
         else:
-            with st.spinner(f'A mapear estrutura gráfica e retrações em {rx_ativo}...'):
+            with st.spinner(f'A mapear estrutura de Topos e Fundos em {rx_ativo}...'):
                 try:
                     df_full = tv.get_hist(symbol=rx_ativo, exchange='BMFBOVESPA', interval=tradutor_intervalo.get(rx_tempo, Interval.in_daily), n_bars=5000)
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     
-                    df_full = identificar_fibonacci(df_full, lookback=rx_lookback).dropna()
+                    df_full = identificar_fibonacci_estrutural(df_full, periodo_piv=rx_piv_period).dropna()
 
                     if rx_periodo == '6mo': data_corte = df_full.index[-1] - pd.DateOffset(months=6)
                     elif rx_periodo == 'max': data_corte = df_full.index[0]
