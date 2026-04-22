@@ -254,7 +254,7 @@ with cl3: st.link_button("🔍 Filtro de Ações", "https://br.investing.com/sto
 with cl4: st.link_button("🦈 HedgeFollow (Fundos)", "https://hedgefollow.com/", use_container_width=True)
 
 # ==========================================
-# 6. RADAR DE NOTÍCIAS MULTI-FONTE
+# 6. RADAR DE NOTÍCIAS MULTI-FONTE (FILTRADO)
 # ==========================================
 st.divider()
 st.subheader("📰 Radar de Notícias Caçadores de Elite")
@@ -267,12 +267,33 @@ def carregar_feed(url):
         response = requests.get(url, headers=headers, timeout=10)
         root = ET.fromstring(response.content)
         itens = []
-        for item in root.findall('./channel/item')[:8]: 
-            itens.append({"titulo": item.find('title').text, "link": item.find('link').text})
+        
+        # Filtro blindado contra lixo da internet e esportes
+        palavras_proibidas = ['futebol', 'copa', 'assistir', 'corinthians', 'vasco', 'palmeiras', 'flamengo', 'brasileirão', 'fofoca', 'bbb', 'novela', 'filme']
+        
+        for item in root.findall('./channel/item'): 
+            titulo = item.find('title').text
+            link = item.find('link').text
+            
+            # Converte para minúsculas para a verificação não falhar
+            titulo_lower = titulo.lower()
+            
+            # Se encontrar qualquer palavra proibida, ignora a notícia
+            if any(palavra in titulo_lower for palavra in palavras_proibidas):
+                continue
+                
+            itens.append({"titulo": titulo, "link": link})
+            
+            # Quando atingir 8 notícias limpas, pára de procurar
+            if len(itens) >= 8:
+                break
+                
         return itens
     except: return None
 
-tab_info, tab_inv, tab_g1 = st.tabs(["💰 InfoMoney", "📈 Investing.com", "🌍 G1 Economia"])
+# Trocamos o G1 pelo Money Times para focar 100% no mercado
+tab_info, tab_inv, tab_mt = st.tabs(["💰 InfoMoney", "📈 Investing.com", "🗞️ Money Times"])
+
 with tab_info:
     n_im = carregar_feed("https://www.infomoney.com.br/feed/")
     if n_im:
@@ -281,7 +302,7 @@ with tab_inv:
     n_inv = carregar_feed("https://br.investing.com/rss/news_25.rss")
     if n_inv:
         for n in n_inv: st.markdown(f"• **{n['titulo']}** [Ler mais]({n['link']})")
-with tab_g1:
-    n_g1 = carregar_feed("https://g1.globo.com/rss/g1/economia/")
-    if n_g1:
-        for n in n_g1: st.markdown(f"• **{n['titulo']}** [Ler mais]({n['link']})")
+with tab_mt:
+    n_mt = carregar_feed("https://www.moneytimes.com.br/feed/")
+    if n_mt:
+        for n in n_mt: st.markdown(f"• **{n['titulo']}** [Ler mais]({n['link']})")
