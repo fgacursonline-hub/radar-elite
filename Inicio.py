@@ -118,16 +118,27 @@ def buscar_ranking_ativos(ativos):
         try:
             df = tv_local.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=4000)
             if df is not None and len(df) >= 2:
-                fecho_hj = df['close'].iloc[-1]
-                fecho_ontem = df['close'].iloc[-2]
-                max_hj = df['high'].iloc[-1]
+                c = df['close']
+                hj = c.iloc[-1]
                 
-                var_pct = ((fecho_hj - fecho_ontem) / fecho_ontem) * 100
-                lista_rank.append({'Ativo': ativo, 'Preço': fecho_hj, 'Variação': var_pct})
+                # Cálculos de Variação em várias janelas
+                v_dia = ((hj - c.iloc[-2]) / c.iloc[-2]) * 100 if len(c) >= 2 else 0
+                v_sem = ((hj - c.iloc[-6]) / c.iloc[-6]) * 100 if len(c) >= 6 else v_dia
+                v_mes = ((hj - c.iloc[-22]) / c.iloc[-22]) * 100 if len(c) >= 22 else v_sem
+                v_ano = ((hj - c.iloc[-253]) / c.iloc[-253]) * 100 if len(c) >= 253 else v_mes
+                
+                lista_rank.append({
+                    'Ativo': ativo, 'Preço': hj, 
+                    'Dia': v_dia, 'Semana': v_sem, 'Mês': v_mes, 'Ano': v_ano
+                })
                 
                 max_historica = df['high'].iloc[:-1].max()
-                if max_hj > max_historica:
-                    rompendo_topo.append({'Ativo': ativo, 'Preço': fecho_hj, 'Variação': var_pct})
+                if df['high'].iloc[-1] > max_historica:
+                    # Se rompe topo, guarda a linha toda para podermos filtrar também
+                    rompendo_topo.append({
+                        'Ativo': ativo, 'Preço': hj, 
+                        'Dia': v_dia, 'Semana': v_sem, 'Mês': v_mes, 'Ano': v_ano
+                    })
         except Exception: pass
         time.sleep(0.01)
         
@@ -198,8 +209,14 @@ st.divider()
 # ==========================================
 # 4. PAINEL DE DESTAQUES (ALTAS, QUEDAS E TOPOS)
 # ==========================================
-st.subheader("🔥 Radar de Destaques (IBrX + BDRs)")
-st.markdown("Monitoramento das maiores forças e fraquezas do mercado de capitais brasileiro hoje.")
+c_t_rad, c_f_rad = st.columns([3, 1])
+with c_t_rad:
+    st.subheader("🔥 Radar de Destaques (IBrX + BDRs)")
+    st.markdown("Monitoramento das maiores forças e fraquezas do mercado de capitais brasileiro.")
+with c_f_rad:
+    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+    # Aqui está a mágica: O Menu de Horizonte de Tempo!
+    horizonte = st.selectbox("⏳ Horizonte Analítico:", ["Dia", "Semana", "Mês", "Ano"])
 
 with st.spinner("Varrendo o mercado em busca de oportunidades extremas..."):
     df_ranking, df_topos = buscar_ranking_ativos(todos_ativos)
@@ -207,31 +224,32 @@ with st.spinner("Varrendo o mercado em busca de oportunidades extremas..."):
 col_altas, col_quedas, col_topos = st.columns(3)
 
 if not df_ranking.empty:
-    df_altas = df_ranking.sort_values(by='Variação', ascending=False).head(5).copy()
+    # Filtra e organiza com base no Horizonte selecionado
+    df_altas = df_ranking[['Ativo', 'Preço', horizonte]].sort_values(by=horizonte, ascending=False).head(5).copy()
+    df_altas.rename(columns={horizonte: 'Variação (%)'}, inplace=True)
     df_altas['Preço'] = df_altas['Preço'].apply(lambda x: formata_moeda_pct(x))
-    df_altas['Variação (%)'] = df_altas['Variação'].apply(lambda x: formata_moeda_pct(x, True))
-    df_altas = df_altas.drop(columns=['Variação'])
+    df_altas['Variação (%)'] = df_altas['Variação (%)'].apply(lambda x: formata_moeda_pct(x, True))
 
-    df_quedas = df_ranking.sort_values(by='Variação', ascending=True).head(5).copy()
+    df_quedas = df_ranking[['Ativo', 'Preço', horizonte]].sort_values(by=horizonte, ascending=True).head(5).copy()
+    df_quedas.rename(columns={horizonte: 'Variação (%)'}, inplace=True)
     df_quedas['Preço'] = df_quedas['Preço'].apply(lambda x: formata_moeda_pct(x))
-    df_quedas['Variação (%)'] = df_quedas['Variação'].apply(lambda x: formata_moeda_pct(x, True))
-    df_quedas = df_quedas.drop(columns=['Variação'])
+    df_quedas['Variação (%)'] = df_quedas['Variação (%)'].apply(lambda x: formata_moeda_pct(x, True))
 
     with col_altas:
-        st.success("### 🚀 Maiores Altas")
+        st.success(f"### 🚀 Altas no(a) {horizonte}")
         st.dataframe(df_altas.style.apply(colorir_tabela, axis=1), use_container_width=True, hide_index=True)
 
     with col_quedas:
-        st.error("### 🩸 Maiores Quedas")
+        st.error(f"### 🩸 Quedas no(a) {horizonte}")
         st.dataframe(df_quedas.style.apply(colorir_tabela, axis=1), use_container_width=True, hide_index=True)
 
     with col_topos:
         st.warning("### 👑 Rompendo Topo Histórico")
         if not df_topos.empty:
-            df_topos_fmt = df_topos.sort_values(by='Variação', ascending=False).copy()
+            df_topos_fmt = df_topos[['Ativo', 'Preço', horizonte]].sort_values(by=horizonte, ascending=False).copy()
+            df_topos_fmt.rename(columns={horizonte: 'Variação (%)'}, inplace=True)
             df_topos_fmt['Preço'] = df_topos_fmt['Preço'].apply(lambda x: formata_moeda_pct(x))
-            df_topos_fmt['Variação (%)'] = df_topos_fmt['Variação'].apply(lambda x: formata_moeda_pct(x, True))
-            df_topos_fmt = df_topos_fmt.drop(columns=['Variação'])
+            df_topos_fmt['Variação (%)'] = df_topos_fmt['Variação (%)'].apply(lambda x: formata_moeda_pct(x, True))
             st.dataframe(df_topos_fmt.style.apply(colorir_tabela, axis=1), use_container_width=True, hide_index=True)
         else:
             st.info("Nenhum ativo está a romper o topo histórico hoje.")
