@@ -76,18 +76,17 @@ ibrx_selecao = [
     'SHUL4.SA', 'BRSR6.SA',
 ]
 
+# --- FUNÇÃO MESTRA DE ESTILIZAÇÃO VISUAL ---
 def colorir_lucro(row):
-    if 'Resultado Atual' in row and isinstance(row['Resultado Atual'], str) and row['Resultado Atual'].startswith('+'):
-        return ['color: #00FF00; font-weight: bold'] * len(row)
-    return [''] * len(row)
-
-# NOVA FUNÇÃO PARA COLORIR O HISTÓRICO DE TRADES DO IFR2
-def colorir_historico_trades(row):
-    # Verifica se a coluna 'Situação' contém 'Gain'. Se sim, colore a linha de verde.
-    if 'Situação' in row and 'Gain' in row['Situação']:
-        # Destaque verde suave para o texto da linha inteira (modo escuro)
-        return ['color: #76ff76; font-weight: bold'] * len(row)
-    # Linhas negativas (Loss Técnico/Stop) permanecem em branco (estilo padrão)
+    # 1. Pinta de verde as Posições em Aberto que estão no lucro (verifica colunas de resultado)
+    for col in ['Resultado Atual', 'Resultado']:
+        if col in row and isinstance(row[col], str) and row[col].startswith('+'):
+            return ['color: #2eeb5c; font-weight: bold'] * len(row)
+    
+    # 2. Pinta de verde o Histórico de Trades que deram Gain (verifica a coluna situação)
+    if 'Situação' in row and isinstance(row['Situação'], str) and 'Gain' in row['Situação']:
+        return ['color: #2eeb5c; font-weight: bold'] * len(row)
+        
     return [''] * len(row)
 
 def renderizar_grafico_tv(simbolo_tv, altura=600):
@@ -126,8 +125,8 @@ with col_botao:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     st.link_button("📖 Ler Manual", "https://seusite.com/manual_ifr", use_container_width=True)
 
-aba_padrao, aba_pm, aba_stop, aba_connors, aba_individual, aba_futuros = st.tabs([
-    "📡 Radar (Padrão)", "📡 Radar (PM)", "🛡️ Alvo & Stop", "🩸 IFR2 (Connors)", "🔬 Raio-X Individual", "📉 Raio-X Futuros"
+aba_padrao, aba_pm, aba_stop, aba_individual, aba_futuros, aba_connors = st.tabs([
+    "📡 Radar (Padrão)", "📡 Radar (PM)", "🛡️ Alvo & Stop", "🔬 Raio-X Individual", "📉 Raio-X Futuros", "🩸 IFR2 (Connors)"
 ])
 
 # ==========================================
@@ -419,7 +418,7 @@ with aba_pm:
 
         st.subheader(f"📊 Top 10 Histórico ({tradutor_periodo_nome.get(periodo_pm, periodo_pm)})")
         if len(lista_resumo) > 0:
-            df_resumo = pd.DataFrame(ls_resumo).sort_values(by='Lucro R$', ascending=False).head(10)
+            df_resumo = pd.DataFrame(lista_resumo).sort_values(by='Lucro R$', ascending=False).head(10)
             df_resumo['Lucro R$'] = df_resumo['Lucro R$'].apply(lambda x: f"R$ {x:,.2f}")
             st.dataframe(df_resumo, use_container_width=True, hide_index=True)
         else: st.warning("Nenhuma operação finalizada.")
@@ -570,275 +569,11 @@ with aba_stop:
         else: st.warning("Nenhuma operação finalizada.")
 
 # ==========================================
-# ABA 4: IFR2 (CONNORS)
-# ==========================================
-with aba_connors:
-    st.subheader("🩸 Máquina de Pânico: IFR2 (Larry Connors)")
-    st.markdown("O sistema puro de Reversão à Média. Compra o pânico extremo (faca caindo) e sai no repique.")
-    
-    modo_connors = st.radio("Escolha o Modo Operacional:", ["📡 Radar de Sobrevenda (Varredura B3)", "🔬 Raio-X Individual (Backtest)"], horizontal=True)
-    
-    if modo_connors == "📡 Radar de Sobrevenda (Varredura B3)":
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            lista_c = st.selectbox("Lista de Ativos:", ["IBrX Seleção", "BDRs Elite", "Todos"], key="c_lst")
-            periodo_c = st.selectbox("Período:", ['1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome.get(x, x), index=2, key="c_per")
-        with c2:
-            gatilho_c = st.number_input("Gatilho Compra (IFR2 <):", value=25.0, step=5.0, max_value=50.0, key="c_gat")
-            filtro_c = st.checkbox("Filtro: Preço Acima da MM200", value=True, help="Só compra se a ação estiver em tendência de alta no longo prazo.")
-        with c3:
-            saida_c = st.selectbox("Regra de Saída (Alvo):", ["Máxima dos Últimos 2 Dias", "Fechamento > MME5"], key="c_sai")
-            stop_c = st.selectbox("Stop Loss de Proteção:", ["Sem Stop (Original Connors)", "Máxima Queda (10%)"], key="c_stp")
-        with c4:
-            capital_c = st.number_input("Capital/Trade (R$):", value=10000.0, step=1000.0, key="c_cap")
-            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            btn_iniciar_connors = st.button("🚀 Iniciar Varredura IFR2", type="primary", use_container_width=True)
-
-        if btn_iniciar_connors:
-            ativos_analise = bdrs_elite if lista_c == "BDRs Elite" else ibrx_selecao if lista_c == "IBrX Seleção" else bdrs_elite + ibrx_selecao
-            
-            ls_armados, ls_abertos, ls_resumo = [], [], []
-            p_bar = st.progress(0); s_text = st.empty()
-
-            for idx, ativo_raw in enumerate(ativos_analise):
-                ativo = ativo_raw.replace('.SA', '')
-                s_text.text(f"🔍 Caçando sangue em {ativo} ({idx+1}/{len(ativos_analise)})")
-                p_bar.progress((idx + 1) / len(ativos_analise))
-
-                try:
-                    df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=5000)
-                    if df_full is None or len(df_full) < 200: continue
-
-                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                    df_full['IFR2'] = ta.rsi(df_full['Close'], length=2)
-                    df_full['MM200'] = ta.sma(df_full['Close'], length=200)
-                    df_full['MME5'] = ta.ema(df_full['Close'], length=5)
-                    df_full['Max_2d'] = df_full['High'].rolling(window=2).max().shift(1)
-                    df_full = df_full.dropna()
-
-                    if periodo_c == 'max': data_corte = df_full.index[0]
-                    else: data_corte = df_full.index[-1] - pd.DateOffset(years=int(periodo_c.replace('y','')))
-                    
-                    df = df_full[df_full.index >= data_corte].copy().reset_index()
-                    col_data = df.columns[0]
-
-                    em_pos, preco_entrada = False, 0.0
-                    vitorias, total_trades, lucro_total = 0, 0, 0.0
-
-                    for i in range(1, len(df)):
-                        atual = df.iloc[i]
-                        if em_pos:
-                            fechou_posicao, preco_saida = False, 0.0
-
-                            if saida_c == "Máxima dos Últimos 2 Dias" and atual['High'] >= atual['Max_2d']:
-                                preco_saida = max(atual['Max_2d'], atual['Open'])
-                                fechou_posicao = True
-                            elif saida_c == "Fechamento > MME5" and atual['Close'] > atual['MME5']:
-                                preco_saida = atual['Close']
-                                fechou_posicao = True
-                            
-                            queda_atual = (atual['Low'] / preco_entrada) - 1
-                            if not fechou_posicao and stop_c == "Máxima Queda (10%)" and queda_atual <= -0.10:
-                                preco_saida = preco_entrada * 0.90
-                                fechou_posicao = True
-
-                            if fechou_posicao:
-                                lucro_rs = capital_c * ((preco_saida / preco_entrada) - 1)
-                                lucro_total += lucro_rs
-                                total_trades += 1
-                                if lucro_rs > 0: vitorias += 1
-                                em_pos = False
-                        else:
-                            sinal_ifr = atual['IFR2'] < gatilho_c
-                            sinal_mm200 = atual['Close'] > atual['MM200'] if filtro_c else True
-                            if sinal_ifr and sinal_mm200:
-                                em_pos, preco_entrada, d_ent = True, atual['Close'], atual[col_data]
-
-                    if em_pos:
-                        cot_atual = df['Close'].iloc[-1]
-                        res_pct = ((cot_atual / preco_entrada) - 1) * 100
-                        alvo_m = "Buscando MME5" if saida_c != "Máxima dos Últimos 2 Dias" else f"R$ {df['Max_2d'].iloc[-1]:.2f}"
-                        ls_abertos.append({
-                            'Ativo': ativo, 'Dias Sofrendo': (df[col_data].iloc[-1] - d_ent).days,
-                            'PM Compra': f"R$ {preco_entrada:.2f}", 'Alvo (Saída)': alvo_m,
-                            'Cotação': f"R$ {cot_atual:.2f}", 'Resultado': f"+{res_pct:.2f}%" if res_pct > 0 else f"{res_pct:.2f}%"
-                        })
-                    else:
-                        hoje = df.iloc[-1]
-                        if hoje['IFR2'] < gatilho_c and (not filtro_c or hoje['Close'] > hoje['MM200']):
-                            ls_armados.append({
-                                'Ativo': ativo, 'IFR2': f"{hoje['IFR2']:.1f}", 'Preço (Leilão)': f"R$ {hoje['Close']:.2f}", 'Status': "Sangrando (COMPRA)"
-                            })
-
-                    if total_trades > 0:
-                        ls_resumo.append({'Ativo': ativo, 'Trades': total_trades, 'Acertos': f"{(vitorias/total_trades)*100:.1f}%", 'Lucro Total R$': lucro_total})
-                except: pass
-                time.sleep(0.01)
-
-            s_text.empty(); p_bar.empty()
-            
-            st.divider()
-            st.subheader(f"🚀 Oportunidades de Ouro (IFR2 < {gatilho_c})")
-            if ls_armados: st.dataframe(pd.DataFrame(ls_armados).sort_values(by='IFR2'), use_container_width=True, hide_index=True)
-            else: st.info("O mercado está calmo. Nenhuma ação esticada para baixo hoje.")
-
-            st.subheader(f"⏳ Posições em Aberto (Aguardando Repique)")
-            if ls_abertos: st.dataframe(pd.DataFrame(ls_abertos).style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
-            else: st.success("Sua carteira IFR2 está limpa.")
-
-            st.subheader(f"🏆 Top 20 Histórico ({tradutor_periodo_nome.get(periodo_c, periodo_c)})")
-            if ls_resumo:
-                df_hist = pd.DataFrame(ls_resumo).sort_values(by='Lucro Total R$', ascending=False).head(20)
-                df_hist['Lucro Total R$'] = df_hist['Lucro Total R$'].apply(lambda x: f"R$ {x:,.2f}")
-                st.dataframe(df_hist, use_container_width=True, hide_index=True)
-                
-    else:
-        # Modo Raio-X Individual do Connors
-        col1, col2, col3, col4 = st.columns(4)
-        with col1: 
-            rx_ativo = st.text_input("Ativo (Ex: PETR4):", value="PETR4", key="rxc_atv").upper().replace('.SA', '')
-            rx_per = st.selectbox("Período:", ['1y', '2y', '5y', 'max'], index=2, format_func=lambda x: tradutor_periodo_nome.get(x, x), key="rxc_per")
-        with col2: 
-            rx_gatilho = st.number_input("Gatilho (IFR2 <):", value=25.0, step=5.0, max_value=50.0, key="rxc_gat")
-            rx_filtro = st.checkbox("Exigir Preço Acima MM200", value=True, key="rxc_filt")
-        with col3: 
-            rx_saida = st.selectbox("Saída:", ["Máxima dos Últimos 2 Dias", "Fechamento > MME5"], key="rxc_sai")
-            rx_stop = st.selectbox("Stop Loss:", ["Sem Stop (Original)", "Máxima Queda (10%)"], key="rxc_stp")
-        with col4: 
-            rx_cap = st.number_input("Capital (R$):", value=10000.0, step=1000.0, key="rxc_cap")
-            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            btn_rx = st.button("🔍 Rodar Backtest IFR2", type="primary", use_container_width=True)
-
-        if btn_rx and rx_ativo:
-            with st.spinner(f'Calculando elástico de {rx_ativo}...'):
-                try:
-                    df_full = tv.get_hist(symbol=rx_ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=5000)
-                    if df_full is None or len(df_full) < 200: st.error("Dados insuficientes.")
-                    else:
-                        df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                        df_full['IFR2'] = ta.rsi(df_full['Close'], length=2)
-                        df_full['MM200'] = ta.sma(df_full['Close'], length=200)
-                        df_full['MME5'] = ta.ema(df_full['Close'], length=5)
-                        df_full['Max_2d'] = df_full['High'].rolling(window=2).max().shift(1)
-                        df_full = df_full.dropna()
-
-                        data_corte = df_full.index[0] if rx_per == 'max' else df_full.index[-1] - pd.DateOffset(years=int(rx_per.replace('y','')))
-                        df = df_full[df_full.index >= data_corte].copy().reset_index()
-                        col_data = df.columns[0]
-
-                        trades, em_pos, vitorias, derrotas = [], False, 0, 0
-                        preco_entrada = 0.0
-                        min_na_op = 0.0
-                        d_ent = None
-
-                        for i in range(1, len(df)):
-                            atual = df.iloc[i]
-                            if em_pos:
-                                if atual['Low'] < min_na_op: min_na_op = atual['Low']
-                                
-                                fechou_posicao, preco_saida, motivo = False, 0.0, 'Gain ✅'
-                                
-                                if rx_saida == "Máxima dos Últimos 2 Dias" and atual['High'] >= atual['Max_2d']:
-                                    preco_saida, fechou_posicao = max(atual['Max_2d'], atual['Open']), True
-                                elif rx_saida == "Fechamento > MME5" and atual['Close'] > atual['MME5']:
-                                    preco_saida, fechou_posicao = atual['Close'], True
-                                
-                                queda_atual = (atual['Low'] / preco_entrada) - 1
-                                if not fechou_posicao and rx_stop == "Máxima Queda (10%)" and queda_atual <= -0.10:
-                                    preco_saida, fechou_posicao, motivo = preco_entrada * 0.90, True, 'Stop Queda ❌'
-
-                                if fechou_posicao:
-                                    luc_rs = rx_cap * ((preco_saida / preco_entrada) - 1)
-                                    if motivo == 'Gain ✅' and luc_rs < 0: motivo = 'Loss Técnico ❌'
-                                    
-                                    dd = ((min_na_op / preco_entrada) - 1) * 100
-                                    
-                                    trades.append({
-                                        'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'),
-                                        'Dias': (atual[col_data] - d_ent).days, 'Lucro (R$)': luc_rs, 'Queda Máx': dd, 'Situação': motivo
-                                    })
-                                    if luc_rs > 0: vitorias += 1
-                                    else: derrotas += 1
-                                    em_pos = False
-                            else:
-                                sinal_ifr = atual['IFR2'] < rx_gatilho
-                                sinal_mm200 = atual['Close'] > atual['MM200'] if rx_filtro else True
-                                if sinal_ifr and sinal_mm200:
-                                    em_pos, preco_entrada, d_ent = True, atual['Close'], atual[col_data]
-                                    min_na_op = atual['Low']
-
-                        # --- STATUS ATUAL ---
-                        st.divider()
-                        if em_pos:
-                            st.warning(f"⚠️ **OPERAÇÃO EM CURSO: {rx_ativo}**")
-                            cotacao_atual = df['Close'].iloc[-1]
-                            hoje = pd.Timestamp.today().normalize()
-                            dias_em_op = (hoje - d_ent).days
-                            
-                            res_pct = ((cotacao_atual / preco_entrada) - 1) * 100
-                            res_rs = rx_cap * res_pct / 100
-                            prej_max = ((min_na_op / preco_entrada) - 1) * 100
-                            
-                            alvo_m = "Buscando MME5" if rx_saida != "Máxima dos Últimos 2 Dias" else f"R$ {df['Max_2d'].iloc[-1]:.2f}"
-
-                            c1, c2, c3 = st.columns(3)
-                            c1.metric("Data Entrada", d_ent.strftime('%d/%m/%Y'))
-                            c2.metric("Dias em Operação", f"{dias_em_op} dias")
-                            c3.metric("Cotação Atual", f"R$ {cotacao_atual:.2f}")
-                            
-                            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-                            
-                            c4, c5, c6 = st.columns(3)
-                            c4.metric("Preço Compra", f"R$ {preco_entrada:.2f}")
-                            c5.metric("Alvo (Saída)", alvo_m)
-                            c6.metric("Resultado Atual", f"{res_pct:.2f}%", delta=f"R$ {res_rs:.2f}")
-                        else:
-                            st.success(f"✅ **{rx_ativo}: Aguardando Novo Sinal de Entrada**")
-
-                        st.divider()
-                        st.markdown(f"### 📊 Resultado IFR2: {rx_ativo}")
-                        
-                        url_tv_ifr = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{rx_ativo}"
-                        st.markdown(f"<a href='{url_tv_ifr}' target='_blank' style='text-decoration: none; font-size: 14px; color: #4da6ff;'>🔗 Abrir no TradingView</a>", unsafe_allow_html=True)
-                        
-                        if trades:
-                            df_t = pd.DataFrame(trades)
-                            c_m1, c_m2, c_m3, c_m4 = st.columns(4)
-                            l_tot = df_t['Lucro (R$)'].sum()
-                            tx_acerto = (vitorias/len(df_t))*100
-                            
-                            m_ganho = df_t[df_t['Lucro (R$)'] > 0]['Lucro (R$)'].mean() if vitorias > 0 else 0
-                            m_perda = abs(df_t[df_t['Lucro (R$)'] <= 0]['Lucro (R$)'].mean()) if derrotas > 0 else 1
-                            payoff = m_ganho / m_perda
-                            
-                            c_m1.metric("Lucro Total", f"R$ {l_tot:,.2f}")
-                            c_m2.metric("Operações Fechadas", len(df_t))
-                            c_m3.metric("Taxa Acerto", f"{tx_acerto:.1f}%")
-                            c_m4.metric("Payoff", f"{payoff:.2f}")
-
-                            if tx_acerto > 75.0: st.success("🎯 **Máquina de Vencer:** Taxa de acerto absurdamente alta! O sistema brilha neste ativo.")
-                            elif payoff < 0.5: st.warning("⚖️ **Atenção:** Risco/retorno muito baixo. Exige disciplina de ferro no manejo emocional.")
-
-                            df_t['Queda Máx'] = df_t['Queda Máx'].map("{:.2f}%".format)
-                            
-                            # APLICAÇÃO DA NOVA FUNÇÃO DE COR NA TABELA DE RESULTADOS DO IFR2
-                            st.dataframe(df_t.style.apply(colorir_historico_trades, axis=1), use_container_width=True, hide_index=True)
-                        else:
-                            st.warning("Nenhuma operação concluída usando essa configuração.")
-                            
-                        # --- GRÁFICO INTERATIVO INSERIDO AQUI ---
-                        st.divider()
-                        st.markdown(f"### 📈 Gráfico Interativo: {rx_ativo}")
-                        renderizar_grafico_tv(f"BMFBOVESPA:{rx_ativo}")
-                        
-                except Exception as e: st.error(f"Erro ao processar: {e}")
-
-# ==========================================
-# ABA 5: RAIO-X DO ATIVO INDIVIDUAL (Original Preservado)
+# ABA 4: RAIO-X DO ATIVO INDIVIDUAL (Original + Gráfico)
 # ==========================================
 with aba_individual:
     st.subheader("🔬 Raio-X Detalhado: Backtest & Status Atual")
-    st.markdown("Veja o histórico de acertos e o status completo se o ativo estiver com operation aberta agora.")
+    st.markdown("Veja o histórico de acertos e o status completo se o ativo estiver com operação aberta agora.")
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -973,7 +708,9 @@ with aba_individual:
                             m4.metric("Pior Queda", f"{df_t['Queda Máx'].min():.2f}%")
                         
                         df_t['Queda Máx'] = df_t['Queda Máx'].map("{:.2f}%".format)
-                        st.dataframe(df_t, use_container_width=True, hide_index=True)
+                        
+                        # APLICA NOVA FUNÇÃO DE COR NA TABELA INDIVIDUAL TAMBÉM
+                        st.dataframe(df_t.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
                     else:
                         st.info("Nenhuma operação fechada no período de estudo.")
                         
@@ -988,7 +725,7 @@ with aba_individual:
                 st.error(f"Erro no processamento: {e}")
 
 # ==========================================
-# ABA 6: RAIO-X FUTUROS
+# ABA 5: RAIO-X FUTUROS
 # ==========================================
 with aba_futuros:
     st.subheader("📈 Raio-X Mercado Futuro (WIN, WDO, etc)")
@@ -1122,7 +859,271 @@ with aba_futuros:
                         else:
                             st.error(f"🚨 **Expectativa Negativa:** O saldo de R$ {l_total:,.2f} mostra que a conta não fecha. Você precisa acertar mais de {t_critica:.1f}% para este Payoff, ou aumentar seu alvo.")
 
-                        st.dataframe(df_t, use_container_width=True, hide_index=True)
+                        # APLICA NOVA FUNÇÃO DE COR NA TABELA DE FUTUROS TAMBÉM
+                        st.dataframe(df_t.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
                     else:
                         st.warning("Nenhuma operação encontrada.")
             except Exception as e: st.error(f"Erro: {e}")
+
+# ==========================================
+# ABA 6: IFR2 (CONNORS)
+# ==========================================
+with aba_connors:
+    st.subheader("🩸 Máquina de Pânico: IFR2 (Larry Connors)")
+    st.markdown("O sistema puro de Reversão à Média. Compra o pânico extremo (faca caindo) e sai no repique.")
+    
+    modo_connors = st.radio("Escolha o Modo Operacional:", ["📡 Radar de Sobrevenda (Varredura B3)", "🔬 Raio-X Individual (Backtest)"], horizontal=True)
+    
+    if modo_connors == "📡 Radar de Sobrevenda (Varredura B3)":
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            lista_c = st.selectbox("Lista de Ativos:", ["IBrX Seleção", "BDRs Elite", "Todos"], key="c_lst")
+            periodo_c = st.selectbox("Período:", ['1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome.get(x, x), index=2, key="c_per")
+        with c2:
+            gatilho_c = st.number_input("Gatilho Compra (IFR2 <):", value=25.0, step=5.0, max_value=50.0, key="c_gat")
+            filtro_c = st.checkbox("Filtro: Preço Acima da MM200", value=True, help="Só compra se a ação estiver em tendência de alta no longo prazo.")
+        with c3:
+            saida_c = st.selectbox("Regra de Saída (Alvo):", ["Máxima dos Últimos 2 Dias", "Fechamento > MME5"], key="c_sai")
+            stop_c = st.selectbox("Stop Loss de Proteção:", ["Sem Stop (Original Connors)", "Máxima Queda (10%)"], key="c_stp")
+        with c4:
+            capital_c = st.number_input("Capital/Trade (R$):", value=10000.0, step=1000.0, key="c_cap")
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            btn_iniciar_connors = st.button("🚀 Iniciar Varredura IFR2", type="primary", use_container_width=True)
+
+        if btn_iniciar_connors:
+            ativos_analise = bdrs_elite if lista_c == "BDRs Elite" else ibrx_selecao if lista_c == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+            
+            ls_armados, ls_abertos, ls_resumo = [], [], []
+            p_bar = st.progress(0); s_text = st.empty()
+
+            for idx, ativo_raw in enumerate(ativos_analise):
+                ativo = ativo_raw.replace('.SA', '')
+                s_text.text(f"🔍 Caçando sangue em {ativo} ({idx+1}/{len(ativos_analise)})")
+                p_bar.progress((idx + 1) / len(ativos_analise))
+
+                try:
+                    df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=5000)
+                    if df_full is None or len(df_full) < 200: continue
+
+                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                    df_full['IFR2'] = ta.rsi(df_full['Close'], length=2)
+                    df_full['MM200'] = ta.sma(df_full['Close'], length=200)
+                    df_full['MME5'] = ta.ema(df_full['Close'], length=5)
+                    df_full['Max_2d'] = df_full['High'].rolling(window=2).max().shift(1)
+                    df_full = df_full.dropna()
+
+                    if periodo_c == 'max': data_corte = df_full.index[0]
+                    else: data_corte = df_full.index[-1] - pd.DateOffset(years=int(periodo_c.replace('y','')))
+                    
+                    df = df_full[df_full.index >= data_corte].copy().reset_index()
+                    col_data = df.columns[0]
+
+                    em_pos, preco_entrada = False, 0.0
+                    vitorias, total_trades, lucro_total = 0, 0, 0.0
+
+                    for i in range(1, len(df)):
+                        atual = df.iloc[i]
+                        if em_pos:
+                            fechou_posicao, preco_saida = False, 0.0
+
+                            if saida_c == "Máxima dos Últimos 2 Dias" and atual['High'] >= atual['Max_2d']:
+                                preco_saida = max(atual['Max_2d'], atual['Open'])
+                                fechou_posicao = True
+                            elif saida_c == "Fechamento > MME5" and atual['Close'] > atual['MME5']:
+                                preco_saida = atual['Close']
+                                fechou_posicao = True
+                            
+                            queda_atual = (atual['Low'] / preco_entrada) - 1
+                            if not fechou_posicao and stop_c == "Máxima Queda (10%)" and queda_atual <= -0.10:
+                                preco_saida = preco_entrada * 0.90
+                                fechou_posicao = True
+
+                            if fechou_posicao:
+                                lucro_rs = capital_c * ((preco_saida / preco_entrada) - 1)
+                                lucro_total += lucro_rs
+                                total_trades += 1
+                                if lucro_rs > 0: vitorias += 1
+                                em_pos = False
+                        else:
+                            sinal_ifr = atual['IFR2'] < gatilho_c
+                            sinal_mm200 = atual['Close'] > atual['MM200'] if filtro_c else True
+                            if sinal_ifr and sinal_mm200:
+                                em_pos, preco_entrada, d_ent = True, atual['Close'], atual[col_data]
+
+                    if em_pos:
+                        cot_atual = df['Close'].iloc[-1]
+                        res_pct = ((cot_atual / preco_entrada) - 1) * 100
+                        alvo_m = "Buscando MME5" if saida_c != "Máxima dos Últimos 2 Dias" else f"R$ {df['Max_2d'].iloc[-1]:.2f}"
+                        ls_abertos.append({
+                            'Ativo': ativo, 'Dias Sofrendo': (df[col_data].iloc[-1] - d_ent).days,
+                            'PM Compra': f"R$ {preco_entrada:.2f}", 'Alvo (Saída)': alvo_m,
+                            'Cotação': f"R$ {cot_atual:.2f}", 'Resultado Atual': f"+{res_pct:.2f}%" if res_pct > 0 else f"{res_pct:.2f}%"
+                        })
+                    else:
+                        hoje = df.iloc[-1]
+                        if hoje['IFR2'] < gatilho_c and (not filtro_c or hoje['Close'] > hoje['MM200']):
+                            ls_armados.append({
+                                'Ativo': ativo, 'IFR2': f"{hoje['IFR2']:.1f}", 'Preço (Leilão)': f"R$ {hoje['Close']:.2f}", 'Status': "Sangrando (COMPRA)"
+                            })
+
+                    if total_trades > 0:
+                        ls_resumo.append({'Ativo': ativo, 'Trades': total_trades, 'Acertos': f"{(vitorias/total_trades)*100:.1f}%", 'Lucro Total R$': lucro_total})
+                except: pass
+                time.sleep(0.01)
+
+            s_text.empty(); p_bar.empty()
+            
+            st.divider()
+            st.subheader(f"🚀 Oportunidades de Ouro (IFR2 < {gatilho_c})")
+            if ls_armados: st.dataframe(pd.DataFrame(ls_armados).sort_values(by='IFR2'), use_container_width=True, hide_index=True)
+            else: st.info("O mercado está calmo. Nenhuma ação esticada para baixo hoje.")
+
+            st.subheader(f"⏳ Posições em Aberto (Aguardando Repique)")
+            if ls_abertos: st.dataframe(pd.DataFrame(ls_abertos).style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
+            else: st.success("Sua carteira IFR2 está limpa.")
+
+            st.subheader(f"🏆 Top 20 Histórico ({tradutor_periodo_nome.get(periodo_c, periodo_c)})")
+            if ls_resumo:
+                df_hist = pd.DataFrame(ls_resumo).sort_values(by='Lucro Total R$', ascending=False).head(20)
+                df_hist['Lucro Total R$'] = df_hist['Lucro Total R$'].apply(lambda x: f"R$ {x:,.2f}")
+                st.dataframe(df_hist, use_container_width=True, hide_index=True)
+                
+    else:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1: 
+            rx_ativo = st.text_input("Ativo (Ex: PETR4):", value="PETR4", key="rxc_atv").upper().replace('.SA', '')
+            rx_per = st.selectbox("Período:", ['1y', '2y', '5y', 'max'], index=2, format_func=lambda x: tradutor_periodo_nome.get(x, x), key="rxc_per")
+        with col2: 
+            rx_gatilho = st.number_input("Gatilho (IFR2 <):", value=25.0, step=5.0, max_value=50.0, key="rxc_gat")
+            rx_filtro = st.checkbox("Exigir Preço Acima MM200", value=True, key="rxc_filt")
+        with col3: 
+            rx_saida = st.selectbox("Saída:", ["Máxima dos Últimos 2 Dias", "Fechamento > MME5"], key="rxc_sai")
+            rx_stop = st.selectbox("Stop Loss:", ["Sem Stop (Original)", "Máxima Queda (10%)"], key="rxc_stp")
+        with col4: 
+            rx_cap = st.number_input("Capital (R$):", value=10000.0, step=1000.0, key="rxc_cap")
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            btn_rx = st.button("🔍 Rodar Backtest IFR2", type="primary", use_container_width=True)
+
+        if btn_rx and rx_ativo:
+            with st.spinner(f'Calculando elástico de {rx_ativo}...'):
+                try:
+                    df_full = tv.get_hist(symbol=rx_ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=5000)
+                    if df_full is None or len(df_full) < 200: st.error("Dados insuficientes.")
+                    else:
+                        df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                        df_full['IFR2'] = ta.rsi(df_full['Close'], length=2)
+                        df_full['MM200'] = ta.sma(df_full['Close'], length=200)
+                        df_full['MME5'] = ta.ema(df_full['Close'], length=5)
+                        df_full['Max_2d'] = df_full['High'].rolling(window=2).max().shift(1)
+                        df_full = df_full.dropna()
+
+                        data_corte = df_full.index[0] if rx_per == 'max' else df_full.index[-1] - pd.DateOffset(years=int(rx_per.replace('y','')))
+                        df = df_full[df_full.index >= data_corte].copy().reset_index()
+                        col_data = df.columns[0]
+
+                        trades, em_pos, vitorias, derrotas = [], False, 0, 0
+                        preco_entrada = 0.0
+                        min_na_op = 0.0
+                        d_ent = None
+
+                        for i in range(1, len(df)):
+                            atual = df.iloc[i]
+                            if em_pos:
+                                if atual['Low'] < min_na_op: min_na_op = atual['Low']
+                                
+                                fechou_posicao, preco_saida, motivo = False, 0.0, 'Gain ✅'
+                                
+                                if rx_saida == "Máxima dos Últimos 2 Dias" and atual['High'] >= atual['Max_2d']:
+                                    preco_saida, fechou_posicao = max(atual['Max_2d'], atual['Open']), True
+                                elif rx_saida == "Fechamento > MME5" and atual['Close'] > atual['MME5']:
+                                    preco_saida, fechou_posicao = atual['Close'], True
+                                
+                                queda_atual = (atual['Low'] / preco_entrada) - 1
+                                if not fechou_posicao and rx_stop == "Máxima Queda (10%)" and queda_atual <= -0.10:
+                                    preco_saida, fechou_posicao, motivo = preco_entrada * 0.90, True, 'Stop Queda ❌'
+
+                                if fechou_posicao:
+                                    luc_rs = rx_cap * ((preco_saida / preco_entrada) - 1)
+                                    if motivo == 'Gain ✅' and luc_rs < 0: motivo = 'Loss Técnico ❌'
+                                    
+                                    dd = ((min_na_op / preco_entrada) - 1) * 100
+                                    
+                                    trades.append({
+                                        'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'),
+                                        'Dias': (atual[col_data] - d_ent).days, 'Lucro (R$)': luc_rs, 'Queda Máx': dd, 'Situação': motivo
+                                    })
+                                    if luc_rs > 0: vitorias += 1
+                                    else: derrotas += 1
+                                    em_pos = False
+                            else:
+                                sinal_ifr = atual['IFR2'] < rx_gatilho
+                                sinal_mm200 = atual['Close'] > atual['MM200'] if rx_filtro else True
+                                if sinal_ifr and sinal_mm200:
+                                    em_pos, preco_entrada, d_ent = True, atual['Close'], atual[col_data]
+                                    min_na_op = atual['Low']
+
+                        # --- STATUS ATUAL ---
+                        st.divider()
+                        if em_pos:
+                            st.warning(f"⚠️ **OPERAÇÃO EM CURSO: {rx_ativo}**")
+                            cotacao_atual = df['Close'].iloc[-1]
+                            hoje = pd.Timestamp.today().normalize()
+                            dias_em_op = (hoje - d_ent).days
+                            
+                            res_pct = ((cotacao_atual / preco_entrada) - 1) * 100
+                            res_rs = rx_cap * res_pct / 100
+                            prej_max = ((min_na_op / preco_entrada) - 1) * 100
+                            
+                            alvo_m = "Buscando MME5" if rx_saida != "Máxima dos Últimos 2 Dias" else f"R$ {df['Max_2d'].iloc[-1]:.2f}"
+
+                            c1, c2, c3 = st.columns(3)
+                            c1.metric("Data Entrada", d_ent.strftime('%d/%m/%Y'))
+                            c2.metric("Dias em Operação", f"{dias_em_op} dias")
+                            c3.metric("Cotação Atual", f"R$ {cotacao_atual:.2f}")
+                            
+                            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+                            
+                            c4, c5, c6 = st.columns(3)
+                            c4.metric("Preço Compra", f"R$ {preco_entrada:.2f}")
+                            c5.metric("Alvo (Saída)", alvo_m)
+                            c6.metric("Resultado Atual", f"{res_pct:.2f}%", delta=f"R$ {res_rs:.2f}")
+                        else:
+                            st.success(f"✅ **{rx_ativo}: Aguardando Novo Sinal de Entrada**")
+
+                        st.divider()
+                        st.markdown(f"### 📊 Resultado IFR2: {rx_ativo}")
+                        
+                        url_tv_ifr = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{rx_ativo}"
+                        st.markdown(f"<a href='{url_tv_ifr}' target='_blank' style='text-decoration: none; font-size: 14px; color: #4da6ff;'>🔗 Abrir no TradingView</a>", unsafe_allow_html=True)
+                        
+                        if trades:
+                            df_t = pd.DataFrame(trades)
+                            c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+                            l_tot = df_t['Lucro (R$)'].sum()
+                            tx_acerto = (vitorias/len(df_t))*100
+                            
+                            m_ganho = df_t[df_t['Lucro (R$)'] > 0]['Lucro (R$)'].mean() if vitorias > 0 else 0
+                            m_perda = abs(df_t[df_t['Lucro (R$)'] <= 0]['Lucro (R$)'].mean()) if derrotas > 0 else 1
+                            payoff = m_ganho / m_perda
+                            
+                            c_m1.metric("Lucro Total", f"R$ {l_tot:,.2f}")
+                            c_m2.metric("Operações Fechadas", len(df_t))
+                            c_m3.metric("Taxa Acerto", f"{tx_acerto:.1f}%")
+                            c_m4.metric("Payoff", f"{payoff:.2f}")
+
+                            if tx_acerto > 75.0: st.success("🎯 **Máquina de Vencer:** Taxa de acerto absurdamente alta! O sistema brilha neste ativo.")
+                            elif payoff < 0.5: st.warning("⚖️ **Atenção:** Risco/retorno muito baixo. Exige disciplina de ferro no manejo emocional.")
+
+                            df_t['Queda Máx'] = df_t['Queda Máx'].map("{:.2f}%".format)
+                            
+                            # APLICA NOVA FUNÇÃO DE COR NA TABELA DO IFR2
+                            st.dataframe(df_t.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
+                        else:
+                            st.warning("Nenhuma operação concluída usando essa configuração.")
+                            
+                        # --- GRÁFICO INTERATIVO INSERIDO AQUI ---
+                        st.divider()
+                        st.markdown(f"### 📈 Gráfico Interativo: {rx_ativo}")
+                        renderizar_grafico_tv(f"BMFBOVESPA:{rx_ativo}")
+                        
+                except Exception as e: st.error(f"Erro ao processar: {e}")
