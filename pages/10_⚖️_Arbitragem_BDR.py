@@ -24,31 +24,31 @@ tv = get_tv_connection()
 # ==========================================
 # 2. DICIONÁRIO DE PARIDADES (OS 25 DE ELITE)
 # ==========================================
-# Mapeamento completo BDR -> Ação Original (Bolsa e Paridade)
+# Mapeamento CORRIGIDO: Ticker US, Bolsa e Paridade exata atualizada
 bdr_setup = {
-    'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ', 'paridade': 24},
+    'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ', 'paridade': 48},  # Ajustado pós-splits
     'P2LT34': {'us': 'PLTR', 'exchange': 'NYSE', 'paridade': 1},
     'ROXO34': {'us': 'NU', 'exchange': 'NYSE', 'paridade': 6},
     'INBR32': {'us': 'INTR', 'exchange': 'NASDAQ', 'paridade': 1},
-    'M1TA34': {'us': 'META', 'exchange': 'NASDAQ', 'paridade': 6},
-    'TSLA34': {'us': 'TSLA', 'exchange': 'NASDAQ', 'paridade': 3},
-    'LILY34': {'us': 'LLY', 'exchange': 'NYSE', 'paridade': 12},
+    'M1TA34': {'us': 'META', 'exchange': 'NASDAQ', 'paridade': 28},
+    'TSLA34': {'us': 'TSLA', 'exchange': 'NASDAQ', 'paridade': 30},
+    'LILY34': {'us': 'LLY', 'exchange': 'NYSE', 'paridade': 30},
     'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ', 'paridade': 120},
-    'AURA33': {'us': 'ORA', 'exchange': 'TSX', 'paridade': 1}, # Bolsa Canadense
-    'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ', 'paridade': 20},
-    'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ', 'paridade': 30},
-    'MUTC34': {'us': 'TSM', 'exchange': 'NYSE', 'paridade': 2},
-    'MELI34': {'us': 'MELI', 'exchange': 'NASDAQ', 'paridade': 60},
-    'C2OI34': {'us': 'COIN', 'exchange': 'NASDAQ', 'paridade': 3},
-    'ORCL34': {'us': 'ORCL', 'exchange': 'NYSE', 'paridade': 3},
-    'M2ST34': {'us': 'MSTR', 'exchange': 'NASDAQ', 'paridade': 10}, 
+    'AURA33': {'us': 'ORA', 'exchange': 'TSX', 'paridade': 1},       # Bolsa do Canadá
+    'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ', 'paridade': 40},
+    'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ', 'paridade': 60},
+    'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 6},     # Corrigido para Micron (MU)
+    'MELI34': {'us': 'MELI', 'exchange': 'NASDAQ', 'paridade': 120},
+    'C2OI34': {'us': 'COIN', 'exchange': 'NASDAQ', 'paridade': 25},
+    'ORCL34': {'us': 'ORCL', 'exchange': 'NYSE', 'paridade': 6},
+    'M2ST34': {'us': 'MSTR', 'exchange': 'NASDAQ', 'paridade': 70},  # Ajustado pós-split
     'A1MD34': {'us': 'AMD', 'exchange': 'NASDAQ', 'paridade': 4},
-    'NFLX34': {'us': 'NFLX', 'exchange': 'NASDAQ', 'paridade': 40},
-    'ITLC34': {'us': 'INTC', 'exchange': 'NASDAQ', 'paridade': 4},
-    'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ', 'paridade': 10},
-    'COCA34': {'us': 'KO', 'exchange': 'NYSE', 'paridade': 6},
+    'NFLX34': {'us': 'NFLX', 'exchange': 'NASDAQ', 'paridade': 80},
+    'ITLC34': {'us': 'INTC', 'exchange': 'NASDAQ', 'paridade': 8},
+    'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ', 'paridade': 70},  # Ajustado pós-split
+    'COCA34': {'us': 'KO', 'exchange': 'NYSE', 'paridade': 12},
     'JBSS32': {'us': 'JBSAY', 'exchange': 'OTC', 'paridade': 1}, 
-    'AAPL34': {'us': 'AAPL', 'exchange': 'NASDAQ', 'paridade': 10},
+    'AAPL34': {'us': 'AAPL', 'exchange': 'NASDAQ', 'paridade': 20},
     'XPBR31': {'us': 'XP', 'exchange': 'NASDAQ', 'paridade': 1},
     'STOC34': {'us': 'STNE', 'exchange': 'NASDAQ', 'paridade': 1}
 }
@@ -58,12 +58,19 @@ SIMBOLO_DOLAR = 'USDBRL'
 EXCHANGE_DOLAR = 'FX_IDC'
 
 def colorir_spread(row):
-    if 'Distorção (%)' in row:
-        try:
-            val = float(row['Distorção (%)'].replace('%', '').replace('+', ''))
-            if val > 1.5: return ['color: #ff4d4d; font-weight: bold'] * len(row) # BDR muito Caro (Vender)
-            elif val < -1.5: return ['color: #00FF00; font-weight: bold'] * len(row) # BDR muito Barato (Comprar)
-        except: pass
+    if 'Gap Esperado (%)' in row:
+        col = 'Gap Esperado (%)'
+    elif 'Distorção (%)' in row:
+        col = 'Distorção (%)'
+    else:
+        return [''] * len(row)
+
+    try:
+        val = float(row[col].replace('%', '').replace('+', ''))
+        # Limiares de distorção (Destaque visual)
+        if val > 2.0: return ['color: #ff4d4d; font-weight: bold'] * len(row) # BDR muito Caro (Vender)
+        elif val < -2.0: return ['color: #00FF00; font-weight: bold'] * len(row) # BDR muito Barato (Comprar)
+    except: pass
     return [''] * len(row)
 
 # ==========================================
@@ -85,7 +92,7 @@ aba_oraculo, aba_radar, aba_historico = st.tabs([
 # ==========================================
 with aba_oraculo:
     st.subheader("🔮 O Oráculo de Abertura (Caçador de Gaps)")
-    st.markdown("Use esta aba entre as **09h00 e 10h00**. O robô olha para o Pre-Market dos EUA e para o Dólar Futuro para prever exatamente onde o BDR deveria abrir na B3. Se abrir muito longe disso, é oportunidade de arbitragem nos primeiros minutos do pregão.")
+    st.markdown("Use esta aba entre as **09h00 e 10h00**. O robô olha para o Pre-Market dos EUA e para o Dólar Futuro para prever exatamente onde o BDR deveria abrir na B3.")
 
     btn_oraculo = st.button("🔍 Prever Gaps de Abertura Hoje", type="primary", use_container_width=True, key="btn_oraculo")
 
@@ -180,8 +187,8 @@ with aba_radar:
                 spread = ((cotacao_bdr / preco_teorico) - 1) * 100
 
                 acao_recomendada = "Aguardar ⏳"
-                if spread > 1.5: acao_recomendada = "Vender BDR (Caro) 🔴"
-                elif spread < -1.5: acao_recomendada = "Comprar BDR (Barato) 🟢"
+                if spread > 2.0: acao_recomendada = "Vender BDR (Caro) 🔴"
+                elif spread < -2.0: acao_recomendada = "Comprar BDR (Barato) 🟢"
 
                 resultados_radar.append({
                     'Ativo BDR': bdr,
@@ -200,7 +207,7 @@ with aba_radar:
             st.divider()
             c1, c2 = st.columns([1, 4])
             c1.metric("Dólar Atual", f"R$ {dolar_atual:.3f}")
-            c2.info("Distorções acima de +1.5% ou abaixo de -1.5% são destacadas em cor.")
+            c2.info("Distorções acima de +2.0% ou abaixo de -2.0% são destacadas em cor.")
             
             df_rad = pd.DataFrame(resultados_radar)
             df_rad['Modulo'] = df_rad['Distorção (%)'].apply(lambda x: abs(float(x.replace('%', '').replace('+', ''))))
