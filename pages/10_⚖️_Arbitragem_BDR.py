@@ -20,7 +20,7 @@ def get_tv_connection():
 tv = get_tv_connection()
 
 # ==========================================
-# 2. DICIONÁRIO DE PARIDADES (CALIBRADO B3)
+# 2. DICIONÁRIO DE PARIDADES (MATEMÁTICA CORRIGIDA)
 # ==========================================
 bdr_setup = {
     'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ', 'paridade': 48},
@@ -34,7 +34,7 @@ bdr_setup = {
     'AURA33': {'us': 'ORA', 'exchange': 'TSX', 'paridade': 1},       
     'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ', 'paridade': 12}, 
     'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ', 'paridade': 24},  
-    'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 16},    
+    'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 6},     # Corrigido o dedo gordo (era 16)
     'MELI34': {'us': 'MELI', 'exchange': 'NASDAQ', 'paridade': 120},
     'C2OI34': {'us': 'COIN', 'exchange': 'NASDAQ', 'paridade': 25},
     'ORCL34': {'us': 'ORCL', 'exchange': 'NYSE', 'paridade': 6},
@@ -134,7 +134,7 @@ with aba_oraculo:
             st.divider()
             c1, c2 = st.columns([1, 4])
             c1.metric("Dólar Usado", f"R$ {dolar_atual:.4f}")
-            c2.success("Mapeamento concluído! As distorções monstruosas foram extintas graças à calibração de paridades.")
+            c2.success("Mapeamento concluído com sucesso!")
             
             df_oraculo = pd.DataFrame(resultados_oraculo)
             df_oraculo['Modulo'] = df_oraculo['Distorção Alvo (%)'].apply(lambda x: abs(float(x.replace('%', '').replace('+', ''))))
@@ -142,7 +142,7 @@ with aba_oraculo:
             
             st.dataframe(df_oraculo.style.apply(colorir_spread, axis=1), use_container_width=True, hide_index=True)
         else:
-            st.warning("Não foi possível carregar as cotações. Verifique a conexão.")
+            st.warning("Não foi possível carregar as cotações.")
 
 # ==========================================
 # ABA 2: RADAR DE DISTORÇÃO (TEMPO REAL)
@@ -226,18 +226,36 @@ with aba_historico:
     if btn_historico:
         info_ativo = bdr_setup[ativo_hist]
         
-        with st.spinner(f"Sincronizando as bases de dados de Nova York e São Paulo para {ativo_hist}..."):
+        with st.spinner(f"Sincronizando fuso horário das bolsas para {ativo_hist}..."):
             try:
-                df_b3 = tv.get_hist(symbol=ativo_hist, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=250)
-                df_ny = tv.get_hist(symbol=info_ativo['us'], exchange=info_ativo['exchange'], interval=Interval.in_daily, n_bars=250)
-                df_usd = tv.get_hist(symbol=SIMBOLO_DOLAR, exchange=EXCHANGE_DOLAR, interval=Interval.in_daily, n_bars=250)
+                df_b3 = tv.get_hist(symbol=ativo_hist, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=300)
+                df_ny = tv.get_hist(symbol=info_ativo['us'], exchange=info_ativo['exchange'], interval=Interval.in_daily, n_bars=300)
+                df_usd = tv.get_hist(symbol=SIMBOLO_DOLAR, exchange=EXCHANGE_DOLAR, interval=Interval.in_daily, n_bars=300)
+
+                if df_b3 is None or df_ny is None or df_usd is None:
+                    st.error("Dados insuficientes retornados pela API.")
+                    st.stop()
 
                 df_b3 = df_b3[['close']].rename(columns={'close': 'BDR_Close'})
                 df_ny = df_ny[['close']].rename(columns={'close': 'US_Close'})
                 df_usd = df_usd[['close']].rename(columns={'close': 'BRL_Close'})
 
+                # A MÁGICA DA SINCRONIZAÇÃO: Cortamos as horas e deixamos só o Dia, removendo fusos conflitantes.
+                df_b3.index = pd.to_datetime(df_b3.index).tz_localize(None).normalize()
+                df_ny.index = pd.to_datetime(df_ny.index).tz_localize(None).normalize()
+                df_usd.index = pd.to_datetime(df_usd.index).tz_localize(None).normalize()
+
+                # Limpamos dias repetidos caso existam
+                df_b3 = df_b3[~df_b3.index.duplicated(keep='last')]
+                df_ny = df_ny[~df_ny.index.duplicated(keep='last')]
+                df_usd = df_usd[~df_usd.index.duplicated(keep='last')]
+
+                # Juntamos as tabelas cruzando exatamente os dias em que houve pregão simultâneo no BR e EUA
                 df_master = df_b3.join(df_ny, how='inner').join(df_usd, how='inner')
-                df_master = df_master.ffill().dropna()
+                
+                if df_master.empty:
+                    st.error("As datas não bateram entre as bolsas. Impossível gerar o cruzamento de histórico.")
+                    st.stop()
 
                 df_master['Preco_Teorico'] = (df_master['US_Close'] * df_master['BRL_Close']) / info_ativo['paridade']
                 df_master['Ratio'] = df_master['BDR_Close'] / df_master['Preco_Teorico']
@@ -277,4 +295,4 @@ with aba_historico:
                 st.line_chart(df_chart, color=["#4da6ff", "#ff4d4d", "#00FF00", "#ffffff"])
 
             except Exception as e:
-                st.error(f"Erro ao processar as bases de dados. Verifique a liquidez ou conexão. Erro: {e}")
+                st.error(f"Erro inesperado no processamento: {e}")
