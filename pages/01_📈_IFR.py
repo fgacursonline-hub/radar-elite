@@ -1,5 +1,6 @@
 import streamlit as st
 from tvDatafeed import TvDatafeed, Interval
+import streamlit.components.v1 as components
 import pandas as pd
 import pandas_ta as ta
 import time
@@ -33,6 +34,7 @@ def enviar_alerta_telegram(mensagem):
         requests.post(url, json=payload, timeout=5)
     except:
         pass
+
 tradutor_periodo_nome = {
     '1mo': '1 Mês', '3mo': '3 Meses', '6mo': '6 Meses',
     '1y': '1 Ano', '2y': '2 Anos', '5y': '5 Anos',
@@ -78,6 +80,32 @@ def colorir_lucro(row):
     if 'Resultado Atual' in row and isinstance(row['Resultado Atual'], str) and row['Resultado Atual'].startswith('+'):
         return ['color: #00FF00; font-weight: bold'] * len(row)
     return [''] * len(row)
+
+def renderizar_grafico_tv(simbolo_tv, altura=600):
+    html_tv = f"""
+    <div class="tradingview-widget-container">
+      <div id="tradingview_ifr"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+      <script type="text/javascript">
+      new TradingView.widget(
+      {{
+      "width": "100%",
+      "height": {altura},
+      "symbol": "{simbolo_tv}",
+      "interval": "D",
+      "timezone": "America/Sao_Paulo",
+      "theme": "dark",
+      "style": "1",
+      "locale": "br",
+      "enable_publishing": false,
+      "allow_symbol_change": true,
+      "container_id": "tradingview_ifr"
+    }}
+      );
+      </script>
+    </div>
+    """
+    components.html(html_tv, height=altura)
 
 # 3. INTERFACE DE ABAS
 col_titulo, col_botao = st.columns([4, 1])
@@ -185,14 +213,12 @@ with aba_padrao:
                         'Resultado Atual': f"+{res_atual:.2f}%" if res_atual > 0 else f"{res_atual:.2f}%"
                     })
                 else:
-                    # Aqui o robô verifica se o sinal aconteceu na última barra fechada
                     tem_sinal = (df_full['IFR_Prev'].iloc[-1] < 25) and (df_full['IFR'].iloc[-1] >= 25)
                     
                     if tem_sinal: 
                         preco_at = df_full['Close'].iloc[-1]
                         ls_sinais_p.append({'Ativo': ativo, 'Preço Atual': f"R$ {preco_at:.2f}"})
                         
-                        # --- O GATILHO QUE ENVIA A MENSAGEM ---
                         msg_elite = (
                             f"🎯 *CAÇADORES DE ELITE: IFR*\n\n"
                             f"🚀 *SINAL DE ENTRADA:* `{ativo}`\n"
@@ -693,10 +719,14 @@ with aba_connors:
 
                         trades, em_pos, vitorias, derrotas = [], False, 0, 0
                         preco_entrada = 0.0
+                        min_na_op = 0.0
+                        d_ent = None
 
                         for i in range(1, len(df)):
                             atual = df.iloc[i]
                             if em_pos:
+                                if atual['Low'] < min_na_op: min_na_op = atual['Low']
+                                
                                 fechou_posicao, preco_saida, motivo = False, 0.0, 'Gain ✅'
                                 
                                 if rx_saida == "Máxima dos Últimos 2 Dias" and atual['High'] >= atual['Max_2d']:
@@ -711,9 +741,12 @@ with aba_connors:
                                 if fechou_posicao:
                                     luc_rs = rx_cap * ((preco_saida / preco_entrada) - 1)
                                     if motivo == 'Gain ✅' and luc_rs < 0: motivo = 'Loss Técnico ❌'
+                                    
+                                    dd = ((min_na_op / preco_entrada) - 1) * 100
+                                    
                                     trades.append({
                                         'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'),
-                                        'Dias': (atual[col_data] - d_ent).days, 'Lucro (R$)': luc_rs, 'Situação': motivo
+                                        'Dias': (atual[col_data] - d_ent).days, 'Lucro (R$)': luc_rs, 'Queda Máx': dd, 'Situação': motivo
                                     })
                                     if luc_rs > 0: vitorias += 1
                                     else: derrotas += 1
@@ -723,9 +756,42 @@ with aba_connors:
                                 sinal_mm200 = atual['Close'] > atual['MM200'] if rx_filtro else True
                                 if sinal_ifr and sinal_mm200:
                                     em_pos, preco_entrada, d_ent = True, atual['Close'], atual[col_data]
+                                    min_na_op = atual['Low']
+
+                        # --- STATUS ATUAL (O QUE FALTAVA!) ---
+                        st.divider()
+                        if em_pos:
+                            st.warning(f"⚠️ **OPERAÇÃO EM CURSO: {rx_ativo}**")
+                            cotacao_atual = df['Close'].iloc[-1]
+                            hoje = pd.Timestamp.today().normalize()
+                            dias_em_op = (hoje - d_ent).days
+                            
+                            res_pct = ((cotacao_atual / preco_entrada) - 1) * 100
+                            res_rs = rx_cap * res_pct / 100
+                            prej_max = ((min_na_op / preco_entrada) - 1) * 100
+                            
+                            alvo_m = "Buscando MME5" if rx_saida != "Máxima dos Últimos 2 Dias" else f"R$ {df['Max_2d'].iloc[-1]:.2f}"
+
+                            c1, c2, c3 = st.columns(3)
+                            c1.metric("Data Entrada", d_ent.strftime('%d/%m/%Y'))
+                            c2.metric("Dias em Operação", f"{dias_em_op} dias")
+                            c3.metric("Cotação Atual", f"R$ {cotacao_atual:.2f}")
+                            
+                            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+                            
+                            c4, c5, c6 = st.columns(3)
+                            c4.metric("Preço Compra", f"R$ {preco_entrada:.2f}")
+                            c5.metric("Alvo (Saída)", alvo_m)
+                            c6.metric("Resultado Atual", f"{res_pct:.2f}%", delta=f"R$ {res_rs:.2f}")
+                        else:
+                            st.success(f"✅ **{rx_ativo}: Aguardando Novo Sinal de Entrada**")
 
                         st.divider()
                         st.markdown(f"### 📊 Resultado IFR2: {rx_ativo}")
+                        
+                        url_tv_ifr = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{rx_ativo}"
+                        st.markdown(f"<a href='{url_tv_ifr}' target='_blank' style='text-decoration: none; font-size: 14px; color: #4da6ff;'>🔗 Abrir no TradingView</a>", unsafe_allow_html=True)
+                        
                         if trades:
                             df_t = pd.DataFrame(trades)
                             c_m1, c_m2, c_m3, c_m4 = st.columns(4)
@@ -744,9 +810,16 @@ with aba_connors:
                             if tx_acerto > 75.0: st.success("🎯 **Máquina de Vencer:** Taxa de acerto absurdamente alta! O sistema brilha neste ativo.")
                             elif payoff < 0.5: st.warning("⚖️ **Atenção:** Risco/retorno muito baixo. Exige disciplina de ferro no manejo emocional.")
 
+                            df_t['Queda Máx'] = df_t['Queda Máx'].map("{:.2f}%".format)
                             st.dataframe(df_t.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
                         else:
                             st.warning("Nenhuma operação concluída usando essa configuração.")
+                            
+                        # --- GRÁFICO INTERATIVO INSERIDO AQUI ---
+                        st.divider()
+                        st.markdown(f"### 📈 Gráfico Interativo: {rx_ativo}")
+                        renderizar_grafico_tv(f"BMFBOVESPA:{rx_ativo}")
+                        
                 except Exception as e: st.error(f"Erro ao processar: {e}")
 
 # ==========================================
