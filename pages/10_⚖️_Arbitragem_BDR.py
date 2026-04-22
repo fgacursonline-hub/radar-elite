@@ -20,9 +20,8 @@ def get_tv_connection():
 tv = get_tv_connection()
 
 # ==========================================
-# 2. DICIONÁRIO DE PARIDADES (MATEMÁTICA CORRIGIDA)
+# 2. DICIONÁRIO DE PARIDADES (CALIBRADO B3)
 # ==========================================
-# Paridades milimetricamente ajustadas com base nos últimos desdobramentos (Splits)
 bdr_setup = {
     'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ', 'paridade': 48},
     'P2LT34': {'us': 'PLTR', 'exchange': 'NYSE', 'paridade': 1},
@@ -31,41 +30,36 @@ bdr_setup = {
     'M1TA34': {'us': 'META', 'exchange': 'NASDAQ', 'paridade': 28},
     'TSLA34': {'us': 'TSLA', 'exchange': 'NASDAQ', 'paridade': 30},
     'LILY34': {'us': 'LLY', 'exchange': 'NYSE', 'paridade': 30},
-    'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ', 'paridade': 20},   # Corrigido (Era 120)
-    'AURA33': {'us': 'ORA', 'exchange': 'TSX', 'paridade': 1},
-    'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ', 'paridade': 12},  # Corrigido (Era 40)
-    'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ', 'paridade': 24},   # Corrigido (Era 60)
-    'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 6},      # Corrigido (Era 16)
+    'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ', 'paridade': 20},  
+    'AURA33': {'us': 'ORA', 'exchange': 'TSX', 'paridade': 1},       
+    'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ', 'paridade': 12}, 
+    'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ', 'paridade': 24},  
+    'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 16},    
     'MELI34': {'us': 'MELI', 'exchange': 'NASDAQ', 'paridade': 120},
     'C2OI34': {'us': 'COIN', 'exchange': 'NASDAQ', 'paridade': 25},
     'ORCL34': {'us': 'ORCL', 'exchange': 'NYSE', 'paridade': 6},
-    'M2ST34': {'us': 'MSTR', 'exchange': 'NASDAQ', 'paridade': 70}, 
-    'A1MD34': {'us': 'AMD', 'exchange': 'NASDAQ', 'paridade': 8},     # Corrigido (Era 4)
-    'NFLX34': {'us': 'NFLX', 'exchange': 'NASDAQ', 'paridade': 50},   # Corrigido (Era 80)
-    'ITLC34': {'us': 'INTC', 'exchange': 'NASDAQ', 'paridade': 6},    # Corrigido (Era 8)
-    'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ', 'paridade': 70},
-    'COCA34': {'us': 'KO', 'exchange': 'NYSE', 'paridade': 6},        # Corrigido (Era 12)
+    'M2ST34': {'us': 'MSTR', 'exchange': 'NASDAQ', 'paridade': 70},  
+    'A1MD34': {'us': 'AMD', 'exchange': 'NASDAQ', 'paridade': 8},    
+    'NFLX34': {'us': 'NFLX', 'exchange': 'NASDAQ', 'paridade': 50},  
+    'ITLC34': {'us': 'INTC', 'exchange': 'NASDAQ', 'paridade': 6},    
+    'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ', 'paridade': 70},  
+    'COCA34': {'us': 'KO', 'exchange': 'NYSE', 'paridade': 6},       
     'JBSS32': {'us': 'JBSAY', 'exchange': 'OTC', 'paridade': 1}, 
     'AAPL34': {'us': 'AAPL', 'exchange': 'NASDAQ', 'paridade': 20},
     'XPBR31': {'us': 'XP', 'exchange': 'NASDAQ', 'paridade': 1},
     'STOC34': {'us': 'STNE', 'exchange': 'NASDAQ', 'paridade': 1}
 }
 
-# Símbolo do Dólar para cálculo de conversão
 SIMBOLO_DOLAR = 'USDBRL'
 EXCHANGE_DOLAR = 'FX_IDC'
 
 def colorir_spread(row):
-    # Procura a coluna unificada de distorção
     col = 'Distorção Alvo (%)' if 'Distorção Alvo (%)' in row else None
-    
     if col:
         try:
             val = float(row[col].replace('%', '').replace('+', ''))
-            # Se for positivo (BDR Barato), pinta a linha toda de verde
             if val > 1.0: 
                 return ['color: #00FF00; font-weight: bold'] * len(row)
-            # Se for negativo (BDR Caro), pinta a linha toda de vermelho pálido
             elif val < -1.0: 
                 return ['color: #ff4d4d; font-weight: bold'] * len(row)
         except: pass
@@ -86,7 +80,7 @@ aba_oraculo, aba_radar, aba_historico = st.tabs([
 ])
 
 # ==========================================
-# ABA 1: O ORÁCULO DE ABERTURA (PRE-MARKET)
+# ABA 1: O ORÁCULO DE ABERTURA
 # ==========================================
 with aba_oraculo:
     st.subheader("🔮 O Oráculo de Abertura (Caçador de Gaps)")
@@ -116,7 +110,6 @@ with aba_oraculo:
                 if df_us is None: continue
                 cotacao_us_atual = df_us['close'].iloc[-1]
 
-                # FÓRMULA UNIFICADA: (Teorico / Real) - 1
                 preco_teorico = (cotacao_us_atual * dolar_atual) / info['paridade']
                 gap_esperado = ((preco_teorico / fechamento_bdr_ontem) - 1) * 100
 
@@ -181,7 +174,6 @@ with aba_radar:
                 if df_us is None: continue
                 cotacao_us = df_us['close'].iloc[-1]
 
-                # FÓRMULA UNIFICADA: (Teorico / Real) - 1
                 preco_teorico = (cotacao_us * dolar_atual) / info['paridade']
                 spread = ((preco_teorico / cotacao_bdr) - 1) * 100
 
@@ -219,7 +211,7 @@ with aba_radar:
 # ==========================================
 with aba_historico:
     st.subheader("📉 Arbitragem Histórica (Z-Score & Mean Reversion)")
-        st.markdown("O robô calcula o *Ratio* diário dos últimos 250 dias e extrai o **Z-Score**. Se o Z-Score passar de +2.0 ou cair de -2.0, o elástico estatístico estourou.")
+    st.markdown("O robô calcula o *Ratio* diário dos últimos 250 dias e extrai o **Z-Score**. Se o Z-Score passar de +2.0 ou cair de -2.0, o elástico estatístico estourou.")
 
     c_h1, c_h2, c_h3 = st.columns(3)
     with c_h1:
