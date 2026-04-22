@@ -69,26 +69,18 @@ def colorir_lucro(row):
     except: return [''] * len(row)
 
 # ==========================================
-# 2. MOTOR MATEMÁTICO: FURA-TETO / CHÃO
+# 2. MOTOR MATEMÁTICO PURIFICADO
 # ==========================================
 def identificar_fura_teto_chao(df, filtro_tendencia=True):
     df['MME8'] = ta.ema(df['Close'], length=8)
     
-    # Define as linhas de gatilho baseadas no candle anterior (sem olhar o futuro)
-    df['Teto'] = df['High'].shift(1)
-    df['Chao'] = df['Low'].shift(1)
-    
     if filtro_tendencia:
-        df['Pode_Comprar'] = df['Close'].shift(1) > df['MME8'].shift(1)
-        df['Pode_Vender'] = df['Close'].shift(1) < df['MME8'].shift(1)
+        # A lógica correta: O fechamento de HOJE define se AMANHÃ armou.
+        df['Armou_Teto'] = df['Close'] > df['MME8']
+        df['Armou_Chao'] = df['Close'] < df['MME8']
     else:
-        df['Pode_Comprar'] = True
-        df['Pode_Vender'] = True
-
-    # Um sinal está "Armado" hoje se as condições da MME8 forem favoráveis.
-    # O rompimento (Gatilho) acontecerá no candle de amanhã.
-    df['Armou_Teto'] = df['Pode_Comprar']
-    df['Armou_Chao'] = df['Pode_Vender']
+        df['Armou_Teto'] = True
+        df['Armou_Chao'] = True
     
     return df
 
@@ -162,45 +154,60 @@ with aba_radar:
                     atual, ontem = df_back.iloc[i], df_back.iloc[i-1]
                     
                     if em_pos:
-                        fechou = False
-                        if direcao_trade == 1: # Comprado (Fura-Teto)
+                        if direcao_trade == 1: 
                             if atual['Low'] <= stop_loss:
                                 lucro_total_ativo += rad_capital * ((stop_loss/preco_entrada)-1)
-                                fechou = True
+                                total_trades += 1; em_pos = False
                             elif atual['High'] >= alvo:
                                 lucro_total_ativo += rad_capital * ((alvo/preco_entrada)-1)
-                                fechou = True; vitorias += 1
-                        else: # Vendido (Fura-Chão)
+                                total_trades += 1; vitorias += 1; em_pos = False
+                        else: 
                             if atual['High'] >= stop_loss:
                                 lucro_total_ativo += rad_capital * ((preco_entrada-stop_loss)/preco_entrada)
-                                fechou = True
+                                total_trades += 1; em_pos = False
                             elif atual['Low'] <= alvo:
                                 lucro_total_ativo += rad_capital * ((preco_entrada-alvo)/preco_entrada)
-                                fechou = True; vitorias += 1
-                                
-                        if fechou:
-                            total_trades += 1
-                            em_pos = False
+                                total_trades += 1; vitorias += 1; em_pos = False
                         continue
 
-                    # Lógica de Entrada Matemática (Gatilho)
                     if not em_pos:
                         if "Compra" in direcao_sel or "Ambos" in direcao_sel:
                             if ontem['Armou_Teto'] and atual['High'] >= (ontem['High'] + 0.01):
                                 em_pos, direcao_trade = True, 1
-                                preco_entrada = max(ontem['High'] + 0.01, atual['Open'])
+                                gatilho_compra = ontem['High'] + 0.01
+                                preco_entrada = max(gatilho_compra, atual['Open'])
                                 d_ent = atual[col_data]
                                 stop_loss = ontem['Low'] - 0.01 if "Mínima" in rad_stop_loss else preco_entrada * 0.95
                                 alvo = preco_entrada + ((preco_entrada - stop_loss) * alvo_val) if "Risco" in tipo_alvo else preco_entrada * (1 + (alvo_val/100))
-                                continue
+                                
+                                # Trava de mesmo dia
+                                if atual['Low'] <= stop_loss:
+                                    lucro_total_ativo += rad_capital * ((stop_loss/preco_entrada)-1)
+                                    total_trades += 1; em_pos = False
+                                    continue
+                                elif atual['High'] >= alvo:
+                                    lucro_total_ativo += rad_capital * ((alvo/preco_entrada)-1)
+                                    total_trades += 1; vitorias += 1; em_pos = False
+                                    continue
 
-                        if "Venda" in direcao_sel or "Ambos" in direcao_sel:
+                        if ("Venda" in direcao_sel or "Ambos" in direcao_sel) and not em_pos:
                             if ontem['Armou_Chao'] and atual['Low'] <= (ontem['Low'] - 0.01):
                                 em_pos, direcao_trade = True, -1
-                                preco_entrada = min(ontem['Low'] - 0.01, atual['Open'])
+                                gatilho_venda = ontem['Low'] - 0.01
+                                preco_entrada = min(gatilho_venda, atual['Open'])
                                 d_ent = atual[col_data]
                                 stop_loss = ontem['High'] + 0.01 if "Mínima" in rad_stop_loss else preco_entrada * 1.05
                                 alvo = preco_entrada - ((stop_loss - preco_entrada) * alvo_val) if "Risco" in tipo_alvo else preco_entrada * (1 - (alvo_val/100))
+                                
+                                # Trava de mesmo dia
+                                if atual['High'] >= stop_loss:
+                                    lucro_total_ativo += rad_capital * ((preco_entrada-stop_loss)/preco_entrada)
+                                    total_trades += 1; em_pos = False
+                                    continue
+                                elif atual['Low'] <= alvo:
+                                    lucro_total_ativo += rad_capital * ((preco_entrada-alvo)/preco_entrada)
+                                    total_trades += 1; vitorias += 1; em_pos = False
+                                    continue
 
                 if total_trades > 0:
                     ls_historico.append({
@@ -266,7 +273,7 @@ with aba_individual:
     
     cr1, cr2, cr3, cr4 = st.columns(4)
     with cr1:
-        rx_ativo = st.text_input("Ativo Base:", value="PETR4", key="rx_ft_ativo").upper().replace('.SA', '')
+        rx_ativo = st.text_input("Ativo Base:", value="PRIO3", key="rx_ft_ativo").upper().replace('.SA', '')
         rx_direcao = st.selectbox("Direção:", ["Apenas Fura-Teto (Compra)", "Apenas Fura-Chão (Venda)", "Ambos"], key="rx_ft_dir")
         rx_capital = st.number_input("Capital Operado (R$):", value=10000.0, step=1000.0, key="rx_ft_cap")
     with cr2:
@@ -327,21 +334,45 @@ with aba_individual:
                             continue
 
                         if not em_pos:
-                            if ("Compra" in rx_direcao or "Ambos" in rx_direcao) and ontem['Armou_Teto'] and atual['High'] >= (ontem['High'] + 0.01):
-                                em_pos, direcao_trade = True, 1
-                                preco_entrada = max(ontem['High'] + 0.01, atual['Open'])
-                                d_ent = atual[col_data]
-                                extremo_trade = atual['Low']
-                                stop_loss = ontem['Low'] - 0.01 if "Mínima" in rx_stop_loss else preco_entrada * 0.95
-                                alvo = preco_entrada + ((preco_entrada - stop_loss) * rx_alvo_val) if "Risco" in rx_tipo_alvo else preco_entrada * (1 + (rx_alvo_val/100))
+                            if ("Compra" in rx_direcao or "Ambos" in rx_direcao) and ontem['Armou_Teto']:
+                                gatilho_compra = ontem['High'] + 0.01
+                                if atual['High'] >= gatilho_compra:
+                                    em_pos, direcao_trade = True, 1
+                                    preco_entrada = max(gatilho_compra, atual['Open'])
+                                    d_ent = atual[col_data]
+                                    extremo_trade = atual['Low']
+                                    stop_loss = ontem['Low'] - 0.01 if "Mínima" in rx_stop_loss else preco_entrada * 0.95
+                                    alvo = preco_entrada + ((preco_entrada - stop_loss) * rx_alvo_val) if "Risco" in rx_tipo_alvo else preco_entrada * (1 + (rx_alvo_val/100))
+                                    
+                                    # Trava de Saída no Mesmo Dia da Entrada
+                                    if atual['Low'] <= stop_loss:
+                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Direção': 'Compra', 'Duração': 0, 'Lucro (R$)': rx_capital * ((stop_loss/preco_entrada)-1), 'Queda Máx': (atual['Low']/preco_entrada)-1, 'Situação': 'Stop ❌'})
+                                        derrotas += 1; em_pos = False
+                                        continue
+                                    elif atual['High'] >= alvo:
+                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Direção': 'Compra', 'Duração': 0, 'Lucro (R$)': rx_capital * ((alvo/preco_entrada)-1), 'Queda Máx': (atual['Low']/preco_entrada)-1, 'Situação': 'Gain ✅'})
+                                        vitorias += 1; em_pos = False
+                                        continue
                             
-                            elif ("Venda" in rx_direcao or "Ambos" in rx_direcao) and ontem['Armou_Chao'] and atual['Low'] <= (ontem['Low'] - 0.01):
-                                em_pos, direcao_trade = True, -1
-                                preco_entrada = min(ontem['Low'] - 0.01, atual['Open'])
-                                d_ent = atual[col_data]
-                                extremo_trade = atual['High']
-                                stop_loss = ontem['High'] + 0.01 if "Mínima" in rx_stop_loss else preco_entrada * 1.05
-                                alvo = preco_entrada - ((stop_loss - preco_entrada) * rx_alvo_val) if "Risco" in rx_tipo_alvo else preco_entrada * (1 - (rx_alvo_val/100))
+                            if ("Venda" in rx_direcao or "Ambos" in rx_direcao) and not em_pos and ontem['Armou_Chao']:
+                                gatilho_venda = ontem['Low'] - 0.01
+                                if atual['Low'] <= gatilho_venda:
+                                    em_pos, direcao_trade = True, -1
+                                    preco_entrada = min(gatilho_venda, atual['Open'])
+                                    d_ent = atual[col_data]
+                                    extremo_trade = atual['High']
+                                    stop_loss = ontem['High'] + 0.01 if "Mínima" in rx_stop_loss else preco_entrada * 1.05
+                                    alvo = preco_entrada - ((stop_loss - preco_entrada) * rx_alvo_val) if "Risco" in rx_tipo_alvo else preco_entrada * (1 - (rx_alvo_val/100))
+                                    
+                                    # Trava de Saída no Mesmo Dia da Entrada
+                                    if atual['High'] >= stop_loss:
+                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Direção': 'Venda', 'Duração': 0, 'Lucro (R$)': rx_capital * ((preco_entrada-stop_loss)/preco_entrada), 'Queda Máx': (preco_entrada-atual['High'])/preco_entrada, 'Situação': 'Stop ❌'})
+                                        derrotas += 1; em_pos = False
+                                        continue
+                                    elif atual['Low'] <= alvo:
+                                        trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Direção': 'Venda', 'Duração': 0, 'Lucro (R$)': rx_capital * ((preco_entrada-alvo)/preco_entrada), 'Queda Máx': (preco_entrada-atual['High'])/preco_entrada, 'Situação': 'Gain ✅'})
+                                        vitorias += 1; em_pos = False
+                                        continue
                                     
                     st.divider()
                     
