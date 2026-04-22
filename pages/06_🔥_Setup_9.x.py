@@ -122,11 +122,10 @@ with aba_padrao:
                 df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 df_full = df_full.dropna()
                 
-                # --- CÁLCULO DA MME9 ---
                 df_full['MME9'] = ta.ema(df_full['Close'], length=9)
                 df_full['MME9_Prev1'] = df_full['MME9'].shift(1)
                 df_full['MME9_Prev2'] = df_full['MME9'].shift(2)
-                df_full['MME9_Prev3'] = df_full['MME9'].shift(3) # Essencial para o Verdadeiro 9.4
+                df_full['MME9_Prev3'] = df_full['MME9'].shift(3) 
                 df_full = df_full.dropna()
 
                 data_atual = df_full.index[-1]
@@ -154,7 +153,6 @@ with aba_padrao:
                 df_back = df.reset_index()
                 col_data = df_back.columns[0]
 
-                # --- MOTOR DE BACKTEST MULTI-SETUP (9.1, 9.2, 9.3, 9.4) ---
                 for i in range(3, len(df_back)):
                     mme9_atual = df_back['MME9'].iloc[i]
                     mme9_p1 = df_back['MME9_Prev1'].iloc[i]
@@ -170,11 +168,9 @@ with aba_padrao:
                     fechou_abaixo_fech_ant1 = df_back['Close'].iloc[i] < df_back['Close'].iloc[i-1]
                     fechou_abaixo_fech_ant2 = df_back['Close'].iloc[i-1] < df_back['Close'].iloc[i-2]
                     
-                    # A MÁGICA DO 9.4 REAL: Subia, caiu num dia, voltou a subir no seguinte (Armadilha)
                     setup_94_compra = (mme9_p2 > mme9_p3) and (mme9_p1 < mme9_p2) and (mme9_atual > mme9_p1)
 
                     if em_pos:
-                        # 1. Verifica Stop Loss Original (Igual para todos)
                         if df_back['Low'].iloc[i] <= stop_loss:
                             d_sai = df_back[col_data].iloc[i]
                             duracao = (d_sai - d_ent).days
@@ -185,7 +181,6 @@ with aba_padrao:
                             em_pos, saida_armada = False, False
                             continue
                         
-                        # 2. Verifica Gatilho de Saída (Trailing Stop da MME9)
                         if saida_armada:
                             if df_back['Low'].iloc[i] < gatilho_saida:
                                 d_sai = df_back[col_data].iloc[i]
@@ -199,7 +194,6 @@ with aba_padrao:
                             elif media_subindo:
                                 saida_armada = False
 
-                        # 3. Arma a saída se a MME9 virar para baixo
                         if media_virou_baixo and not saida_armada:
                             saida_armada = True
                             gatilho_saida = df_back['Low'].iloc[i]
@@ -532,6 +526,7 @@ with aba_avancado:
             df_resumo['Lucro R$'] = df_resumo['Lucro R$'].apply(lambda x: f"R$ {x:,.2f}")
             st.dataframe(df_resumo, use_container_width=True, hide_index=True)
         else: st.warning("Nenhuma operação finalizada.")
+
 # ==========================================
 # ABA 3: RAIO-X DO ATIVO INDIVIDUAL (FAMÍLIA 9.x)
 # ==========================================
@@ -697,6 +692,10 @@ with aba_individual:
                         st.divider()
                         st.markdown(f"### 📊 Resultado: {ativo} ({setup_escolhido_i.split()[1]})")
                         
+                        # --- LINK PARA O TRADINGVIEW INSERIDO AQUI ---
+                        url_tv_individual = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{ativo}"
+                        st.markdown(f"<a href='{url_tv_individual}' target='_blank' style='text-decoration: none; font-size: 14px; color: #4da6ff;'>📊 Visualizar Gráfico de {ativo} no TradingView</a>", unsafe_allow_html=True)
+                        
                         if len(trades) > 0:
                             df_t = pd.DataFrame(trades)
                             mc1, mc2, mc3, mc4 = st.columns(4)
@@ -711,6 +710,7 @@ with aba_individual:
                         else:
                             st.warning("Nenhuma operação concluída usando essa configuração neste período.")
                 except Exception as e: st.error(f"Erro: {e}")
+
 # ==========================================
 # ABA 4: RAIO-X FUTUROS (DAY TRADE MULTI-SETUP)
 # ==========================================
@@ -789,10 +789,7 @@ with aba_futuros:
                         mme9_virou_baixo = (mme9_p1 > mme9_p2) and (mme9_atual < mme9_p1)
                         mme9_subindo = mme9_atual > mme9_p1
                         
-                        # 9.4 COMPRA: Subia, caiu num dia, subiu no seguinte
                         setup_94_compra = (mme9_p2 > mme9_p3) and (mme9_p1 < mme9_p2) and (mme9_atual > mme9_p1)
-                        
-                        # 9.4 VENDA: Caía, subiu num dia, caiu no seguinte
                         setup_94_venda = (mme9_p2 < mme9_p3) and (mme9_p1 > mme9_p2) and (mme9_atual < mme9_p1)
 
                         fechou_abaixo_min_ant = df_back['Close'].iloc[i] < df_back['Low'].iloc[i-1]
@@ -813,7 +810,6 @@ with aba_futuros:
                         media_saida_subindo = ma_atual > ma_prev1
                         media_saida_caindo = ma_atual < ma_prev1
 
-                        # --- ZERAGEM NO FIM DO DIA ---
                         if posicao != 0 and fut_zerar_daytrade and d_at.date() != d_ant.date():
                             p_sai = df_back['Close'].iloc[i-1]
                             luc = (p_sai - preco_entrada) * fut_contratos * fut_multiplicador if posicao == 1 else (preco_entrada - p_sai) * fut_contratos * fut_multiplicador
@@ -831,7 +827,6 @@ with aba_futuros:
                             posicao, setup_compra, setup_venda, saida_armada = 0, False, False, False
                             continue
 
-                        # --- LÓGICA DE OPERAÇÃO ---
                         if posicao == 1: 
                             if df_back['Low'].iloc[i] <= stop_loss:
                                 luc = (stop_loss - preco_entrada) * fut_contratos * fut_multiplicador
@@ -943,6 +938,10 @@ with aba_futuros:
                         st.divider()
                         st.markdown(f"### 📊 Resultado: {fut_selecionado} ({setup_escolhido_f.split()[1]} - {direcao_fut})")
                         st.caption(f"📅 Período: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
+                        
+                        # --- LINK PARA O TRADINGVIEW INSERIDO AQUI (MERCADO FUTURO) ---
+                        url_fut_individual = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{fut_ativo.replace('!', '%21')}"
+                        st.markdown(f"<a href='{url_fut_individual}' target='_blank' style='text-decoration: none; font-size: 14px; color: #4da6ff;'>📊 Visualizar Gráfico no TradingView</a>", unsafe_allow_html=True)
                         
                         l_total = df_t['Lucro (R$)'].sum()
                         vits_df = df_t[df_t['Lucro (R$)'] > 0]
