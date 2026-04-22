@@ -261,6 +261,109 @@ else:
 st.divider()
 
 # ==========================================
+# 🦉 RADAR DO AFTER-MARKET (INÍCIO)
+# ==========================================
+st.divider()
+st.subheader("🦉 Como as stocks estão agora? (Radar After-Market)")
+st.markdown("Confira a movimentação nos Estados Unidos neste exato momento e antecipe o humor da B3.")
+
+if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_width=True):
+    
+    # Dicionário resumido (apenas o necessário para varrer os EUA)
+    bdr_setup_home = {
+        'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ'},
+        'P2LT34': {'us': 'PLTR', 'exchange': 'NYSE'},
+        'ROXO34': {'us': 'NU', 'exchange': 'NYSE'},
+        'INBR32': {'us': 'INTR', 'exchange': 'NASDAQ'},
+        'M1TA34': {'us': 'META', 'exchange': 'NASDAQ'},
+        'TSLA34': {'us': 'TSLA', 'exchange': 'NASDAQ'},
+        'LILY34': {'us': 'LLY', 'exchange': 'NYSE'},
+        'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ'},  
+        'AURA33': {'us': 'AUGO', 'exchange': 'NASDAQ'},       
+        'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ'}, 
+        'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ'},  
+        'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ'},    
+        'MELI34': {'us': 'MELI', 'exchange': 'NASDAQ'},
+        'C2OI34': {'us': 'COIN', 'exchange': 'NASDAQ'},
+        'ORCL34': {'us': 'ORCL', 'exchange': 'NYSE'},
+        'M2ST34': {'us': 'MSTR', 'exchange': 'NASDAQ'},  
+        'A1MD34': {'us': 'AMD', 'exchange': 'NASDAQ'},    
+        'NFLX34': {'us': 'NFLX', 'exchange': 'NASDAQ'},  
+        'ITLC34': {'us': 'INTC', 'exchange': 'NASDAQ'},    
+        'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ'},  
+        'COCA34': {'us': 'KO', 'exchange': 'NYSE'},       
+        'JBSS32': {'us': 'JBSAY', 'exchange': 'OTC'}, 
+        'AAPL34': {'us': 'AAPL', 'exchange': 'NASDAQ'},
+        'XPBR31': {'us': 'XP', 'exchange': 'NASDAQ'},
+        'STOC34': {'us': 'STNE', 'exchange': 'NASDAQ'}
+    }
+    
+    ls_after = []
+    p_bar_after = st.progress(0)
+    status_after = st.empty()
+    
+    # Importa caso a TV não esteja declarada no início deste ficheiro
+    from tvDatafeed import TvDatafeed, Interval
+    import pandas as pd
+    import time
+    
+    # Usa cache para não rebentar a conexão a cada clique
+    @st.cache_resource
+    def get_tv_conn_home():
+        return TvDatafeed()
+    tv_home = get_tv_conn_home()
+        
+    for idx, (bdr, info) in enumerate(bdr_setup_home.items()):
+        status_after.text(f"Corujando {info['us']} no mercado internacional... ({idx+1}/{len(bdr_setup_home)})")
+        p_bar_after.progress((idx + 1) / len(bdr_setup_home))
+        
+        try:
+            # 1. Puxa o Fechamento Regular (pregão oficial)
+            df_reg = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
+            if df_reg is None: continue
+            fecho_regular = df_reg['close'].iloc[-1]
+            
+            # 2. Puxa o Preço em Tempo Real / After-Hours / Pre-Market
+            df_ext = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
+            if df_ext is None: continue
+            preco_atual = df_ext['close'].iloc[-1]
+            
+            # Cálculo da Variação Exata
+            var_pct = ((preco_atual / fecho_regular) - 1) * 100
+            
+            ls_after.append({
+                'BDR (B3)': bdr,
+                'Ticker EUA': info['us'],
+                'Fecho Oficial': f"$ {fecho_regular:.2f}",
+                'Preço After-Market': f"$ {preco_atual:.2f}",
+                'Variação (%)': f"+{var_pct:.2f}%" if var_pct > 0 else f"{var_pct:.2f}%",
+                '_var_raw': var_pct # Coluna invisível usada só para ordenar
+            })
+        except: pass
+        time.sleep(0.05)
+        
+    p_bar_after.empty()
+    status_after.empty()
+    
+    if ls_after:
+        df_after = pd.DataFrame(ls_after)
+        
+        # Ordena colocando os que mais subiram no topo
+        df_after = df_after.sort_values(by='_var_raw', ascending=False).drop(columns=['_var_raw'])
+        
+        # Função para pintar os lucros de verde e prejuízos de vermelho
+        def colorir_after(row):
+            try:
+                val = float(row['Variação (%)'].replace('%', '').replace('+', ''))
+                if val > 0: return ['color: #00FF00; font-weight: bold'] * len(row)
+                elif val < 0: return ['color: #ff4d4d; font-weight: bold'] * len(row)
+            except: pass
+            return [''] * len(row)
+            
+        st.dataframe(df_after.style.apply(colorir_after, axis=1), use_container_width=True, hide_index=True)
+    else:
+        st.warning("Nenhum dado capturado no momento. A API pode estar congestionada.")
+# ==========================================
 # 5. O SEU ARSENAL E LINKS ÚTEIS
 # ==========================================
 st.subheader("🛠️ O Seu Arsenal de Ferramentas")
