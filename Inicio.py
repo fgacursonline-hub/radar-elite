@@ -39,7 +39,7 @@ if not st.session_state['autenticado']:
     st.stop()
 
 # ==========================================
-# 2. LISTAS DE ATIVOS E CONEXÃO
+# 2. CONEXÃO E CACHE DE DADOS
 # ==========================================
 if 'tv' not in st.session_state:
     try:
@@ -70,7 +70,35 @@ ibrx_selecao = [
 ]
 todos_ativos = list(set(bdrs_elite + ibrx_selecao))
 
-# --- Função em Cache para ranquear os ativos rapidamente ---
+# --- Função de Cache Macro (IBOV, BTC, OURO, etc) ---
+@st.cache_data(ttl=300) # Atualiza a cada 5 minutos
+def buscar_dados_macro():
+    tv_local = TvDatafeed()
+    macros = {
+        'IBOV': {'symbol': 'IBOV', 'exchange': 'BMFBOVESPA', 'nome': 'IBOVESPA (Brasil)', 'prefix': 'pts', 'formato': '{:,.0f}'},
+        'EWZ': {'symbol': 'EWZ', 'exchange': 'AMEX', 'nome': 'EWZ (ETF Brasil EUA)', 'prefix': '$', 'formato': '{:.2f}'},
+        'BTC': {'symbol': 'BTCUSD', 'exchange': 'BITSTAMP', 'nome': 'Bitcoin (BTC)', 'prefix': '$', 'formato': '{:,.0f}'},
+        'GOLD': {'symbol': 'XAUUSD', 'exchange': 'OANDA', 'nome': 'Ouro (Spot)', 'prefix': '$', 'formato': '{:.2f}'},
+        'BRENT': {'symbol': 'UKOIL', 'exchange': 'TVC', 'nome': 'Petróleo Brent', 'prefix': '$', 'formato': '{:.2f}'}
+    }
+    
+    resultados = []
+    for chave, config in macros.items():
+        try:
+            df = tv_local.get_hist(symbol=config['symbol'], exchange=config['exchange'], interval=Interval.in_daily, n_bars=2)
+            if df is not None and len(df) >= 2:
+                fecho_hj = df['close'].iloc[-1]
+                fecho_ontem = df['close'].iloc[-2]
+                variacao = ((fecho_hj - fecho_ontem) / fecho_ontem) * 100
+                valor_formatado = f"{config['prefix']} " + config['formato'].format(fecho_hj)
+                resultados.append({'nome': config['nome'], 'valor': valor_formatado, 'variacao': variacao})
+            else:
+                resultados.append({'nome': config['nome'], 'valor': 'N/A', 'variacao': 0})
+        except:
+            resultados.append({'nome': config['nome'], 'valor': 'N/A', 'variacao': 0})
+    return resultados
+
+# --- Função de Cache Ranking B3 ---
 @st.cache_data(ttl=900) # Memória dura 15 minutos para não travar a tela
 def buscar_ranking_ativos(ativos):
     tv_local = TvDatafeed()
@@ -79,7 +107,6 @@ def buscar_ranking_ativos(ativos):
     
     for ativo in ativos:
         try:
-            # Puxa 4000 barras para ter certeza do topo histórico
             df = tv_local.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=4000)
             if df is not None and len(df) >= 2:
                 fecho_hj = df['close'].iloc[-1]
@@ -87,32 +114,24 @@ def buscar_ranking_ativos(ativos):
                 max_hj = df['high'].iloc[-1]
                 
                 var_pct = ((fecho_hj - fecho_ontem) / fecho_ontem) * 100
-                
                 lista_rank.append({'Ativo': ativo, 'Preço': fecho_hj, 'Variação': var_pct})
                 
-                # Regra do Topo Histórico (Máxima de hoje > Máxima de toda a história passada)
                 max_historica = df['high'].iloc[:-1].max()
                 if max_hj > max_historica:
                     rompendo_topo.append({'Ativo': ativo, 'Preço': fecho_hj, 'Variação': var_pct})
-                    
         except Exception: pass
         time.sleep(0.01)
         
-    df_rank = pd.DataFrame(lista_rank)
-    df_topos = pd.DataFrame(rompendo_topo)
-    return df_rank, df_topos
+    return pd.DataFrame(lista_rank), pd.DataFrame(rompendo_topo)
 
 def formata_moeda_pct(val, is_pct=False):
-    if is_pct:
-        return f"+{val:.2f}%" if val > 0 else f"{val:.2f}%"
+    if is_pct: return f"+{val:.2f}%" if val > 0 else f"{val:.2f}%"
     return f"R$ {val:.2f}"
 
 def colorir_tabela(row):
-    val = row['Variação (%)']
-    val_float = float(val.replace('%', '').replace('+', ''))
+    val_float = float(row['Variação (%)'].replace('%', '').replace('+', ''))
     cor = 'lightgreen' if val_float > 0 else 'lightcoral' if val_float < 0 else 'white'
     return [f'color: {cor}'] * len(row)
-
 
 # ==========================================
 # 3. TELA APÓS LOGIN (DASHBOARD)
@@ -129,8 +148,8 @@ with c_sair:
 
 st.divider()
 
-# --- TERMÔMETRO DO MERCADO (IBOV) ---
-st.subheader("🌐 Termômetro do Mercado (IBOVESPA)")
+# --- TERMÔMETRO MACRO GLOBAL ---
+st.subheader("🌐 Termômetro Macro Global")
 
 fuso_br = timezone(timedelta(hours=-3))
 agora = datetime.now(fuso_br)
@@ -144,40 +163,36 @@ def is_mercado_aberto(data_atual):
     if data_atual.year == 2026 and (data_atual.month, data_atual.day) in feriados_moveis_2026: return False
     return True
 
-texto_status = "🟢 Mercado Aberto" if is_mercado_aberto(agora) else "🔴 Mercado Fechado"
-st.caption(f"{texto_status}. Última atualização: {agora.strftime('%d/%m às %H:%M')}.")
+texto_status = "🟢 B3 Aberta" if is_mercado_aberto(agora) else "🔴 B3 Fechada"
+st.caption(f"{texto_status} | Globais 24h. Última atualização: {agora.strftime('%d/%m às %H:%M')}.")
 
-try:
-    tv = st.session_state.tv
-    df_ibov = tv.get_hist(symbol='IBOV', exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=2)
-    if df_ibov is not None and len(df_ibov) >= 2:
-        fecho_hoje = df_ibov['close'].iloc[-1]
-        fecho_ontem = df_ibov['close'].iloc[-2]
-        variacao = ((fecho_hoje - fecho_ontem) / fecho_ontem) * 100
-        
-        col_m1, col_m2, col_m3 = st.columns(3)
-        with col_m1: st.metric(label="Pontuação Atual", value=f"{fecho_hoje:,.0f} pts", delta=f"{variacao:.2f}%")
-        with col_m2: 
-            estado_mercado = "🐂 Bull Market (Comprador)" if variacao > 0 else "🐻 Bear Market (Vendedor)"
-            st.info(f"**Sentimento:** {estado_mercado}")
-        with col_m3: st.warning("💡 **Dica de Ouro:** Não lute contra a tendência principal do IBOV.")
-except Exception: pass
+with st.spinner("Conectando com as bolsas globais..."):
+    dados_macro = buscar_dados_macro()
+
+if dados_macro:
+    cols_macro = st.columns(len(dados_macro))
+    for i, col in enumerate(cols_macro):
+        with col:
+            st.metric(
+                label=dados_macro[i]['nome'], 
+                value=dados_macro[i]['valor'], 
+                delta=f"{dados_macro[i]['variacao']:.2f}%" if dados_macro[i]['valor'] != 'N/A' else None
+            )
 
 st.divider()
 
 # ==========================================
 # 4. PAINEL DE DESTAQUES (ALTAS, QUEDAS E TOPOS)
 # ==========================================
-st.subheader("🔥 Radar de Destaques (Sua Lista de Ativos)")
-st.markdown("Monitoramento em tempo real das maiores distorções e rompimentos do dia.")
+st.subheader("🔥 Radar de Destaques (IBrX + BDRs)")
+st.markdown("Monitoramento das maiores forças e fraquezas do mercado de capitais brasileiro hoje.")
 
-with st.spinner("Varrendo os 100 ativos da sua lista... (Isso leva uns segundos apenas na primeira vez)"):
+with st.spinner("Varrendo o mercado em busca de oportunidades extremas..."):
     df_ranking, df_topos = buscar_ranking_ativos(todos_ativos)
 
 col_altas, col_quedas, col_topos = st.columns(3)
 
 if not df_ranking.empty:
-    # Prepara os Dataframes formatados
     df_altas = df_ranking.sort_values(by='Variação', ascending=False).head(5).copy()
     df_altas['Preço'] = df_altas['Preço'].apply(lambda x: formata_moeda_pct(x))
     df_altas['Variação (%)'] = df_altas['Variação'].apply(lambda x: formata_moeda_pct(x, True))
@@ -205,9 +220,9 @@ if not df_ranking.empty:
             df_topos_fmt = df_topos_fmt.drop(columns=['Variação'])
             st.dataframe(df_topos_fmt.style.apply(colorir_tabela, axis=1), use_container_width=True, hide_index=True)
         else:
-            st.info("Nenhum ativo da sua lista está a romper o topo histórico hoje.")
+            st.info("Nenhum ativo está a romper o topo histórico hoje.")
 else:
-    st.info("Aguardando abertura do mercado para gerar o ranking.")
+    st.info("Aguardando cotações para gerar o ranking.")
 
 st.divider()
 
@@ -220,7 +235,7 @@ with c1:
     st.info("### 📉 Regressão à Média\nVarreduras de **IFR** e **Canais de Keltner** para caçar ativos esticados e exaustos.")
     st.success("### 📊 Fluxo Institucional\nEncontre defesas de tubarões na **VWAP** com cruzamento da **POC** de Volume.")
 with c2:
-    st.warning("### 🔥 Seguidores de Tendência\nMonitore o **Setup 9.1**, **Rompimentos** e **Explosão de Volatilidade**.")
+    st.warning("### 🔥 Seguidores de Tendência\nMonitore o **Setup 9.1**, **Fura-Teto (Momentum)** e **Volatilidade**.")
     st.error("### 📐 Fibo & Smart Money\nOpere a proporção áurea com o **Rastreador Fibonacci** e falhas de **FVG**.")
 with c3:
     st.markdown("""
