@@ -20,7 +20,7 @@ alunos_cadastrados = {
     "admin": "suasenhaforte"
 }
 
-aviso_risco = "⚠️ **AVISO DE COMANDO:** Esta plataforma foi forjada exclusivamente para fins educacionais e de estudo quantitativo. Não emitimos recomendações de compra, venda ou manutenção de ativos. Toda operação no mercado financeiro gera risco real de perda de capital. Seja um Caçador com disciplina implacável e responsabilidade: o seu maior patrimônio é o seu gerenciamento de risco."
+aviso_risco = "⚠️ **AVISO DE COMANDO:** Esta plataforma foi forjada exclusivamente para fins educacionais e de estudo estatistico. Não emitimos recomendações de compra, venda ou manutenção de ativos. Toda operação no mercado financeiro gera risco real de perda de capital. Seja um Caçador com disciplina implacável e responsabilidade: o seu maior patrimônio é o seu gerenciamento de risco."
 
 if not st.session_state['autenticado']:
     st.markdown("<style>[data-testid='stSidebar'] {display: none;} [data-testid='stSidebarNav'] {display: none;}</style>", unsafe_allow_html=True)
@@ -83,7 +83,7 @@ def buscar_dados_macro():
         'IBOV': {'symbol': 'IBOV', 'exchange': 'BMFBOVESPA', 'nome': 'IBOVESPA', 'prefix': 'pts', 'formato': '{:,.0f}', 'url': 'https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3AIBOV'},
         'WIN': {'symbol': 'WIN1!', 'exchange': 'BMFBOVESPA', 'nome': 'Mini Índice', 'prefix': 'pts', 'formato': '{:,.0f}', 'url': 'https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3AWIN1%21'},
         'WDO': {'symbol': 'WDO1!', 'exchange': 'BMFBOVESPA', 'nome': 'Mini Dólar', 'prefix': 'R$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3AWDO1%21'},
-        'DI1': {'symbol': 'DI1!', 'exchange': 'BMFBOVESPA', 'nome': 'Juros BR (DI1)', 'prefix': '%', 'formato': '{:.3f}', 'url': 'https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3ADI1%21'},
+        'DI1': {'symbol': 'DI11!', 'exchange': 'BMFBOVESPA', 'nome': 'Juros BR (DI1)', 'prefix': '%', 'formato': '{:.3f}', 'url': 'https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3ADI11%21'},
         'EWZ': {'symbol': 'EWZ', 'exchange': 'AMEX', 'nome': 'EWZ (ETF Brasil)', 'prefix': '$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=AMEX%3AEWZ'},
         'MINERIO': {'symbol': 'FEF2!', 'exchange': 'SGX', 'nome': 'Minério de Ferro', 'prefix': '$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=SGX%3AFEF2%21'},
         'BRENT': {'symbol': 'UKOIL', 'exchange': 'TVC', 'nome': 'Petróleo Brent', 'prefix': '$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=TVC%3AUKOIL'},
