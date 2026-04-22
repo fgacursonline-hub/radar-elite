@@ -80,7 +80,7 @@ aba_oraculo, aba_radar, aba_historico = st.tabs([
 ])
 
 # ==========================================
-# ABA 1: O ORÁCULO DE ABERTURA (PRE-MARKET)
+# ABA 1: O ORÁCULO DE ABERTURA
 # ==========================================
 with aba_oraculo:
     st.subheader("🔮 O Oráculo de Abertura (Caçador de Gaps)")
@@ -93,7 +93,6 @@ with aba_oraculo:
         p_bar = st.progress(0)
         
         try:
-            # Puxa Dólar com visão noturna (mercado FX roda 24h)
             df_dolar = tv.get_hist(symbol=SIMBOLO_DOLAR, exchange=EXCHANGE_DOLAR, interval=Interval.in_15_minute, n_bars=2, extended_session=True)
             dolar_atual = df_dolar['close'].iloc[-1]
         except:
@@ -103,13 +102,10 @@ with aba_oraculo:
         for idx, (bdr, info) in enumerate(bdr_setup.items()):
             p_bar.progress((idx + 1) / len(bdr_setup))
             try:
-                # BDR B3 (Apenas horário regular)
                 df_bdr = tv.get_hist(symbol=bdr, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=3)
                 if df_bdr is None or len(df_bdr) < 2: continue
                 fechamento_bdr_ontem = df_bdr['close'].iloc[-1] 
 
-                # US STOCK COM VISÃO NOTURNA LIGADA (extended_session=True)
-                # Usa 15 minutos para capturar os ticks exatos da madrugada/after-hours
                 df_us = tv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
                 if df_us is None: continue
                 cotacao_us_atual = df_us['close'].iloc[-1]
@@ -174,7 +170,6 @@ with aba_radar:
                 if df_bdr is None: continue
                 cotacao_bdr = df_bdr['close'].iloc[-1]
 
-                # US STOCK COM VISÃO NOTURNA LIGADA
                 df_us = tv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
                 if df_us is None: continue
                 cotacao_us = df_us['close'].iloc[-1]
@@ -237,6 +232,13 @@ with aba_historico:
                 df_ny = tv.get_hist(symbol=info_ativo['us'], exchange=info_ativo['exchange'], interval=Interval.in_daily, n_bars=300)
                 df_usd = tv.get_hist(symbol=SIMBOLO_DOLAR, exchange=EXCHANGE_DOLAR, interval=Interval.in_daily, n_bars=300)
 
+                # Requisição rápida extra apenas para a cotação real-time/after-hours da aba 3
+                try:
+                    df_ny_rt = tv.get_hist(symbol=info_ativo['us'], exchange=info_ativo['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
+                    us_real_time_price = df_ny_rt['close'].iloc[-1]
+                except:
+                    us_real_time_price = df_ny['close'].iloc[-1]
+
                 if df_b3 is None or df_ny is None or df_usd is None:
                     st.error("Dados insuficientes retornados pela API.")
                     st.stop()
@@ -274,18 +276,19 @@ with aba_historico:
                 st.divider()
                 st.markdown(f"### 📊 Estatística Quanti de {ativo_hist} vs {info_ativo['us']}")
                 
-                m1, m2, m3, m4 = st.columns(4)
+                m1, m2, m3, m4, m5 = st.columns(5)
                 m1.metric("BDR Atual", f"R$ {df_master['BDR_Close'].iloc[-1]:.2f}")
-                m2.metric("Preço Justo (Teórico)", f"R$ {df_master['Preco_Teorico'].iloc[-1]:.2f}")
+                m2.metric("US Stock (Tempo Real/After)", f"$ {us_real_time_price:.2f}")
+                m3.metric("Preço Justo (Teórico)", f"R$ {df_master['Preco_Teorico'].iloc[-1]:.2f}")
                 
                 if z_atual > zscore_alvo: 
-                    m3.metric("Z-Score Atual", f"{z_atual:.2f}", delta="Estourado para Cima (Venda BDR)", delta_color="inverse")
+                    m4.metric("Z-Score Atual", f"{z_atual:.2f}", delta="Estourado para Cima (Venda BDR)", delta_color="inverse")
                 elif z_atual < -zscore_alvo: 
-                    m3.metric("Z-Score Atual", f"{z_atual:.2f}", delta="Estourado para Baixo (Compre BDR)")
+                    m4.metric("Z-Score Atual", f"{z_atual:.2f}", delta="Estourado para Baixo (Compre BDR)")
                 else: 
-                    m3.metric("Z-Score Atual", f"{z_atual:.2f}", delta="Dentro da Normalidade", delta_color="off")
+                    m4.metric("Z-Score Atual", f"{z_atual:.2f}", delta="Dentro da Normalidade", delta_color="off")
                 
-                m4.metric("Ratio Base", f"{ratio_atual:.4f}")
+                m5.metric("Ratio Base", f"{ratio_atual:.4f}")
                 
                 if ratio_atual < 1.0:
                     distancia_pct = (1 - ratio_atual) * 100
