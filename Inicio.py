@@ -121,7 +121,7 @@ def buscar_ranking_ativos(ativos):
                 c = df['close']
                 hj = c.iloc[-1]
                 
-                # Cálculos de Variação em várias janelas
+                # Cálculos de Variação (Dia=2 barras, Semana=6, Mês=22, Ano=253)
                 v_dia = ((hj - c.iloc[-2]) / c.iloc[-2]) * 100 if len(c) >= 2 else 0
                 v_sem = ((hj - c.iloc[-6]) / c.iloc[-6]) * 100 if len(c) >= 6 else v_dia
                 v_mes = ((hj - c.iloc[-22]) / c.iloc[-22]) * 100 if len(c) >= 22 else v_sem
@@ -134,7 +134,6 @@ def buscar_ranking_ativos(ativos):
                 
                 max_historica = df['high'].iloc[:-1].max()
                 if df['high'].iloc[-1] > max_historica:
-                    # Se rompe topo, guarda a linha toda para podermos filtrar também
                     rompendo_topo.append({
                         'Ativo': ativo, 'Preço': hj, 
                         'Dia': v_dia, 'Semana': v_sem, 'Mês': v_mes, 'Ano': v_ano
@@ -209,14 +208,21 @@ st.divider()
 # ==========================================
 # 4. PAINEL DE DESTAQUES (ALTAS, QUEDAS E TOPOS)
 # ==========================================
-c_t_rad, c_f_rad = st.columns([3, 1])
-with c_t_rad:
+# Container do título integrado com o seletor horizontal
+col_title, col_menu = st.columns([1, 1], vertical_alignment="center")
+
+with col_title:
     st.subheader("🔥 Radar de Destaques (IBrX + BDRs)")
     st.markdown("Monitoramento das maiores forças e fraquezas do mercado de capitais brasileiro.")
-with c_f_rad:
-    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-    # Aqui está a mágica: O Menu de Horizonte de Tempo!
-    horizonte = st.selectbox("⏳ Horizonte Analítico:", ["Dia", "Semana", "Mês", "Ano"])
+
+with col_menu:
+    # O SELETOR HORIZONTAL EXATO DA IMAGEM! (segmented_control)
+    horizonte = st.segmented_control(
+        "Prazo Analítico", # Label oculto
+        options=["Dia", "Semana", "Mês", "Ano"],
+        default="Dia",
+        label_visibility="collapsed" # Deixa limpo como na imagem
+    )
 
 with st.spinner("Varrendo o mercado em busca de oportunidades extremas..."):
     df_ranking, df_topos = buscar_ranking_ativos(todos_ativos)
@@ -224,7 +230,7 @@ with st.spinner("Varrendo o mercado em busca de oportunidades extremas..."):
 col_altas, col_quedas, col_topos = st.columns(3)
 
 if not df_ranking.empty:
-    # Filtra e organiza com base no Horizonte selecionado
+    # Filtra e organiza com base no Horizonte selecionado (Dia, Semana, etc)
     df_altas = df_ranking[['Ativo', 'Preço', horizonte]].sort_values(by=horizonte, ascending=False).head(5).copy()
     df_altas.rename(columns={horizonte: 'Variação (%)'}, inplace=True)
     df_altas['Preço'] = df_altas['Preço'].apply(lambda x: formata_moeda_pct(x))
@@ -236,11 +242,11 @@ if not df_ranking.empty:
     df_quedas['Variação (%)'] = df_quedas['Variação (%)'].apply(lambda x: formata_moeda_pct(x, True))
 
     with col_altas:
-        st.success(f"### 🚀 Altas no(a) {horizonte}")
+        st.success("### 🚀 Maiores Altas") # Título estático restaurado
         st.dataframe(df_altas.style.apply(colorir_tabela, axis=1), use_container_width=True, hide_index=True)
 
     with col_quedas:
-        st.error(f"### 🩸 Quedas no(a) {horizonte}")
+        st.error("### 🩸 Maiores Quedas") # Título estático restaurado
         st.dataframe(df_quedas.style.apply(colorir_tabela, axis=1), use_container_width=True, hide_index=True)
 
     with col_topos:
@@ -279,7 +285,7 @@ with c3:
 
 st.divider()
 
-# --- NOVA SEÇÃO DE INTELIGÊNCIA (AJUSTADA) ---
+# --- NOVA SEÇÃO DE INTELIGÊNCIA ---
 st.subheader("🧭 Inteligência de Mercado & Calendários")
 
 cl1, cl2, cl3 = st.columns(3)
