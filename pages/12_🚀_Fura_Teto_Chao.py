@@ -69,18 +69,14 @@ def colorir_lucro(row):
     except: return [''] * len(row)
 
 # ==========================================
-# 2. MOTOR MATEMÁTICO PURIFICADO
+# 2. MOTOR MATEMÁTICO: FURA-TETO / CHÃO
 # ==========================================
-def identificar_fura_teto_chao(df, filtro_tendencia=True):
+def identificar_fura_teto_chao(df, periodo_teto=1):
     df['MME8'] = ta.ema(df['Close'], length=8)
     
-    if filtro_tendencia:
-        # A lógica correta: O fechamento de HOJE define se AMANHÃ armou.
-        df['Armou_Teto'] = df['Close'] > df['MME8']
-        df['Armou_Chao'] = df['Close'] < df['MME8']
-    else:
-        df['Armou_Teto'] = True
-        df['Armou_Chao'] = True
+    # Agora a linha de Teto/Chão respeita os N períodos (linha "escadinha" branca do Profit)
+    df['Teto'] = df['High'].rolling(window=periodo_teto).max().shift(1)
+    df['Chao'] = df['Low'].rolling(window=periodo_teto).min().shift(1)
     
     return df
 
@@ -110,10 +106,11 @@ with aba_radar:
             tempo_grafico = st.selectbox("Tempo Gráfico:", ['1d', '1wk', '60m'], format_func=lambda x: {'60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="rad_ft_tmp")
             rad_periodo = st.selectbox("Período de Backtest:", ['6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=1, key="rad_ft_per")
         with c3:
+            rad_ft_periodo = st.number_input("Período do Teto/Chão (Profit):", value=14, step=1, min_value=1, help="Coloque o mesmo número do indicador Fura-Teto do Profit.", key="rad_ft_periodo_in")
             tipo_alvo = st.selectbox("Tipo de Alvo:", ["Risco Projetado (Ex: 2x)", "Alvo Fixo (%)"], key="rad_ft_tipo_alvo")
             alvo_val = st.number_input("Múltiplo ou %:", value=2.0, step=0.5, key="rad_ft_alvo")
         with c4:
-            usar_filtro = st.checkbox("Filtro MME8 (Recomendado)", value=True, help="Só compra se estiver acima da Média de 8. Só vende se estiver abaixo.", key="rad_ft_filtro")
+            usar_filtro = st.checkbox("Filtro MME8", value=True, help="Só compra se estiver acima da Média de 8.", key="rad_ft_filtro")
             rad_stop_loss = st.selectbox("Stop Loss:", ["Mínima do Candle Sinal", "Fixo (%)"], key="rad_ft_stop")
             
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
@@ -136,7 +133,7 @@ with aba_radar:
                 if df_full is None or len(df_full) < 50: continue
                 df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 
-                df_full = identificar_fura_teto_chao(df_full, filtro_tendencia=usar_filtro).dropna()
+                df_full = identificar_fura_teto_chao(df_full, periodo_teto=rad_ft_periodo).dropna()
 
                 if rad_periodo == '6mo': data_corte = df_full.index[-1] - pd.DateOffset(months=6)
                 elif rad_periodo == 'max': data_corte = df_full.index[0]
@@ -170,17 +167,21 @@ with aba_radar:
                                 total_trades += 1; vitorias += 1; em_pos = False
                         continue
 
+                    # Gatilho com o período configurado pelo usuário
+                    gatilho_compra = atual['Teto'] + 0.01
+                    gatilho_venda = atual['Chao'] - 0.01
+                    pode_comprar = ontem['Close'] > ontem['MME8'] if usar_filtro else True
+                    pode_vender = ontem['Close'] < ontem['MME8'] if usar_filtro else True
+
                     if not em_pos:
-                        if "Compra" in direcao_sel or "Ambos" in direcao_sel:
-                            if ontem['Armou_Teto'] and atual['High'] >= (ontem['High'] + 0.01):
+                        if ("Compra" in direcao_sel or "Ambos" in direcao_sel) and pode_comprar:
+                            if atual['High'] >= gatilho_compra:
                                 em_pos, direcao_trade = True, 1
-                                gatilho_compra = ontem['High'] + 0.01
                                 preco_entrada = max(gatilho_compra, atual['Open'])
                                 d_ent = atual[col_data]
                                 stop_loss = ontem['Low'] - 0.01 if "Mínima" in rad_stop_loss else preco_entrada * 0.95
                                 alvo = preco_entrada + ((preco_entrada - stop_loss) * alvo_val) if "Risco" in tipo_alvo else preco_entrada * (1 + (alvo_val/100))
                                 
-                                # Trava de mesmo dia
                                 if atual['Low'] <= stop_loss:
                                     lucro_total_ativo += rad_capital * ((stop_loss/preco_entrada)-1)
                                     total_trades += 1; em_pos = False
@@ -190,16 +191,14 @@ with aba_radar:
                                     total_trades += 1; vitorias += 1; em_pos = False
                                     continue
 
-                        if ("Venda" in direcao_sel or "Ambos" in direcao_sel) and not em_pos:
-                            if ontem['Armou_Chao'] and atual['Low'] <= (ontem['Low'] - 0.01):
+                        if ("Venda" in direcao_sel or "Ambos" in direcao_sel) and not em_pos and pode_vender:
+                            if atual['Low'] <= gatilho_venda:
                                 em_pos, direcao_trade = True, -1
-                                gatilho_venda = ontem['Low'] - 0.01
                                 preco_entrada = min(gatilho_venda, atual['Open'])
                                 d_ent = atual[col_data]
                                 stop_loss = ontem['High'] + 0.01 if "Mínima" in rad_stop_loss else preco_entrada * 1.05
                                 alvo = preco_entrada - ((stop_loss - preco_entrada) * alvo_val) if "Risco" in tipo_alvo else preco_entrada * (1 - (alvo_val/100))
                                 
-                                # Trava de mesmo dia
                                 if atual['High'] >= stop_loss:
                                     lucro_total_ativo += rad_capital * ((preco_entrada-stop_loss)/preco_entrada)
                                     total_trades += 1; em_pos = False
@@ -227,18 +226,22 @@ with aba_radar:
                     })
                 else:
                     atual = df_back.iloc[-1]
-                    if ("Compra" in direcao_sel or "Ambos" in direcao_sel) and atual['Armou_Teto']:
-                        gatilho = atual['High'] + 0.01
+                    ontem = df_back.iloc[-2]
+                    pode_comprar = ontem['Close'] > ontem['MME8'] if usar_filtro else True
+                    pode_vender = ontem['Close'] < ontem['MME8'] if usar_filtro else True
+
+                    if ("Compra" in direcao_sel or "Ambos" in direcao_sel) and pode_comprar:
+                        gatilho = atual['Teto'] + 0.01
                         alvo_proj = gatilho + ((gatilho - (atual['Low'] - 0.01)) * alvo_val) if "Risco" in tipo_alvo else gatilho * (1 + (alvo_val/100))
                         ls_armados.append({
-                            'Ativo': ativo, 'Sinal': '🚀 Fura-Teto Armado', 'Gatilho (Start)': f"R$ {gatilho:.2f}", 
+                            'Ativo': ativo, 'Sinal': f'🚀 Teto de {rad_ft_periodo}d Armado', 'Gatilho (Start)': f"R$ {gatilho:.2f}", 
                             'Alvo Projetado': f"R$ {alvo_proj:.2f}", 'Status': "Aguardando Pregão de Amanhã"
                         })
-                    if ("Venda" in direcao_sel or "Ambos" in direcao_sel) and atual['Armou_Chao']:
-                        gatilho = atual['Low'] - 0.01
+                    if ("Venda" in direcao_sel or "Ambos" in direcao_sel) and pode_vender:
+                        gatilho = atual['Chao'] - 0.01
                         alvo_proj = gatilho - (((atual['High'] + 0.01) - gatilho) * alvo_val) if "Risco" in tipo_alvo else gatilho * (1 - (alvo_val/100))
                         ls_armados.append({
-                            'Ativo': ativo, 'Sinal': '🔻 Fura-Chão Armado', 'Gatilho (Start)': f"R$ {gatilho:.2f}", 
+                            'Ativo': ativo, 'Sinal': f'🔻 Chão de {rad_ft_periodo}d Armado', 'Gatilho (Start)': f"R$ {gatilho:.2f}", 
                             'Alvo Projetado': f"R$ {alvo_proj:.2f}", 'Status': "Aguardando Pregão de Amanhã"
                         })
 
@@ -280,6 +283,7 @@ with aba_individual:
         rx_periodo = st.selectbox("Período:", options=['6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=1, key="rx_ft_per")
         rx_tempo = st.selectbox("Tempo Gráfico:", ['60m', '1d', '1wk'], index=1, format_func=lambda x: {'60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="rx_ft_tmp")
     with cr3:
+        rx_ft_periodo_individual = st.number_input("Período Teto/Chão:", value=14, step=1, min_value=1, key="rx_ft_periodo_in")
         rx_tipo_alvo = st.selectbox("Tipo de Alvo:", ["Risco Projetado (Ex: 2x)", "Alvo Fixo (%)"], key="rx_ft_tipo_alvo")
         rx_alvo_val = st.number_input("Múltiplo ou %:", value=2.0, step=0.5, key="rx_ft_alvo")
     with cr4:
@@ -296,7 +300,7 @@ with aba_individual:
                     df_full = tv.get_hist(symbol=rx_ativo, exchange='BMFBOVESPA', interval=tradutor_intervalo.get(rx_tempo, Interval.in_daily), n_bars=5000)
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     
-                    df_full = identificar_fura_teto_chao(df_full, filtro_tendencia=rx_usar_filtro).dropna()
+                    df_full = identificar_fura_teto_chao(df_full, periodo_teto=rx_ft_periodo_individual).dropna()
 
                     if rx_periodo == '6mo': data_corte = df_full.index[-1] - pd.DateOffset(months=6)
                     elif rx_periodo == 'max': data_corte = df_full.index[0]
@@ -333,9 +337,13 @@ with aba_individual:
                                     vitorias += 1; em_pos = False
                             continue
 
+                        gatilho_compra = atual['Teto'] + 0.01
+                        gatilho_venda = atual['Chao'] - 0.01
+                        pode_comprar = ontem['Close'] > ontem['MME8'] if rx_usar_filtro else True
+                        pode_vender = ontem['Close'] < ontem['MME8'] if rx_usar_filtro else True
+
                         if not em_pos:
-                            if ("Compra" in rx_direcao or "Ambos" in rx_direcao) and ontem['Armou_Teto']:
-                                gatilho_compra = ontem['High'] + 0.01
+                            if ("Compra" in rx_direcao or "Ambos" in rx_direcao) and pode_comprar:
                                 if atual['High'] >= gatilho_compra:
                                     em_pos, direcao_trade = True, 1
                                     preco_entrada = max(gatilho_compra, atual['Open'])
@@ -344,7 +352,6 @@ with aba_individual:
                                     stop_loss = ontem['Low'] - 0.01 if "Mínima" in rx_stop_loss else preco_entrada * 0.95
                                     alvo = preco_entrada + ((preco_entrada - stop_loss) * rx_alvo_val) if "Risco" in rx_tipo_alvo else preco_entrada * (1 + (rx_alvo_val/100))
                                     
-                                    # Trava de Saída no Mesmo Dia da Entrada
                                     if atual['Low'] <= stop_loss:
                                         trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Direção': 'Compra', 'Duração': 0, 'Lucro (R$)': rx_capital * ((stop_loss/preco_entrada)-1), 'Queda Máx': (atual['Low']/preco_entrada)-1, 'Situação': 'Stop ❌'})
                                         derrotas += 1; em_pos = False
@@ -354,8 +361,7 @@ with aba_individual:
                                         vitorias += 1; em_pos = False
                                         continue
                             
-                            if ("Venda" in rx_direcao or "Ambos" in rx_direcao) and not em_pos and ontem['Armou_Chao']:
-                                gatilho_venda = ontem['Low'] - 0.01
+                            if ("Venda" in rx_direcao or "Ambos" in rx_direcao) and not em_pos and pode_vender:
                                 if atual['Low'] <= gatilho_venda:
                                     em_pos, direcao_trade = True, -1
                                     preco_entrada = min(gatilho_venda, atual['Open'])
@@ -364,7 +370,6 @@ with aba_individual:
                                     stop_loss = ontem['High'] + 0.01 if "Mínima" in rx_stop_loss else preco_entrada * 1.05
                                     alvo = preco_entrada - ((stop_loss - preco_entrada) * rx_alvo_val) if "Risco" in rx_tipo_alvo else preco_entrada * (1 - (rx_alvo_val/100))
                                     
-                                    # Trava de Saída no Mesmo Dia da Entrada
                                     if atual['High'] >= stop_loss:
                                         trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': atual[col_data].strftime('%d/%m/%Y'), 'Direção': 'Venda', 'Duração': 0, 'Lucro (R$)': rx_capital * ((preco_entrada-stop_loss)/preco_entrada), 'Queda Máx': (preco_entrada-atual['High'])/preco_entrada, 'Situação': 'Stop ❌'})
                                         derrotas += 1; em_pos = False
@@ -388,7 +393,7 @@ with aba_individual:
                         * **Queda Máx:** {queda_max_aberta*100:.2f}% | **Resultado Atual:** {res_pct*100:.2f}%
                         """)
                     else:
-                        st.success(f"✅ **{rx_ativo}: Fora de posição. Aguardando novo rompimento.**")
+                        st.success(f"✅ **{rx_ativo}: Fora de posição. Aguardando novo rompimento de {rx_ft_periodo_individual}d.**")
                     
                     st.markdown(f"### 📊 Resultado Consolidado: {rx_ativo}")
                     if len(trades) > 0:
