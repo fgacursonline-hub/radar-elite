@@ -31,7 +31,7 @@ bdr_setup = {
     'TSLA34': {'us': 'TSLA', 'exchange': 'NASDAQ', 'paridade': 30},
     'LILY34': {'us': 'LLY', 'exchange': 'NYSE', 'paridade': 30},
     'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ', 'paridade': 20},  
-    'AURA33': {'us': 'ORA', 'exchange': 'TSX', 'paridade': 1},       
+    'AURA33': {'us': 'AUGO', 'exchange': 'NASDAQ', 'paridade': 1},   # <-- Ticker Atualizado para AUGO na NASDAQ    
     'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ', 'paridade': 12}, 
     'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ', 'paridade': 24},  
     'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 6},    
@@ -283,10 +283,20 @@ with aba_historico:
                 
                 m1.metric("BDR Atual", f"R$ {df_master['BDR_Close'].iloc[-1]:.2f}")
                 
-                # Cotação em Tempo Real com o Fechamento Regular logo abaixo em fonte menor
+                # --- Lógica da Setinha de Variação (After-Hours vs Fechamento Regular) ---
                 with m2:
                     st.metric("US Stock (After/RT)", f"$ {us_real_time_price:.2f}")
-                    st.markdown(f"<div style='font-size: 13px; color: #a5a5a5; margin-top: -15px;'>Fecho Regular: $ {us_regular_close:.2f}</div>", unsafe_allow_html=True)
+                    
+                    var_pct = ((us_real_time_price / us_regular_close) - 1) * 100
+                    
+                    if var_pct > 0:
+                        var_html = f"<div style='font-size: 14px; font-weight: bold; color: #00FF00; margin-top: -15px;'>⬆️ +{var_pct:.2f}%</div>"
+                    elif var_pct < 0:
+                        var_html = f"<div style='font-size: 14px; font-weight: bold; color: #ff4d4d; margin-top: -15px;'>⬇️ {var_pct:.2f}%</div>"
+                    else:
+                        var_html = f"<div style='font-size: 14px; font-weight: bold; color: #a5a5a5; margin-top: -15px;'>➖ 0.00%</div>"
+                        
+                    st.markdown(var_html, unsafe_allow_html=True)
                 
                 m3.metric("Preço Justo (Teórico)", f"R$ {df_master['Preco_Teorico'].iloc[-1]:.2f}")
                 
