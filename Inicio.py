@@ -79,7 +79,6 @@ todos_ativos = list(set(bdrs_elite + ibrx_selecao))
 @st.cache_data(ttl=300) 
 def buscar_dados_macro():
     tv_local = TvDatafeed()
-    # Adicionamos as URLs do TradingView para cada ativo macro
     macros = {
         'IBOV': {'symbol': 'IBOV', 'exchange': 'BMFBOVESPA', 'nome': 'IBOVESPA (Brasil)', 'prefix': 'pts', 'formato': '{:,.0f}', 'url': 'https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3AIBOV'},
         'EWZ': {'symbol': 'EWZ', 'exchange': 'AMEX', 'nome': 'EWZ (ETF Brasil EUA)', 'prefix': '$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=AMEX%3AEWZ'},
@@ -183,7 +182,6 @@ if dados_macro:
                 value=dados_macro[i]['valor'], 
                 delta=f"{dados_macro[i]['variacao']:.2f}%" if dados_macro[i]['valor'] != 'N/A' else None
             )
-            # Injeção do Link Clicável abaixo da métrica
             st.markdown(f"<a href='{dados_macro[i]['url']}' target='_blank' style='text-decoration: none; font-size: 13px; color: #4da6ff;'>📊 Ver Gráfico</a>", unsafe_allow_html=True)
 
 st.divider()
@@ -253,12 +251,27 @@ with c3:
     """, unsafe_allow_html=True)
 
 st.divider()
+
+# --- NOVA SEÇÃO DE INTELIGÊNCIA (AJUSTADA) ---
 st.subheader("🧭 Inteligência de Mercado & Calendários")
-cl1, cl2, cl3, cl4 = st.columns(4)
-with cl1: st.link_button("📅 Calendário Econômico", "https://br.investing.com/economic-calendar", use_container_width=True)
-with cl2: st.link_button("📊 Temporada de Balanços", "https://br.investing.com/earnings-calendar", use_container_width=True)
-with cl3: st.link_button("🔍 Filtro de Ações", "https://br.investing.com/stock-screener/momentum-masters", use_container_width=True)
-with cl4: st.link_button("🦈 HedgeFollow (Fundos)", "https://hedgefollow.com/", use_container_width=True)
+
+cl1, cl2, cl3 = st.columns(3)
+
+with cl1:
+    st.markdown("#### 📅 Central de Calendários")
+    st.link_button("Acessar Calendários", "https://br.investing.com/economic-calendar", use_container_width=True)
+    st.caption("Econômico, Feriados, Balanços e Resultados, Dividendos, Desdobramento, IPO e Contratos Futuros.")
+
+with cl2:
+    st.markdown("#### 🔍 Rastreadores")
+    st.link_button("Filtro | Comparador de Ações", "https://br.investing.com/stock-screener", use_container_width=True)
+    st.caption("Filtre o mercado através de múltiplos indicadores técnicos e fundamentalistas.")
+
+with cl3:
+    st.markdown("#### 🐋 Smart Money")
+    st.link_button("Investing Pro Ideas", "https://br.investing.com/pro/ideas", use_container_width=True)
+    st.link_button("HedgeFollow (Fundos)", "https://hedgefollow.com/", use_container_width=True)
+    st.caption("Investidores famosos, hedge funds e assessores de investimento.")
 
 # ==========================================
 # 6. RADAR DE NOTÍCIAS MULTI-FONTE
