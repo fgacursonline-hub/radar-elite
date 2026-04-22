@@ -80,11 +80,11 @@ aba_oraculo, aba_radar, aba_historico = st.tabs([
 ])
 
 # ==========================================
-# ABA 1: O ORÁCULO DE ABERTURA
+# ABA 1: O ORÁCULO DE ABERTURA (PRE-MARKET)
 # ==========================================
 with aba_oraculo:
     st.subheader("🔮 O Oráculo de Abertura (Caçador de Gaps)")
-    st.markdown("O robô calcula o preço teórico exato de abertura do BDR com base no Pre-Market americano.")
+    st.markdown("O robô calcula o preço teórico da abertura da B3 usando a **Visão Noturna (Pre-Market / After-Hours)** dos EUA.")
 
     btn_oraculo = st.button("🔍 Prever Gaps de Abertura Hoje", type="primary", use_container_width=True, key="btn_oraculo")
 
@@ -93,7 +93,8 @@ with aba_oraculo:
         p_bar = st.progress(0)
         
         try:
-            df_dolar = tv.get_hist(symbol=SIMBOLO_DOLAR, exchange=EXCHANGE_DOLAR, interval=Interval.in_daily, n_bars=2)
+            # Puxa Dólar com visão noturna (mercado FX roda 24h)
+            df_dolar = tv.get_hist(symbol=SIMBOLO_DOLAR, exchange=EXCHANGE_DOLAR, interval=Interval.in_15_minute, n_bars=2, extended_session=True)
             dolar_atual = df_dolar['close'].iloc[-1]
         except:
             dolar_atual = 5.00 
@@ -102,11 +103,14 @@ with aba_oraculo:
         for idx, (bdr, info) in enumerate(bdr_setup.items()):
             p_bar.progress((idx + 1) / len(bdr_setup))
             try:
+                # BDR B3 (Apenas horário regular)
                 df_bdr = tv.get_hist(symbol=bdr, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=3)
                 if df_bdr is None or len(df_bdr) < 2: continue
                 fechamento_bdr_ontem = df_bdr['close'].iloc[-1] 
 
-                df_us = tv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
+                # US STOCK COM VISÃO NOTURNA LIGADA (extended_session=True)
+                # Usa 15 minutos para capturar os ticks exatos da madrugada/after-hours
+                df_us = tv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
                 if df_us is None: continue
                 cotacao_us_atual = df_us['close'].iloc[-1]
 
@@ -119,7 +123,7 @@ with aba_oraculo:
 
                 resultados_oraculo.append({
                     'Ativo BDR': bdr,
-                    'US Stock Atual': f"$ {cotacao_us_atual:.2f}",
+                    'US Stock (C/ After-Hours)': f"$ {cotacao_us_atual:.2f}",
                     'Fechou B3 Ontem': f"R$ {fechamento_bdr_ontem:.2f}",
                     'Preço Justo Abertura': f"R$ {preco_teorico:.2f}",
                     'Distorção Alvo (%)': f"+{gap_esperado:.2f}%" if gap_esperado > 0 else f"{gap_esperado:.2f}%",
@@ -133,8 +137,8 @@ with aba_oraculo:
         if resultados_oraculo:
             st.divider()
             c1, c2 = st.columns([1, 4])
-            c1.metric("Dólar Usado", f"R$ {dolar_atual:.4f}")
-            c2.success("Mapeamento concluído com sucesso!")
+            c1.metric("Dólar Usado (24h)", f"R$ {dolar_atual:.4f}")
+            c2.success("Radar Noturno concluído! Os preços americanos já refletem os balanços do After-Hours.")
             
             df_oraculo = pd.DataFrame(resultados_oraculo)
             df_oraculo['Modulo'] = df_oraculo['Distorção Alvo (%)'].apply(lambda x: abs(float(x.replace('%', '').replace('+', ''))))
@@ -149,7 +153,7 @@ with aba_oraculo:
 # ==========================================
 with aba_radar:
     st.subheader("📡 Radar de Distorção (Spread Intraday)")
-    st.markdown("Monitorização em tempo real. Identifica falhas no Market Maker da B3 durante o pregão.")
+    st.markdown("Monitorização com **Visão Noturna**. O robô lê os dados fora do horário comercial para detetar anomalias no fechamento/abertura.")
 
     btn_radar = st.button("📡 Escanear Distorções Agora", type="primary", use_container_width=True, key="btn_radar")
 
@@ -158,7 +162,7 @@ with aba_radar:
         p_bar_rad = st.progress(0)
         
         try:
-            df_dolar = tv.get_hist(symbol=SIMBOLO_DOLAR, exchange=EXCHANGE_DOLAR, interval=Interval.in_15_minute, n_bars=2)
+            df_dolar = tv.get_hist(symbol=SIMBOLO_DOLAR, exchange=EXCHANGE_DOLAR, interval=Interval.in_15_minute, n_bars=2, extended_session=True)
             dolar_atual = df_dolar['close'].iloc[-1]
         except:
             dolar_atual = 5.00
@@ -170,7 +174,8 @@ with aba_radar:
                 if df_bdr is None: continue
                 cotacao_bdr = df_bdr['close'].iloc[-1]
 
-                df_us = tv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2)
+                # US STOCK COM VISÃO NOTURNA LIGADA
+                df_us = tv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
                 if df_us is None: continue
                 cotacao_us = df_us['close'].iloc[-1]
 
@@ -184,7 +189,7 @@ with aba_radar:
                 resultados_radar.append({
                     'Ativo BDR': bdr,
                     'BDR na B3': f"R$ {cotacao_bdr:.2f}",
-                    'US Stock': f"$ {cotacao_us:.2f}",
+                    'US Stock (C/ After)': f"$ {cotacao_us:.2f}",
                     'Preço Teórico': f"R$ {preco_teorico:.2f}",
                     'Distorção Alvo (%)': f"+{spread:.2f}%" if spread > 0 else f"{spread:.2f}%",
                     'Recomendação': acao
@@ -197,7 +202,7 @@ with aba_radar:
         if resultados_radar:
             st.divider()
             c1, c2 = st.columns([1, 4])
-            c1.metric("Dólar Atual", f"R$ {dolar_atual:.4f}")
+            c1.metric("Dólar Atual (24h)", f"R$ {dolar_atual:.4f}")
             c2.info("Valores Positivos (+): O preço da B3 está abaixo do justo (Comprar). Valores Negativos (-): A B3 está cara demais (Vender).")
             
             df_rad = pd.DataFrame(resultados_radar)
@@ -282,7 +287,6 @@ with aba_historico:
                 
                 m4.metric("Ratio Base", f"{ratio_atual:.4f}")
                 
-                # --- INTERPRETAÇÃO DINÂMICA DO RATIO ---
                 if ratio_atual < 1.0:
                     distancia_pct = (1 - ratio_atual) * 100
                     st.success(f"💡 **Tradução do Ratio:** O BDR está **{distancia_pct:.2f}% mais barato** que o justo.")
@@ -302,7 +306,6 @@ with aba_historico:
                 
                 st.line_chart(df_chart, color=["#4da6ff", "#ff4d4d", "#00FF00", "#ffffff"])
 
-                # --- TEXTO EXPLICATIVO EDUCACIONAL ---
                 st.markdown(f"""
                 ---
                 ### 📖 Como interpretar este gráfico?
