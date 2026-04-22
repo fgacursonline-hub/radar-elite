@@ -93,7 +93,7 @@ with aba_oraculo:
         p_bar = st.progress(0)
         
         try:
-            df_dolar = tv.get_hist(symbol=SIMBOLO_DOLAR, exchange=EXCHANGE_DOLAR, interval=Interval.in_15_minute, n_bars=2, extended_session=True)
+            df_dolar = tv.get_hist(symbol=SIMBOLO_DOLAR, exchange=EXCHANGE_DOLAR, interval=Interval.in_daily, n_bars=2, extended_session=True)
             dolar_atual = df_dolar['close'].iloc[-1]
         except:
             dolar_atual = 5.00 
@@ -247,6 +247,9 @@ with aba_historico:
                 df_ny = df_ny[['close']].rename(columns={'close': 'US_Close'})
                 df_usd = df_usd[['close']].rename(columns={'close': 'BRL_Close'})
 
+                # Salva o fechamento regular antes de fundir os fusos horários
+                us_regular_close = df_ny['US_Close'].iloc[-1]
+
                 df_b3.index = pd.to_datetime(df_b3.index).tz_localize(None).normalize()
                 df_ny.index = pd.to_datetime(df_ny.index).tz_localize(None).normalize()
                 df_usd.index = pd.to_datetime(df_usd.index).tz_localize(None).normalize()
@@ -277,8 +280,14 @@ with aba_historico:
                 st.markdown(f"### 📊 Estatística Quanti de {ativo_hist} vs {info_ativo['us']}")
                 
                 m1, m2, m3, m4, m5 = st.columns(5)
+                
                 m1.metric("BDR Atual", f"R$ {df_master['BDR_Close'].iloc[-1]:.2f}")
-                m2.metric("US Stock (Tempo Real/After)", f"$ {us_real_time_price:.2f}")
+                
+                # Cotação em Tempo Real com o Fechamento Regular logo abaixo em fonte menor
+                with m2:
+                    st.metric("US Stock (After/RT)", f"$ {us_real_time_price:.2f}")
+                    st.markdown(f"<div style='font-size: 13px; color: #a5a5a5; margin-top: -15px;'>Fecho Regular: $ {us_regular_close:.2f}</div>", unsafe_allow_html=True)
+                
                 m3.metric("Preço Justo (Teórico)", f"R$ {df_master['Preco_Teorico'].iloc[-1]:.2f}")
                 
                 if z_atual > zscore_alvo: 
