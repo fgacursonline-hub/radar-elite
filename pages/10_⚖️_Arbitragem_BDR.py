@@ -1,10 +1,8 @@
 import streamlit as st
 from tvDatafeed import TvDatafeed, Interval
 import pandas as pd
-import pandas_ta as ta
 import time
 import warnings
-import numpy as np
 
 warnings.filterwarnings('ignore')
 
@@ -22,55 +20,57 @@ def get_tv_connection():
 tv = get_tv_connection()
 
 # ==========================================
-# 2. DICIONÁRIO DE PARIDADES (OS 25 DE ELITE)
+# 2. DICIONÁRIO DE PARIDADES (CALIBRADO B3)
 # ==========================================
-# Mapeamento CORRIGIDO: Ticker US, Bolsa e Paridade exata atualizada
+# Mapeamento CORRIGIDO com as paridades exatas da B3 após desdobramentos
 bdr_setup = {
-    'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ', 'paridade': 48},  # Ajustado pós-splits
+    'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ', 'paridade': 48},
     'P2LT34': {'us': 'PLTR', 'exchange': 'NYSE', 'paridade': 1},
     'ROXO34': {'us': 'NU', 'exchange': 'NYSE', 'paridade': 6},
     'INBR32': {'us': 'INTR', 'exchange': 'NASDAQ', 'paridade': 1},
     'M1TA34': {'us': 'META', 'exchange': 'NASDAQ', 'paridade': 28},
     'TSLA34': {'us': 'TSLA', 'exchange': 'NASDAQ', 'paridade': 30},
     'LILY34': {'us': 'LLY', 'exchange': 'NYSE', 'paridade': 30},
-    'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ', 'paridade': 120},
-    'AURA33': {'us': 'ORA', 'exchange': 'TSX', 'paridade': 1},       # Bolsa do Canadá
-    'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ', 'paridade': 40},
-    'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ', 'paridade': 60},
-    'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 6},     # Corrigido para Micron (MU)
+    'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ', 'paridade': 20},  # Corrigido
+    'AURA33': {'us': 'ORA', 'exchange': 'TSX', 'paridade': 1},       
+    'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ', 'paridade': 12}, # Corrigido
+    'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ', 'paridade': 24},  # Corrigido
+    'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 16},    
     'MELI34': {'us': 'MELI', 'exchange': 'NASDAQ', 'paridade': 120},
     'C2OI34': {'us': 'COIN', 'exchange': 'NASDAQ', 'paridade': 25},
     'ORCL34': {'us': 'ORCL', 'exchange': 'NYSE', 'paridade': 6},
-    'M2ST34': {'us': 'MSTR', 'exchange': 'NASDAQ', 'paridade': 70},  # Ajustado pós-split
-    'A1MD34': {'us': 'AMD', 'exchange': 'NASDAQ', 'paridade': 4},
-    'NFLX34': {'us': 'NFLX', 'exchange': 'NASDAQ', 'paridade': 80},
+    'M2ST34': {'us': 'MSTR', 'exchange': 'NASDAQ', 'paridade': 70},  
+    'A1MD34': {'us': 'AMD', 'exchange': 'NASDAQ', 'paridade': 8},    # Corrigido
+    'NFLX34': {'us': 'NFLX', 'exchange': 'NASDAQ', 'paridade': 80},  
     'ITLC34': {'us': 'INTC', 'exchange': 'NASDAQ', 'paridade': 8},
-    'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ', 'paridade': 70},  # Ajustado pós-split
-    'COCA34': {'us': 'KO', 'exchange': 'NYSE', 'paridade': 12},
+    'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ', 'paridade': 70},  
+    'COCA34': {'us': 'KO', 'exchange': 'NYSE', 'paridade': 6},       # Corrigido
     'JBSS32': {'us': 'JBSAY', 'exchange': 'OTC', 'paridade': 1}, 
     'AAPL34': {'us': 'AAPL', 'exchange': 'NASDAQ', 'paridade': 20},
     'XPBR31': {'us': 'XP', 'exchange': 'NASDAQ', 'paridade': 1},
     'STOC34': {'us': 'STNE', 'exchange': 'NASDAQ', 'paridade': 1}
 }
 
-# Símbolo do Dólar para cálculo de conversão
+# Símbolo do Dólar
 SIMBOLO_DOLAR = 'USDBRL'
 EXCHANGE_DOLAR = 'FX_IDC'
 
+# --- FUNÇÃO DE COLORAÇÃO CORRIGIDA ---
 def colorir_spread(row):
+    # Identifica em qual aba estamos rodando a tabela
+    col = None
     if 'Gap Esperado (%)' in row:
         col = 'Gap Esperado (%)'
     elif 'Distorção (%)' in row:
         col = 'Distorção (%)'
-    else:
-        return [''] * len(row)
-
-    try:
-        val = float(row[col].replace('%', '').replace('+', ''))
-        # Limiares de distorção (Destaque visual)
-        if val > 2.0: return ['color: #ff4d4d; font-weight: bold'] * len(row) # BDR muito Caro (Vender)
-        elif val < -2.0: return ['color: #00FF00; font-weight: bold'] * len(row) # BDR muito Barato (Comprar)
-    except: pass
+        
+    if col:
+        try:
+            val = float(row[col].replace('%', '').replace('+', ''))
+            # Se for positivo, destaca a linha de verde. Se for negativo, deixa em branco (padrão)
+            if val > 0: 
+                return ['color: #00FF00; font-weight: bold'] * len(row) 
+        except: pass
     return [''] * len(row)
 
 # ==========================================
@@ -115,12 +115,12 @@ with aba_oraculo:
                 if df_bdr is None or len(df_bdr) < 2: continue
                 fechamento_bdr_ontem = df_bdr['close'].iloc[-1] 
 
-                # Puxa cotação atual (Pre-market) da ação original
+                # Puxa cotação atual da ação original
                 df_us = tv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
                 if df_us is None: continue
                 cotacao_us_atual = df_us['close'].iloc[-1]
 
-                # FÓRMULA DA ARBITRAGEM
+                # FÓRMULA DA ARBITRAGEM CORRIGIDA
                 preco_teorico = (cotacao_us_atual * dolar_atual) / info['paridade']
                 
                 gap_esperado = ((preco_teorico / fechamento_bdr_ontem) - 1) * 100
@@ -141,9 +141,10 @@ with aba_oraculo:
             st.divider()
             c1, c2 = st.columns([1, 4])
             c1.metric("Dólar Usado", f"R$ {dolar_atual:.3f}")
-            c2.success("Tabela de Previsão de Gaps gerada com sucesso! Fique atento ao leilão de abertura da B3.")
+            c2.success("Tabela de Previsão de Gaps gerada com sucesso! As paridades estão calibradas.")
             
             df_oraculo = pd.DataFrame(resultados_oraculo)
+            # Ordena pelos maiores Gaps ignorando o sinal (módulo)
             df_oraculo['Modulo'] = df_oraculo['Gap Esperado (%)'].apply(lambda x: abs(float(x.replace('%', '').replace('+', ''))))
             df_oraculo = df_oraculo.sort_values(by='Modulo', ascending=False).drop(columns=['Modulo'])
             
@@ -156,7 +157,7 @@ with aba_oraculo:
 # ==========================================
 with aba_radar:
     st.subheader("📡 Radar de Distorção (Spread Intraday)")
-    st.markdown("Monitorização dos 25 BDRs de Elite em tempo real (15 min). O robô calcula se o **Market Maker** da B3 está atrasado na precificação.")
+    st.markdown("Monitorização dos BDRs de Elite em tempo real. O robô calcula se o **Market Maker** da B3 está atrasado na precificação.")
 
     btn_radar = st.button("📡 Escanear Distorções Agora", type="primary", use_container_width=True, key="btn_radar")
 
@@ -183,12 +184,11 @@ with aba_radar:
 
                 preco_teorico = (cotacao_us * dolar_atual) / info['paridade']
                 
-                # SPREAD: Positivo = BDR Caro (Vender). Negativo = BDR Barato (Comprar)
                 spread = ((cotacao_bdr / preco_teorico) - 1) * 100
 
                 acao_recomendada = "Aguardar ⏳"
-                if spread > 2.0: acao_recomendada = "Vender BDR (Caro) 🔴"
-                elif spread < -2.0: acao_recomendada = "Comprar BDR (Barato) 🟢"
+                if spread > 1.5: acao_recomendada = "Vender BDR (Caro) 🔴"
+                elif spread < -1.5: acao_recomendada = "Comprar BDR (Barato) 🟢"
 
                 resultados_radar.append({
                     'Ativo BDR': bdr,
@@ -207,7 +207,7 @@ with aba_radar:
             st.divider()
             c1, c2 = st.columns([1, 4])
             c1.metric("Dólar Atual", f"R$ {dolar_atual:.3f}")
-            c2.info("Distorções acima de +2.0% ou abaixo de -2.0% são destacadas em cor.")
+            c2.info("Distorções positivas (BDR acima do preço justo) destacadas em verde.")
             
             df_rad = pd.DataFrame(resultados_radar)
             df_rad['Modulo'] = df_rad['Distorção (%)'].apply(lambda x: abs(float(x.replace('%', '').replace('+', ''))))
@@ -285,12 +285,5 @@ with aba_historico:
                 
                 st.line_chart(df_chart, color=["#4da6ff", "#ff4d4d", "#00FF00", "#ffffff"])
 
-                if z_atual > zscore_alvo:
-                    st.error(f"🚨 **SINAL DE ARBITRAGEM (VENDA):** O BDR {ativo_hist} está estatisticamente muito caro em relação à ação americana. Z-Score > {zscore_alvo}. Operação teórica: Vender o BDR a Descoberto.")
-                elif z_atual < -zscore_alvo:
-                    st.success(f"🎯 **SINAL DE ARBITRAGEM (COMPRA):** O BDR {ativo_hist} está estatisticamente muito barato. Z-Score < -{zscore_alvo}. Operação teórica: Comprar BDR.")
-                else:
-                    st.info("⚖️ O ativo está a flutuar perto do valor justo. Não há oportunidades matemáticas de arbitragem neste momento.")
-
             except Exception as e:
-                st.error(f"Erro ao processar as bases de dados. É possível que o ativo {info_ativo['us']} não tenha retornado dados para alinhamento. Erro: {e}")
+                st.error(f"Erro ao processar as bases de dados. Verifique a liquidez ou conexão. Erro: {e}")
