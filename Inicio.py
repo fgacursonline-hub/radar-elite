@@ -20,6 +20,8 @@ alunos_cadastrados = {
     "admin": "suasenhaforte"
 }
 
+aviso_risco = "⚠️ **AVISO DE COMANDO:** Esta plataforma foi forjada exclusivamente para fins educacionais e de estudo quantitativo. Não emitimos recomendações de compra, venda ou manutenção de ativos. Toda operação no mercado financeiro gera risco real de perda de capital. Seja um Caçador com disciplina implacável e responsabilidade: o seu maior patrimônio é o seu gerenciamento de risco."
+
 if not st.session_state['autenticado']:
     st.markdown("<style>[data-testid='stSidebar'] {display: none;} [data-testid='stSidebarNav'] {display: none;}</style>", unsafe_allow_html=True)
     
@@ -27,6 +29,7 @@ if not st.session_state['autenticado']:
     with col2:
         st.markdown("<br><br><h1 style='text-align: center;'>🎯 Caçadores de Elite</h1>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center;'>Área Restrita do Radar Quantitativo</p>", unsafe_allow_html=True)
+        
         with st.form("form_login"):
             usuario = st.text_input("Usuário").lower().strip()
             senha = st.text_input("Senha", type="password")
@@ -36,6 +39,9 @@ if not st.session_state['autenticado']:
                     st.rerun()
                 else:
                     st.error("❌ Usuário ou senha incorretos.")
+                    
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.warning(aviso_risco)
     st.stop()
 
 # ==========================================
@@ -70,16 +76,16 @@ ibrx_selecao = [
 ]
 todos_ativos = list(set(bdrs_elite + ibrx_selecao))
 
-# --- Função de Cache Macro (IBOV, BTC, OURO, etc) ---
-@st.cache_data(ttl=300) # Atualiza a cada 5 minutos
+@st.cache_data(ttl=300) 
 def buscar_dados_macro():
     tv_local = TvDatafeed()
+    # Adicionamos as URLs do TradingView para cada ativo macro
     macros = {
-        'IBOV': {'symbol': 'IBOV', 'exchange': 'BMFBOVESPA', 'nome': 'IBOVESPA (Brasil)', 'prefix': 'pts', 'formato': '{:,.0f}'},
-        'EWZ': {'symbol': 'EWZ', 'exchange': 'AMEX', 'nome': 'EWZ (ETF Brasil EUA)', 'prefix': '$', 'formato': '{:.2f}'},
-        'BTC': {'symbol': 'BTCUSD', 'exchange': 'BITSTAMP', 'nome': 'Bitcoin (BTC)', 'prefix': '$', 'formato': '{:,.0f}'},
-        'GOLD': {'symbol': 'XAUUSD', 'exchange': 'OANDA', 'nome': 'Ouro (Spot)', 'prefix': '$', 'formato': '{:.2f}'},
-        'BRENT': {'symbol': 'UKOIL', 'exchange': 'TVC', 'nome': 'Petróleo Brent', 'prefix': '$', 'formato': '{:.2f}'}
+        'IBOV': {'symbol': 'IBOV', 'exchange': 'BMFBOVESPA', 'nome': 'IBOVESPA (Brasil)', 'prefix': 'pts', 'formato': '{:,.0f}', 'url': 'https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3AIBOV'},
+        'EWZ': {'symbol': 'EWZ', 'exchange': 'AMEX', 'nome': 'EWZ (ETF Brasil EUA)', 'prefix': '$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=AMEX%3AEWZ'},
+        'BTC': {'symbol': 'BTCUSD', 'exchange': 'BITSTAMP', 'nome': 'Bitcoin (BTC)', 'prefix': '$', 'formato': '{:,.0f}', 'url': 'https://br.tradingview.com/chart/?symbol=BITSTAMP%3ABTCUSD'},
+        'GOLD': {'symbol': 'XAUUSD', 'exchange': 'OANDA', 'nome': 'Ouro (Spot)', 'prefix': '$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=OANDA%3AXAUUSD'},
+        'BRENT': {'symbol': 'UKOIL', 'exchange': 'TVC', 'nome': 'Petróleo Brent', 'prefix': '$', 'formato': '{:.2f}', 'url': 'https://br.tradingview.com/chart/?symbol=TVC%3AUKOIL'}
     }
     
     resultados = []
@@ -91,15 +97,14 @@ def buscar_dados_macro():
                 fecho_ontem = df['close'].iloc[-2]
                 variacao = ((fecho_hj - fecho_ontem) / fecho_ontem) * 100
                 valor_formatado = f"{config['prefix']} " + config['formato'].format(fecho_hj)
-                resultados.append({'nome': config['nome'], 'valor': valor_formatado, 'variacao': variacao})
+                resultados.append({'nome': config['nome'], 'valor': valor_formatado, 'variacao': variacao, 'url': config['url']})
             else:
-                resultados.append({'nome': config['nome'], 'valor': 'N/A', 'variacao': 0})
+                resultados.append({'nome': config['nome'], 'valor': 'N/A', 'variacao': 0, 'url': config['url']})
         except:
-            resultados.append({'nome': config['nome'], 'valor': 'N/A', 'variacao': 0})
+            resultados.append({'nome': config['nome'], 'valor': 'N/A', 'variacao': 0, 'url': config['url']})
     return resultados
 
-# --- Função de Cache Ranking B3 ---
-@st.cache_data(ttl=900) # Memória dura 15 minutos para não travar a tela
+@st.cache_data(ttl=900)
 def buscar_ranking_ativos(ativos):
     tv_local = TvDatafeed()
     lista_rank = []
@@ -178,6 +183,8 @@ if dados_macro:
                 value=dados_macro[i]['valor'], 
                 delta=f"{dados_macro[i]['variacao']:.2f}%" if dados_macro[i]['valor'] != 'N/A' else None
             )
+            # Injeção do Link Clicável abaixo da métrica
+            st.markdown(f"<a href='{dados_macro[i]['url']}' target='_blank' style='text-decoration: none; font-size: 13px; color: #4da6ff;'>📊 Ver Gráfico</a>", unsafe_allow_html=True)
 
 st.divider()
 
@@ -254,7 +261,7 @@ with cl3: st.link_button("🔍 Filtro de Ações", "https://br.investing.com/sto
 with cl4: st.link_button("🦈 HedgeFollow (Fundos)", "https://hedgefollow.com/", use_container_width=True)
 
 # ==========================================
-# 6. RADAR DE NOTÍCIAS MULTI-FONTE (FILTRADO)
+# 6. RADAR DE NOTÍCIAS MULTI-FONTE
 # ==========================================
 st.divider()
 st.subheader("📰 Radar de Notícias Caçadores de Elite")
@@ -268,32 +275,23 @@ def carregar_feed(url):
         root = ET.fromstring(response.content)
         itens = []
         
-        # Filtro blindado contra lixo da internet e esportes
         palavras_proibidas = ['futebol', 'copa', 'assistir', 'corinthians', 'vasco', 'palmeiras', 'flamengo', 'brasileirão', 'fofoca', 'bbb', 'novela', 'filme']
         
         for item in root.findall('./channel/item'): 
             titulo = item.find('title').text
             link = item.find('link').text
             
-            # Converte para minúsculas para a verificação não falhar
             titulo_lower = titulo.lower()
-            
-            # Se encontrar qualquer palavra proibida, ignora a notícia
             if any(palavra in titulo_lower for palavra in palavras_proibidas):
                 continue
                 
             itens.append({"titulo": titulo, "link": link})
-            
-            # Quando atingir 8 notícias limpas, pára de procurar
-            if len(itens) >= 8:
-                break
+            if len(itens) >= 8: break
                 
         return itens
     except: return None
 
-# Trocamos o G1 pelo Money Times para focar 100% no mercado
 tab_info, tab_inv, tab_mt = st.tabs(["💰 InfoMoney", "📈 Investing.com", "🗞️ Money Times"])
-
 with tab_info:
     n_im = carregar_feed("https://www.infomoney.com.br/feed/")
     if n_im:
@@ -306,3 +304,9 @@ with tab_mt:
     n_mt = carregar_feed("https://www.moneytimes.com.br/feed/")
     if n_mt:
         for n in n_mt: st.markdown(f"• **{n['titulo']}** [Ler mais]({n['link']})")
+
+# ==========================================
+# 7. RODAPÉ DE SEGURANÇA E RESPONSABILIDADE
+# ==========================================
+st.divider()
+st.info(aviso_risco)
