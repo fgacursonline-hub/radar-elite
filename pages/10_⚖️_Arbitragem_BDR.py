@@ -20,9 +20,9 @@ def get_tv_connection():
 tv = get_tv_connection()
 
 # ==========================================
-# 2. DICIONÁRIO DE PARIDADES (MATEMÁTICA CORRIGIDA)
+# 2. DICIONÁRIO DE PARIDADES (CALIBRADO B3)
 # ==========================================
-# Paridades milimetricamente ajustadas com base nos últimos desdobramentos (Splits)
+# Mapeamento CORRIGIDO com as paridades exatas da B3 após desdobramentos
 bdr_setup = {
     'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ', 'paridade': 48},
     'P2LT34': {'us': 'PLTR', 'exchange': 'NYSE', 'paridade': 1},
@@ -31,43 +31,45 @@ bdr_setup = {
     'M1TA34': {'us': 'META', 'exchange': 'NASDAQ', 'paridade': 28},
     'TSLA34': {'us': 'TSLA', 'exchange': 'NASDAQ', 'paridade': 30},
     'LILY34': {'us': 'LLY', 'exchange': 'NYSE', 'paridade': 30},
-    'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ', 'paridade': 20},   # Corrigido (Era 120)
-    'AURA33': {'us': 'ORA', 'exchange': 'TSX', 'paridade': 1},
-    'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ', 'paridade': 12},  # Corrigido (Era 40)
-    'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ', 'paridade': 24},   # Corrigido (Era 60)
-    'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 6},      # Corrigido (Era 16)
+    'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ', 'paridade': 20},  # Corrigido
+    'AURA33': {'us': 'ORA', 'exchange': 'TSX', 'paridade': 1},       
+    'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ', 'paridade': 12}, # Corrigido
+    'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ', 'paridade': 24},  # Corrigido
+    'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 16},    
     'MELI34': {'us': 'MELI', 'exchange': 'NASDAQ', 'paridade': 120},
     'C2OI34': {'us': 'COIN', 'exchange': 'NASDAQ', 'paridade': 25},
     'ORCL34': {'us': 'ORCL', 'exchange': 'NYSE', 'paridade': 6},
-    'M2ST34': {'us': 'MSTR', 'exchange': 'NASDAQ', 'paridade': 70}, 
-    'A1MD34': {'us': 'AMD', 'exchange': 'NASDAQ', 'paridade': 8},     # Corrigido (Era 4)
-    'NFLX34': {'us': 'NFLX', 'exchange': 'NASDAQ', 'paridade': 50},   # Corrigido (Era 80)
-    'ITLC34': {'us': 'INTC', 'exchange': 'NASDAQ', 'paridade': 6},    # Corrigido (Era 8)
-    'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ', 'paridade': 70},
-    'COCA34': {'us': 'KO', 'exchange': 'NYSE', 'paridade': 6},        # Corrigido (Era 12)
+    'M2ST34': {'us': 'MSTR', 'exchange': 'NASDAQ', 'paridade': 70},  
+    'A1MD34': {'us': 'AMD', 'exchange': 'NASDAQ', 'paridade': 8},    # Corrigido
+    'NFLX34': {'us': 'NFLX', 'exchange': 'NASDAQ', 'paridade': 80},  
+    'ITLC34': {'us': 'INTC', 'exchange': 'NASDAQ', 'paridade': 8},
+    'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ', 'paridade': 70},  
+    'COCA34': {'us': 'KO', 'exchange': 'NYSE', 'paridade': 6},       # Corrigido
     'JBSS32': {'us': 'JBSAY', 'exchange': 'OTC', 'paridade': 1}, 
     'AAPL34': {'us': 'AAPL', 'exchange': 'NASDAQ', 'paridade': 20},
     'XPBR31': {'us': 'XP', 'exchange': 'NASDAQ', 'paridade': 1},
     'STOC34': {'us': 'STNE', 'exchange': 'NASDAQ', 'paridade': 1}
 }
 
-# Símbolo do Dólar para cálculo de conversão
+# Símbolo do Dólar
 SIMBOLO_DOLAR = 'USDBRL'
 EXCHANGE_DOLAR = 'FX_IDC'
 
+# --- FUNÇÃO DE COLORAÇÃO CORRIGIDA ---
 def colorir_spread(row):
-    # Procura a coluna unificada de distorção
-    col = 'Distorção Alvo (%)' if 'Distorção Alvo (%)' in row else None
-    
+    # Identifica em qual aba estamos rodando a tabela
+    col = None
+    if 'Gap Esperado (%)' in row:
+        col = 'Gap Esperado (%)'
+    elif 'Distorção (%)' in row:
+        col = 'Distorção (%)'
+        
     if col:
         try:
             val = float(row[col].replace('%', '').replace('+', ''))
-            # Se for positivo (BDR Barato), pinta a linha toda de verde
-            if val > 1.0: 
-                return ['color: #00FF00; font-weight: bold'] * len(row)
-            # Se for negativo (BDR Caro), pinta a linha toda de vermelho pálido
-            elif val < -1.0: 
-                return ['color: #ff4d4d; font-weight: bold'] * len(row)
+            # Se for positivo, destaca a linha de verde. Se for negativo, deixa em branco (padrão)
+            if val > 0: 
+                return ['color: #00FF00; font-weight: bold'] * len(row) 
         except: pass
     return [''] * len(row)
 
@@ -79,7 +81,7 @@ with col_titulo:
     st.title("⚖️ Arbitragem de BDRs (Long & Short)")
 with col_botao:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-    st.link_button("⚙️ Checar Paridades", "https://statusinvest.com.br/acoes/eua", use_container_width=True)
+    st.link_button("⚙️ Conferir Paridades", "https://statusinvest.com.br/acoes/eua", use_container_width=True)
 
 aba_oraculo, aba_radar, aba_historico = st.tabs([
     "🔮 Oráculo de Abertura (Gap)", "📡 Radar de Distorção (Tempo Real)", "📉 Arbitragem Histórica (Z-Score)"
@@ -90,7 +92,7 @@ aba_oraculo, aba_radar, aba_historico = st.tabs([
 # ==========================================
 with aba_oraculo:
     st.subheader("🔮 O Oráculo de Abertura (Caçador de Gaps)")
-    st.markdown("O robô calcula o preço teórico exato de abertura do BDR com base no Pre-Market americano.")
+    st.markdown("Use esta aba entre as **09h00 e 10h00**. O robô olha para o Pre-Market dos EUA e para o Dólar Futuro para prever exatamente onde o BDR deveria abrir na B3.")
 
     btn_oraculo = st.button("🔍 Prever Gaps de Abertura Hoje", type="primary", use_container_width=True, key="btn_oraculo")
 
@@ -103,34 +105,32 @@ with aba_oraculo:
             dolar_atual = df_dolar['close'].iloc[-1]
         except:
             dolar_atual = 5.00 
-            st.error("Erro ao puxar o Dólar. Usando R$ 5,00 como segurança.")
+            st.error("Erro ao puxar o Dólar. Usando valor de R$ 5,00 como teste.")
 
         for idx, (bdr, info) in enumerate(bdr_setup.items()):
             p_bar.progress((idx + 1) / len(bdr_setup))
             try:
+                # Puxa fechamento de ontem do BDR (B3)
                 df_bdr = tv.get_hist(symbol=bdr, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=3)
                 if df_bdr is None or len(df_bdr) < 2: continue
                 fechamento_bdr_ontem = df_bdr['close'].iloc[-1] 
 
+                # Puxa cotação atual da ação original
                 df_us = tv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
                 if df_us is None: continue
                 cotacao_us_atual = df_us['close'].iloc[-1]
 
-                # FÓRMULA UNIFICADA: (Teorico / Real) - 1
+                # FÓRMULA DA ARBITRAGEM CORRIGIDA
                 preco_teorico = (cotacao_us_atual * dolar_atual) / info['paridade']
+                
                 gap_esperado = ((preco_teorico / fechamento_bdr_ontem) - 1) * 100
-
-                acao = "Aguardar ⏳"
-                if gap_esperado > 1.0: acao = "Comprar Abertura 🟢"
-                elif gap_esperado < -1.0: acao = "Vender Abertura 🔴"
 
                 resultados_oraculo.append({
                     'Ativo BDR': bdr,
                     'US Stock Atual': f"$ {cotacao_us_atual:.2f}",
                     'Fechou B3 Ontem': f"R$ {fechamento_bdr_ontem:.2f}",
                     'Preço Justo Abertura': f"R$ {preco_teorico:.2f}",
-                    'Distorção Alvo (%)': f"+{gap_esperado:.2f}%" if gap_esperado > 0 else f"{gap_esperado:.2f}%",
-                    'Recomendação': acao
+                    'Gap Esperado (%)': f"+{gap_esperado:.2f}%" if gap_esperado > 0 else f"{gap_esperado:.2f}%"
                 })
             except: pass
             time.sleep(0.05)
@@ -140,23 +140,24 @@ with aba_oraculo:
         if resultados_oraculo:
             st.divider()
             c1, c2 = st.columns([1, 4])
-            c1.metric("Dólar Usado", f"R$ {dolar_atual:.4f}")
-            c2.success("Mapeamento concluído! As distorções monstruosas foram extintas graças à calibração de paridades.")
+            c1.metric("Dólar Usado", f"R$ {dolar_atual:.3f}")
+            c2.success("Tabela de Previsão de Gaps gerada com sucesso! As paridades estão calibradas.")
             
             df_oraculo = pd.DataFrame(resultados_oraculo)
-            df_oraculo['Modulo'] = df_oraculo['Distorção Alvo (%)'].apply(lambda x: abs(float(x.replace('%', '').replace('+', ''))))
+            # Ordena pelos maiores Gaps ignorando o sinal (módulo)
+            df_oraculo['Modulo'] = df_oraculo['Gap Esperado (%)'].apply(lambda x: abs(float(x.replace('%', '').replace('+', ''))))
             df_oraculo = df_oraculo.sort_values(by='Modulo', ascending=False).drop(columns=['Modulo'])
             
             st.dataframe(df_oraculo.style.apply(colorir_spread, axis=1), use_container_width=True, hide_index=True)
         else:
-            st.warning("Não foi possível carregar as cotações. Verifique a conexão.")
+            st.warning("Não foi possível carregar as cotações. Verifique o fuso horário ou a conexão.")
 
 # ==========================================
 # ABA 2: RADAR DE DISTORÇÃO (TEMPO REAL)
 # ==========================================
 with aba_radar:
     st.subheader("📡 Radar de Distorção (Spread Intraday)")
-    st.markdown("Monitorização em tempo real. Identifica falhas no Market Maker da B3 durante o pregão.")
+    st.markdown("Monitorização dos BDRs de Elite em tempo real. O robô calcula se o **Market Maker** da B3 está atrasado na precificação.")
 
     btn_radar = st.button("📡 Escanear Distorções Agora", type="primary", use_container_width=True, key="btn_radar")
 
@@ -181,21 +182,21 @@ with aba_radar:
                 if df_us is None: continue
                 cotacao_us = df_us['close'].iloc[-1]
 
-                # FÓRMULA UNIFICADA: (Teorico / Real) - 1
                 preco_teorico = (cotacao_us * dolar_atual) / info['paridade']
-                spread = ((preco_teorico / cotacao_bdr) - 1) * 100
+                
+                spread = ((cotacao_bdr / preco_teorico) - 1) * 100
 
-                acao = "Aguardar ⏳"
-                if spread > 1.0: acao = "Comprar BDR (Barato) 🟢"
-                elif spread < -1.0: acao = "Vender BDR (Caro) 🔴"
+                acao_recomendada = "Aguardar ⏳"
+                if spread > 1.5: acao_recomendada = "Vender BDR (Caro) 🔴"
+                elif spread < -1.5: acao_recomendada = "Comprar BDR (Barato) 🟢"
 
                 resultados_radar.append({
                     'Ativo BDR': bdr,
                     'BDR na B3': f"R$ {cotacao_bdr:.2f}",
                     'US Stock': f"$ {cotacao_us:.2f}",
                     'Preço Teórico': f"R$ {preco_teorico:.2f}",
-                    'Distorção Alvo (%)': f"+{spread:.2f}%" if spread > 0 else f"{spread:.2f}%",
-                    'Recomendação': acao
+                    'Distorção (%)': f"+{spread:.2f}%" if spread > 0 else f"{spread:.2f}%",
+                    'Ação Recomendada': acao_recomendada
                 })
             except: pass
             time.sleep(0.05)
@@ -205,11 +206,11 @@ with aba_radar:
         if resultados_radar:
             st.divider()
             c1, c2 = st.columns([1, 4])
-            c1.metric("Dólar Atual", f"R$ {dolar_atual:.4f}")
-            c2.info("Valores Positivos (+): O preço da B3 está abaixo do justo (Comprar). Valores Negativos (-): A B3 está cara demais (Vender).")
+            c1.metric("Dólar Atual", f"R$ {dolar_atual:.3f}")
+            c2.info("Distorções positivas (BDR acima do preço justo) destacadas em verde.")
             
             df_rad = pd.DataFrame(resultados_radar)
-            df_rad['Modulo'] = df_rad['Distorção Alvo (%)'].apply(lambda x: abs(float(x.replace('%', '').replace('+', ''))))
+            df_rad['Modulo'] = df_rad['Distorção (%)'].apply(lambda x: abs(float(x.replace('%', '').replace('+', ''))))
             df_rad = df_rad.sort_values(by='Modulo', ascending=False).drop(columns=['Modulo'])
             
             st.dataframe(df_rad.style.apply(colorir_spread, axis=1), use_container_width=True, hide_index=True)
@@ -219,7 +220,7 @@ with aba_radar:
 # ==========================================
 with aba_historico:
     st.subheader("📉 Arbitragem Histórica (Z-Score & Mean Reversion)")
-        st.markdown("O robô calcula o *Ratio* diário dos últimos 250 dias e extrai o **Z-Score**. Se o Z-Score passar de +2.0 ou cair de -2.0, o elástico estatístico estourou.")
+    st.markdown("O robô calcula o *Ratio* diário dos últimos 250 dias e extrai o **Z-Score**. Se o Z-Score passar de +2.0 ou cair de -2.0, o elástico estatístico estourou.")
 
     c_h1, c_h2, c_h3 = st.columns(3)
     with c_h1:
