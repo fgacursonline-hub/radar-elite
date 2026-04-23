@@ -251,18 +251,28 @@ with aba_ttm:
                 df = aplicar_filtro_keltner_bb(df, length=ttm_length, mult_kc=ttm_mult_kc, mult_bb=ttm_mult_bb)
                 
                 if df['Inicio_Tendencia'].iloc[-1] == True:
-                    # Verifica a direção comparando com a linha central do Keltner
                     is_alta = df['Close'].iloc[-1] > df['Basis'].iloc[-1]
-                    
                     direcao = "📈 ALTA" if is_alta else "📉 BAIXA"
+                    
                     gatilho_entrada = df['High'].iloc[-1] + 0.01 if is_alta else df['Low'].iloc[-1] - 0.01
+                    preco_atual = df['Close'].iloc[-1]
+                    
+                    # Cálculo exato do percentual de lucro ou distância para a entrada
+                    if is_alta:
+                        var_pct = ((preco_atual / gatilho_entrada) - 1) * 100
+                    else:
+                        var_pct = ((gatilho_entrada / preco_atual) - 1) * 100
+
+                    str_resultado = f"+{var_pct:.2f}%" if var_pct > 0 else f"{var_pct:.2f}%"
                     
                     sinais_ttm.append({
                         'Ativo': ativo,
                         'Alerta': '🚨 IGNICÃO TTM',
                         'Direção': direcao,
                         'Gatilho (Entrada)': f"R$ {gatilho_entrada:.2f}",
-                        'Preço Atual': f"R$ {df['Close'].iloc[-1]:.2f}"
+                        'Preço Atual': f"R$ {preco_atual:.2f}",
+                        'Resultado': str_resultado,
+                        '_var_raw': var_pct
                     })
             except Exception as e: pass
             time.sleep(0.01)
@@ -272,8 +282,19 @@ with aba_ttm:
 
         st.divider()
         if sinais_ttm:
+            df_ttm = pd.DataFrame(sinais_ttm).sort_values(by='_var_raw', ascending=False).drop(columns=['_var_raw'])
+            
+            # Função mágica de pintura de tabela do Streamlit
+            def colorir_resultado(val):
+                try:
+                    v = float(val.replace('%', '').replace('+', ''))
+                    if v > 0: return 'color: #00FF00; font-weight: bold' # Verde Neon
+                    elif v < 0: return 'color: #ff4d4d' # Vermelho Claro
+                    return ''
+                except: return ''
+
             st.success(f"🔥 Foram detectadas {len(sinais_ttm)} ignições de volatilidade hoje!")
-            st.dataframe(pd.DataFrame(sinais_ttm), use_container_width=True, hide_index=True)
+            st.dataframe(df_ttm.style.map(colorir_resultado, subset=['Resultado']), use_container_width=True, hide_index=True)
         else:
             st.warning("O mercado está calmo. Nenhuma ignição direcional identificada neste momento.")
 
