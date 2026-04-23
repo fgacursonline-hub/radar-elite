@@ -326,16 +326,27 @@ with col_btn:
 if btn_indiv:
     info = bdr_setup_home[ativo_sel]
     tv_ind = get_tv_conn_home()
+    
     f_reg = None
     p_at = None
+    p_bdr = None
+    v_bdr = None
     
     with st.spinner("Atualizando os dados da pagina, isso pode demorar. Aguarde!"):
         try:
+            # 1. Puxando Dados da Ação Americana (US)
             df_r = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
             if df_r is not None and not df_r.empty: f_reg = df_r['close'].iloc[-1]
             if f_reg:
                 df_e = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
                 if df_e is not None and not df_e.empty: p_at = df_e['close'].iloc[-1]
+            
+            # 2. Puxando Dados do BDR Brasileiro (B3) simultaneamente
+            df_bdr = tv_ind.get_hist(symbol=ativo_sel, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=2)
+            if df_bdr is not None and not df_bdr.empty:
+                p_bdr = df_bdr['close'].iloc[-1]
+                if len(df_bdr) >= 2:
+                    v_bdr = ((p_bdr / df_bdr['close'].iloc[-2]) - 1) * 100
         except: pass
         
     if f_reg and p_at:
@@ -343,11 +354,16 @@ if btn_indiv:
         
         st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
         
-        # Métricas alinhadas e divididas na largura toda
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Ação (US)", info['us'])
-        c2.metric("BDR", ativo_sel)
-        c3.metric("Preço Atual", f"$ {p_at:.2f}", f"{v:.2f}%")
+        # AGORA COM 4 COLUNAS: Lado a Lado EUA vs BRASIL
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Ação (EUA)", info['us'])
+        c2.metric(f"Cotação {info['us']} (Real-Time)", f"$ {p_at:.2f}", f"{v:.2f}%")
+        c3.metric("BDR (Brasil)", ativo_sel)
+        
+        if p_bdr:
+            c4.metric(f"Cotação {ativo_sel} (B3)", f"R$ {p_bdr:.2f}", f"{v_bdr:.2f}%" if v_bdr is not None else None)
+        else:
+            c4.metric(f"Cotação {ativo_sel} (B3)", "S/ Dados")
         
         # Caixa de informação ocupando a largura toda logo abaixo
         st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
@@ -360,7 +376,7 @@ if btn_indiv:
         ⚠️ *Atenção: Das 21h00 às 05h00 (Horário de Brasília), o mercado oficial entra em "Zona Morta". Os preços das cotações permanecem congelados no último valor negociado.*
         """)
     else: 
-        st.error("Desatualizado.")
+        st.error("Desatualizado. Não foi possível puxar os dados do servidor americano.")
 
 # ==========================================
 # 5. ARSENAL, INTELIGÊNCIA E LINKS ÚTEIS
