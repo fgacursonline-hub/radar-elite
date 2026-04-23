@@ -6,7 +6,7 @@ import pandas as pd
 import time
 
 # ==========================================
-# 1. CONFIGURAÇÃO DA PÁGINA E CSS (AJUSTADO)
+# 1. CONFIGURAÇÃO DA PÁGINA E CSS
 # ==========================================
 st.set_page_config(page_title="Caçadores de Elite", layout="wide", page_icon="🎯", initial_sidebar_state="collapsed")
 
@@ -309,40 +309,58 @@ if st.button("🔍 Escanear TUDO no After-Market Agora", type="primary", use_con
         st.dataframe(df_after.style.apply(colorir_after, axis=1), use_container_width=True, hide_index=True)
 
 st.markdown("#### 🎯 Alguma Stock específica?")
+
 col_sel, col_btn = st.columns([3, 1], vertical_alignment="bottom")
+
 with col_sel:
-    ativo_sel = st.selectbox("Selecione a ação americana:", options=sorted(list(bdr_setup_home.keys())), format_func=lambda x: f"{bdr_setup_home[x]['us']} (Ref: {x})")
+    ativo_sel = st.selectbox(
+        "Selecione a ação americana:", 
+        options=sorted(list(bdr_setup_home.keys())), 
+        format_func=lambda x: f"{bdr_setup_home[x]['us']} (Ref: {x})"
+    )
+
 with col_btn:
-    if st.button("🔍 Consultar Ativo", use_container_width=True):
-        info = bdr_setup_home[ativo_sel]; tv_ind = get_tv_conn_home(); f_reg = None; p_at = None
-        with st.spinner("Atualizando os dados da pagina, isso pode demorar. Aguarde!"):
-            try:
-                df_r = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
-                if df_r is not None and not df_r.empty: f_reg = df_r['close'].iloc[-1]
-                if f_reg:
-                    df_e = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
-                    if df_e is not None and not df_e.empty: p_at = df_e['close'].iloc[-1]
-            except: pass
-            
-        if f_reg and p_at:
-            v = ((p_at / f_reg) - 1) * 100
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Ação (US)", info['us'])
-            c2.metric("BDR", ativo_sel)
-            c3.metric("Preço Atual", f"$ {p_at:.2f}", f"{v:.2f}%")
-            
-            # --- NOVO BLOCO: INFORMAÇÃO DOS HORÁRIOS DA BOLSA ---
-            st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
-            st.info("""
-            🕒 **Relógio Oficial das Bolsas Americanas (NASDAQ / NYSE):**
-            * **Pré-Market:** 05h00 às 10h30 (Horário de Brasília)
-            * **Mercado Regular:** 10h30 às 17h00 (Horário de Brasília)
-            * **After-Hours:** 17h00 às 21h00 (Horário de Brasília)
-            
-            ⚠️ *Atenção: Das 21h00 às 05h00 (Horário de Brasília), o mercado oficial entra em "Zona Morta". Os preços das cotações permanecem congelados no último valor negociado.*
-            """)
-        else: 
-            st.error("Desatualizado.")
+    btn_indiv = st.button("🔍 Consultar Ativo", use_container_width=True)
+
+# AGORA FORA DAS COLUNAS (Ocupando a tela inteira)
+if btn_indiv:
+    info = bdr_setup_home[ativo_sel]
+    tv_ind = get_tv_conn_home()
+    f_reg = None
+    p_at = None
+    
+    with st.spinner("Atualizando os dados da pagina, isso pode demorar. Aguarde!"):
+        try:
+            df_r = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
+            if df_r is not None and not df_r.empty: f_reg = df_r['close'].iloc[-1]
+            if f_reg:
+                df_e = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
+                if df_e is not None and not df_e.empty: p_at = df_e['close'].iloc[-1]
+        except: pass
+        
+    if f_reg and p_at:
+        v = ((p_at / f_reg) - 1) * 100
+        
+        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+        
+        # Métricas alinhadas e divididas na largura toda
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Ação (US)", info['us'])
+        c2.metric("BDR", ativo_sel)
+        c3.metric("Preço Atual", f"$ {p_at:.2f}", f"{v:.2f}%")
+        
+        # Caixa de informação ocupando a largura toda logo abaixo
+        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+        st.info("""
+        🕒 **Relógio Oficial das Bolsas Americanas (NASDAQ / NYSE):**
+        * **Pré-Market:** 05h00 às 10h30 (Horário de Brasília)
+        * **Mercado Regular:** 10h30 às 17h00 (Horário de Brasília)
+        * **After-Hours:** 17h00 às 21h00 (Horário de Brasília)
+        
+        ⚠️ *Atenção: Das 21h00 às 05h00 (Horário de Brasília), o mercado oficial entra em "Zona Morta". Os preços das cotações permanecem congelados no último valor negociado.*
+        """)
+    else: 
+        st.error("Desatualizado.")
 
 # ==========================================
 # 5. ARSENAL, INTELIGÊNCIA E LINKS ÚTEIS
