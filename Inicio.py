@@ -180,44 +180,65 @@ with c_sair:
 
 st.divider()
 
-# --- TERMÔMETRO MACRO GLOBAL ---
+# --- TERMÔMETRO MACRO GLOBAL COM AUTO-REFRESH ---
 st.subheader("🌐 Termômetro Macro Global")
 
-fuso_br = timezone(timedelta(hours=-3))
-agora = datetime.now(fuso_br)
+# Criamos um fragmento que atualiza sozinho a cada 60 segundos (60000ms)
+@st.fragment(run_every=60)
+def renderizar_termometro():
+    fuso_br = timezone(timedelta(hours=-3))
+    agora = datetime.now(fuso_br)
 
-def is_mercado_aberto(data_atual):
-    if data_atual.weekday() >= 5: return False
-    if not (10 <= data_atual.hour < 18): return False
-    feriados_fixos = [(1, 1), (4, 21), (5, 1), (9, 7), (10, 12), (11, 2), (11, 15), (11, 20), (12, 25)]
-    if (data_atual.month, data_atual.day) in feriados_fixos: return False
-    feriados_moveis_2026 = [(2, 16), (2, 17), (4, 3), (6, 4)]
-    if data_atual.year == 2026 and (data_atual.month, data_atual.day) in feriados_moveis_2026: return False
-    return True
+    def is_mercado_aberto(data_atual):
+        if data_atual.weekday() >= 5: return False
+        if not (10 <= data_atual.hour < 18): return False
+        feriados_fixos = [(1, 1), (4, 21), (5, 1), (9, 7), (10, 12), (11, 2), (11, 15), (11, 20), (12, 25)]
+        if (data_atual.month, data_atual.day) in feriados_fixos: return False
+        return True
 
-texto_status = "🟢 B3 Aberta" if is_mercado_aberto(agora) else "🔴 B3 Fechada"
-st.caption(f"{texto_status} | Globais 24h. Última atualização: {agora.strftime('%d/%m às %H:%M')}.")
+    texto_status = "🟢 B3 Aberta" if is_mercado_aberto(agora) else "🔴 B3 Fechada"
+    st.caption(f"{texto_status} | Atualizando automaticamente a cada 1 min | Última leitura: {agora.strftime('%H:%M:%S')}")
 
-with st.spinner("Conectando com as bolsas globais..."):
+    # Forçamos a limpeza do cache para pegar o dado novo da API
     dados_macro = buscar_dados_macro()
 
-if dados_macro:
-    for i in range(0, len(dados_macro), 5):
-        cols = st.columns(5)
-        for j, col in enumerate(cols):
-            if i + j < len(dados_macro):
-                item = dados_macro[i + j]
-                with col:
-                    st.metric(
-                        label=item['nome'], 
-                        value=item['valor'], 
-                        delta=f"{item['variacao']:.2f}%" if item['valor'] != 'N/A' else None
-                    )
-                    st.markdown(f"<a href='{item['url']}' target='_blank' style='text-decoration: none; font-size: 13px; color: #4da6ff;'>📊 Ver Gráfico</a>", unsafe_allow_html=True)
+    if dados_macro:
+        # Primeira Linha
+        for i in range(0, 5):
+            cols = st.columns(5)
+            for j, col in enumerate(cols):
+                idx = i + j
+                if idx < len(dados_macro):
+                    item = dados_macro[idx]
+                    with col:
+                        st.metric(
+                            label=item['nome'], 
+                            value=item['valor'], 
+                            delta=f"{item['variacao']:.2f}%" if item['valor'] != 'N/A' else None
+                        )
+                        st.markdown(f"<a href='{item['url']}' target='_blank' style='text-decoration: none; font-size: 13px; color: #4da6ff;'>📊 Ver Gráfico</a>", unsafe_allow_html=True)
+            break # Garante que só faz a primeira linha aqui
+
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
-st.divider()
-
+        # Segunda Linha
+        for i in range(5, 10):
+            cols = st.columns(5)
+            for j, col in enumerate(cols):
+                idx = i + j
+                if idx < len(dados_macro):
+                    item = dados_macro[idx]
+                    with col:
+                        st.metric(
+                            label=item['nome'], 
+                            value=item['valor'], 
+                            delta=f"{item['variacao']:.2f}%" if item['valor'] != 'N/A' else None
+                        )
+                        st.markdown(f"<a href='{item['url']}' target='_blank' style='text-decoration: none; font-size: 13px; color: #4da6ff;'>📊 Ver Gráfico</a>", unsafe_allow_html=True)
+            break
+            
+# Chama a função para desenhar na tela
+renderizar_termometro()
 # ==========================================
 # 4. PAINEL DE DESTAQUES (ALTAS, QUEDAS E TOPOS)
 # ==========================================
