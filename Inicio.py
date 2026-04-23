@@ -84,11 +84,7 @@ aba_oraculo, aba_radar, aba_historico = st.tabs([
 # ==========================================
 with aba_oraculo:
     st.subheader("🔮 O Oráculo de Abertura (Caçador de Gaps)")
-    st.info("""
-    **🎯 OBJETIVO:** Prever o preço exato do leilão de abertura da B3 (Ideal para usar entre as 09h00 e as 10h00).
-    
-    **⚙️ MECÂNICA:** Cruza o preço de **Fechamento de Ontem no Brasil** com a cotação **Atual da Madrugada nos EUA (Pre-Market)**. Se a ação americana subiu de madrugada, a tabela mostra o tamanho do Gap de Alta com que o BDR será forçado a abrir.
-    """)
+    st.info('**Oráculo:** Usa-se de manhã cedo (antes das 10h). Compara o "Ontem" do Brasil com o "Hoje" dos EUA.')
 
     btn_oraculo = st.button("🔍 Prever Gaps de Abertura Hoje", type="primary", use_container_width=True, key="btn_oraculo")
 
@@ -153,11 +149,7 @@ with aba_oraculo:
 # ==========================================
 with aba_radar:
     st.subheader("📡 Radar de Distorção (Spread Intraday)")
-    st.info("""
-    **🎯 OBJETIVO:** Caçar o "Market Maker" da B3 dormindo no ponto durante o pregão.
-    
-    **⚙️ MECÂNICA:** Compara o preço do BDR **AGORA** com o preço da Ação nos EUA **AGORA**. Revela instantaneamente se a B3 está a atrasar a atualização da cotação, permitindo operações de giro rápido (Scalp) nas distorções.
-    """)
+    st.info('**Radar:** Usa-se durante o dia (com o mercado aberto). Compara o "Agora" do Brasil com o "Agora" dos EUA.')
 
     btn_radar = st.button("📡 Escanear Distorções Agora", type="primary", use_container_width=True, key="btn_radar")
 
@@ -219,11 +211,7 @@ with aba_radar:
 # ==========================================
 with aba_historico:
     st.subheader("📉 Arbitragem Histórica (Z-Score & Mean Reversion)")
-    st.info("""
-    **🎯 OBJETIVO:** Operações de médio/longo prazo (Swing Trade) baseadas na distorção estrutural do ativo (Regressão à Média).
-    
-    **⚙️ MECÂNICA:** Estuda o histórico dos últimos 250 pregões para descobrir qual é a "diferença normal" entre o Brasil e os EUA. Se o indicador estourar (Z-Score +2.0 ou -2.0), revela uma anomalia raríssima que a matemática do mercado será forçada a corrigir.
-    """)
+    st.info('**Z-Score:** Usa-se para swing trade. Compara o "Comportamento de 1 Ano" para achar distorções raras.')
 
     c_h1, c_h2, c_h3 = st.columns(3)
     with c_h1:
