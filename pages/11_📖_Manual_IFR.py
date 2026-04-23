@@ -1,9 +1,20 @@
 import streamlit as st
+import pandas as pd  # <-- AQUI ESTÁ A CORREÇÃO: O motor de tabelas ativado!
 
 # ==========================================
-# 1. CONFIGURAÇÃO DA PÁGINA
+# 1. CONFIGURAÇÃO DA PÁGINA E CAMUFLAGEM
 # ==========================================
 st.set_page_config(page_title="Manual IFR | Caçadores de Elite", layout="wide", page_icon="📖")
+
+# --- CAMUFLAGEM: OCULTAR O MANUAL DO MENU LATERAL ---
+st.markdown("""
+    <style>
+    /* Procura qualquer link no menu lateral que contenha a palavra 'Manual' e oculta a linha inteira */
+    [data-testid="stSidebarNavItems"] li:has(a[href*="Manual"]) {
+        display: none !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, faça login na página inicial (Home).")
@@ -20,7 +31,6 @@ st.divider()
 # 3. CONCEITO GERAL DO SETUP
 # ==========================================
 st.header("🧠 1. A Filosofia do Setup (Regressão à Média)")
-
 st.markdown("""
 A estratégia de **Índice de Força Relativa (IFR)** é baseada num princípio matemático imutável do mercado: o efeito "elástico". 
 Quando um ativo cai por muitos dias consecutivos, ele fica "esticado" para baixo. A força vendedora entra em exaustão, e os institucionais que estavam vendidos começam a recomprar (zerar posições) para garantir os lucros. Isso gera um repique rápido e violento de alta. 
@@ -103,7 +113,6 @@ st.divider()
 # ==========================================
 st.header("🎯 5. Interpretação e Execução na Corretora")
 
-
 st.markdown("""
 ### 🟢 A Interpretação das Cores
 * **Cores Verdes / "Gain ✅":** Operações que já bateram o seu alvo de lucro.
@@ -125,4 +134,6 @@ st.info("*O mercado fará de tudo para tirar você do eixo. Confie no backtest, 
 st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
 col_voltar, col_vazia = st.columns([1, 4])
 with col_voltar:
-    st.link_button("⬅️ Voltar ao Terminal IFR", "/", use_container_width=True) # Ajuste o '/' para a página do seu terminal, se necessário
+    # Este botão retorna para a raiz do seu app. Se o IFR for a home, '/' funciona. 
+    # Se o IFR for outra página (ex: pages/IFR.py), você precisa usar o nome do arquivo sem extensão e sem emojis, ex: "IFR"
+    st.page_link("/", label="⬅️ Voltar ao Início", use_container_width=True)
