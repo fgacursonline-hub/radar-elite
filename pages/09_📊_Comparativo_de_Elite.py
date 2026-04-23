@@ -40,11 +40,9 @@ st.set_page_config(page_title="Comparador de Elite", layout="wide")
 st.title("📊 Comparador de Performance Institucional")
 st.markdown("Identifique qual ativo está atraindo mais capital e força relativa no período.")
 
-# --- SEÇÃO DE CONFIGURAÇÕES (AGORA NA PÁGINA CENTRAL) ---
 st.divider()
 st.subheader("⚙️ Configurações do Duelo")
 
-# Organizando os inputs em colunas para não ocupar muito espaço vertical
 c1, c2, c3 = st.columns([2, 1, 1])
 
 with c1:
@@ -53,34 +51,33 @@ with c2:
     tempo_comp = st.selectbox("Tempo Gráfico:", ['1d', '60m'], index=0)
 with c3:
     periodo_comp = st.slider("Janela de Observação (Barras):", 20, 300, 100)
+    
+    # --- EXPLICAÇÃO DINÂMICA DO TEMPO ---
+    if tempo_comp == '1d':
+        st.caption(f"🕒 **Referência:** {periodo_comp} barras ≈ {int(periodo_comp/20)} meses de mercado.")
+    else:
+        st.caption(f"🕒 **Referência:** {periodo_comp} barras ≈ {int(periodo_comp/7)} dias de pregão.")
 
-# Botão centralizado e em destaque
 btn_comp = st.button("🚀 Gerar Comparativo de Performance", type="primary", use_container_width=True)
 
 # ==========================================
-# 3. LÓGICA DE PROCESSAMENTO E RESULTADOS
+# 3. PROCESSAMENTO
 # ==========================================
 if btn_comp:
     if not ativos_comp:
-        st.warning("⚠️ Selecione pelo menos um ativo para iniciar o duelo.")
+        st.warning("⚠️ Selecione os ativos para o duelo.")
     else:
-        with st.spinner("Sincronizando dados e normalizando retornos..."):
+        with st.spinner("Sincronizando dados..."):
             df_final = pd.DataFrame()
-            
             for ticker in ativos_comp:
                 try:
                     df_at = tv.get_hist(symbol=ticker, exchange='BMFBOVESPA', interval=tradutor_intervalo[tempo_comp], n_bars=periodo_comp)
                     if df_at is not None:
-                        # Normalização por Base Zero
                         inicio = df_at['close'].iloc[0]
                         df_at[ticker] = ((df_at['close'] / inicio) - 1) * 100
-                        
-                        if df_final.empty:
-                            df_final = df_at[[ticker]]
-                        else:
-                            df_final = df_final.join(df_at[ticker], how='inner')
-                except Exception:
-                    st.error(f"❌ Erro ao processar o rastro de {ticker}")
+                        if df_final.empty: df_final = df_at[[ticker]]
+                        else: df_final = df_final.join(df_at[ticker], how='inner')
+                except: pass
 
             if not df_final.empty:
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -89,9 +86,7 @@ if btn_comp:
                 
                 st.divider()
 
-                # Painel de Resultados
                 col_rank, col_insight = st.columns([1, 2])
-                
                 with col_rank:
                     st.markdown("### 🏆 Ranking do Período")
                     ult_valores = df_final.iloc[-1].sort_values(ascending=False)
@@ -101,21 +96,19 @@ if btn_comp:
                 
                 with col_insight:
                     st.markdown("### 💡 Insight do Comandante")
-                    vencedor = ult_valores.index[0]
-                    distancia = ult_valores.max() - ult_valores.min()
-                    st.info(f"""
-                    O ativo **{vencedor}** demonstra maior força relativa no momento. 
-                    A dispersão total entre o líder e o retardatário é de **{distancia:.2f}%**. 
-                    Ativos com linhas ascendentes e acima do zero indicam forte acumulação institucional.
-                    """)
+                    st.info(f"O ativo **{ult_valores.index[0]}** lidera a força relativa. A dispersão entre o primeiro e o último é de **{ult_valores.max() - ult_valores.min():.2f}%**.")
 
-# --- MANUAL SEMPRE VISÍVEL NO FINAL ---
+# ==========================================
+# 4. MANUAL COMPLETO
+# ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 with st.expander("📖 Manual do Comparador: Como ler este gráfico?", expanded=False):
-    st.markdown("""
-    Este gráfico utiliza a técnica de **Normalização por Base Zero**. É a mesma lógica usada para comparar o crescimento de economias globais.
-
-    * **O Ponto Zero:** A primeira barra do gráfico é o ponto de partida de todos. Não importa o preço nominal (R$ 10 ou R$ 100), todos começam no 0%.
-    * **Variação Acumulada:** As linhas mostram o quanto cada ativo rendeu desde o início da janela selecionada.
-    * **Leitura de Fluxo:** Se uma linha abre vantagem sobre as outras, significa que o fluxo institucional está preferindo aquele ativo em detrimento dos demais.
+    st.markdown(f"""
+    Este gráfico utiliza a técnica de **Normalização por Base Zero**.
+    
+    * **Entendendo as Barras:**
+        * No **Gráfico Diário (1d)**: 20 barras ≈ 1 mês | 100 barras ≈ 5 meses | 250 barras ≈ 1 ano.
+        * No **Gráfico de 60 min**: 7 barras ≈ 1 dia | 100 barras ≈ 14 dias | 300 barras ≈ 2 meses.
+    * **O Ponto Zero:** Todos os ativos começam no 0% na primeira barra à esquerda.
+    * **Variação Acumulada:** A linha mostra o ganho/perda real desde o início da janela. Ativos acima do zero com linha ascendente indicam **Acumulação Institucional**.
     """)
