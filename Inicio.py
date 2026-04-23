@@ -6,9 +6,11 @@ import pandas as pd
 import time
 
 # ==========================================
-# INJEÇÃO CSS PARA CORREÇÃO DO TERMÔMETRO
+# 1. CONFIGURAÇÃO DA PÁGINA E CSS
 # ==========================================
-# Força as fontes dos Metrics a ficarem menores para caber nas colunas
+st.set_page_config(page_title="Caçadores de Elite", layout="wide", page_icon="🎯", initial_sidebar_state="collapsed")
+
+# --- INJEÇÃO CSS PARA CORREÇÃO DO TERMÔMETRO (OS 3 PONTINHOS) ---
 st.markdown("""
     <style>
     /* Reduz o tamanho do número principal para caber na coluna */
@@ -21,11 +23,6 @@ st.markdown("""
     }
     </style>
     """, unsafe_allow_html=True)
-
-# ==========================================
-# 1. CONFIGURAÇÃO DA PÁGINA
-# ==========================================
-st.set_page_config(page_title="Caçadores de Elite", layout="wide", page_icon="🎯", initial_sidebar_state="collapsed")
 
 if 'autenticado' not in st.session_state:
     st.session_state['autenticado'] = False
@@ -276,7 +273,6 @@ else:
     st.info("Aguardando cotações para gerar o ranking.")
 
 
-
 # ==========================================
 # 🦉 RADAR DO AFTER-MARKET (INÍCIO)
 # ==========================================
@@ -286,10 +282,10 @@ st.markdown("Confira a movimentação nos Estados Unidos neste exato momento e a
 
 if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_width=True):
     
-    # Dicionário resumido (apenas o necessário para varrer os EUA)
+    # Dicionário resumido
     bdr_setup_home = {
         'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ'},
-        'P2LT34': {'us': 'PLTR', 'exchange': 'NYSE'},
+        'P2LT34': {'us': 'PLTR', 'exchange': 'NASDAQ'},
         'ROXO34': {'us': 'NU', 'exchange': 'NYSE'},
         'INBR32': {'us': 'INTR', 'exchange': 'NASDAQ'},
         'M1TA34': {'us': 'META', 'exchange': 'NASDAQ'},
@@ -309,7 +305,7 @@ if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_w
         'ITLC34': {'us': 'INTC', 'exchange': 'NASDAQ'},    
         'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ'},  
         'COCA34': {'us': 'KO', 'exchange': 'NYSE'},       
-        'JBSS32': {'us': 'JBSAY', 'exchange': 'OTC'}, 
+        'JBSS32': {'us': 'JBSAY', 'exchange': 'OTC'},
         'AAPL34': {'us': 'AAPL', 'exchange': 'NASDAQ'},
         'XPBR31': {'us': 'XP', 'exchange': 'NASDAQ'},
         'STOC34': {'us': 'STNE', 'exchange': 'NASDAQ'}
@@ -319,12 +315,6 @@ if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_w
     p_bar_after = st.progress(0)
     status_after = st.empty()
     
-    # Importa caso a TV não esteja declarada no início deste ficheiro
-    from tvDatafeed import TvDatafeed, Interval
-    import pandas as pd
-    import time
-    
-    # Usa cache para não rebentar a conexão a cada clique
     @st.cache_resource
     def get_tv_conn_home():
         return TvDatafeed()
@@ -337,24 +327,39 @@ if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_w
         try:
             # 1. Puxa o Fechamento Regular (pregão oficial)
             df_reg = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
-            if df_reg is None: continue
+            if df_reg is None or df_reg.empty: continue
             fecho_regular = df_reg['close'].iloc[-1]
             
-            # 2. Puxa o Preço em Tempo Real / After-Hours / Pre-Market
+            # 2. Puxa o Preço em Tempo Real / After-Hours
             df_ext = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
-            if df_ext is None: continue
-            preco_atual = df_ext['close'].iloc[-1]
             
-            # Cálculo da Variação Exata
-            var_pct = ((preco_atual / fecho_regular) - 1) * 100
+            preco_atual = None
+            if df_ext is not None and not df_ext.empty:
+                preco_atual = df_ext['close'].iloc[-1]
+            else:
+                # 3. FALLBACK para bolsa OTC
+                df_fallback = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2)
+                if df_fallback is not None and not df_fallback.empty:
+                    preco_atual = df_fallback['close'].iloc[-1]
             
+            # Cálculo da Variação Exata ou Marcação de Desatualizado
+            if preco_atual is not None:
+                var_pct = ((preco_atual / fecho_regular) - 1) * 100
+                str_after = f"$ {preco_atual:.2f}"
+                str_var = f"+{var_pct:.2f}%" if var_pct > 0 else f"{var_pct:.2f}%"
+                raw_var = var_pct
+            else:
+                str_after = "Desatualizado"
+                str_var = "-"
+                raw_var = -999.0 # Joga para o final da lista para não atrapalhar o topo
+                
             ls_after.append({
                 'BDR (B3)': bdr,
                 'Ticker EUA': info['us'],
                 'Fecho Oficial': f"$ {fecho_regular:.2f}",
-                'Preço After-Market': f"$ {preco_atual:.2f}",
-                'Variação (%)': f"+{var_pct:.2f}%" if var_pct > 0 else f"{var_pct:.2f}%",
-                '_var_raw': var_pct # Coluna invisível usada só para ordenar
+                'Preço After-Market': str_after,
+                'Variação (%)': str_var,
+                '_var_raw': raw_var
             })
         except: pass
         time.sleep(0.05)
@@ -365,12 +370,12 @@ if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_w
     if ls_after:
         df_after = pd.DataFrame(ls_after)
         
-        # Ordena colocando os que mais subiram no topo
         df_after = df_after.sort_values(by='_var_raw', ascending=False).drop(columns=['_var_raw'])
         
-        # Função para pintar os lucros de verde e prejuízos de vermelho
         def colorir_after(row):
             try:
+                if row['Variação (%)'] == "-": return ['color: #a5a5a5'] * len(row) # Desatualizado fica em cinza
+                
                 val = float(row['Variação (%)'].replace('%', '').replace('+', ''))
                 if val > 0: return ['color: #00FF00; font-weight: bold'] * len(row)
                 elif val < 0: return ['color: #ff4d4d; font-weight: bold'] * len(row)
@@ -379,7 +384,8 @@ if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_w
             
         st.dataframe(df_after.style.apply(colorir_after, axis=1), use_container_width=True, hide_index=True)
     else:
-        st.warning("Nenhum dado capturado no momento. A API pode estar congestionada.")
+        st.warning("Nenhum dado capturado no momento.")
+
 # ==========================================
 # 5. O SEU ARSENAL E LINKS ÚTEIS
 # ==========================================
@@ -424,7 +430,6 @@ with cl3:
 
 st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
-# Nova Linha focada em Suporte Fundamentalista
 cl4, cl5, cl6 = st.columns(3)
 
 with cl4:
