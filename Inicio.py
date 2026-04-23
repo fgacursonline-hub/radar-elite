@@ -4,6 +4,8 @@ import streamlit.components.v1 as components
 from datetime import datetime, timedelta, timezone
 import pandas as pd
 import time
+import requests
+import xml.etree.ElementTree as ET
 
 # ==========================================
 # 1. CONFIGURAÇÃO DA PÁGINA E CSS
@@ -131,16 +133,13 @@ def buscar_dados_macro():
             resultados.append({'nome': config['nome'], 'valor': 'N/A', 'variacao': 0, 'url': config['url']})
     return resultados
 
-# NOVA FUNÇÃO: Substitui o @st.cache_data para permitir a exibição da Barra Azul
 def buscar_ranking_ativos_com_progresso(ativos):
     agora = datetime.now()
     
-    # 1. Verifica se já temos os dados no "cérebro" do robô e se são recentes (menos de 590 segundos)
     if 'rank_cache_time' in st.session_state and 'rank_data' in st.session_state:
         if (agora - st.session_state['rank_cache_time']).total_seconds() < 590:
             return st.session_state['rank_data'][0], st.session_state['rank_data'][1]
 
-    # 2. Se não tiver no cache, vamos caçar e mostrar a barra azul!
     tv_local = TvDatafeed()
     lista_rank = []
     rompendo_topo = []
@@ -176,7 +175,6 @@ def buscar_ranking_ativos_com_progresso(ativos):
     df_rank = pd.DataFrame(lista_rank)
     df_topos = pd.DataFrame(rompendo_topo)
     
-    # 3. Salva os dados na memória para não carregar de novo pelos próximos 10 minutos
     st.session_state['rank_data'] = (df_rank, df_topos)
     st.session_state['rank_cache_time'] = agora
     
@@ -245,7 +243,6 @@ def renderizar_radar_destaques():
     with col_menu:
         horizonte = st.segmented_control("Prazo Analítico", options=["Dia", "Semana", "Mês", "Ano"], default="Dia", label_visibility="collapsed")
 
-    # MUDANÇA: O spinner foi removido daqui e substituído pela barra azul dentro da função
     df_ranking, df_topos = buscar_ranking_ativos_com_progresso(todos_ativos)
 
     col_altas, col_quedas, col_topos = st.columns(3)
@@ -446,5 +443,54 @@ with cl6:
     st.markdown("#### 🌍 Portais Globais")
     st.link_button("Investing.com", "https://br.investing.com/", use_container_width=True)
 
+# ==========================================
+# 6. RADAR DE NOTÍCIAS MULTI-FONTE
+# ==========================================
+st.divider()
+st.subheader("📰 Radar de Notícias Caçadores de Elite")
+
+def carregar_feed(url):
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        response = requests.get(url, headers=headers, timeout=10)
+        root = ET.fromstring(response.content)
+        itens = []
+        
+        palavras_proibidas = ['futebol', 'copa', 'assistir', 'corinthians', 'vasco', 'palmeiras', 'flamengo', 'brasileirão', 'fofoca', 'bbb', 'novela', 'filme']
+        
+        for item in root.findall('./channel/item'): 
+            titulo = item.find('title').text
+            link = item.find('link').text
+            
+            titulo_lower = titulo.lower()
+            if any(palavra in titulo_lower for palavra in palavras_proibidas):
+                continue
+                
+            itens.append({"titulo": titulo, "link": link})
+            if len(itens) >= 8: break
+                
+        return itens
+    except: return None
+
+tab_info, tab_inv, tab_mt = st.tabs(["💰 InfoMoney", "📈 Investing.com", "🗞️ Money Times"])
+with tab_info:
+    n_im = carregar_feed("https://www.infomoney.com.br/feed/")
+    if n_im:
+        for n in n_im: st.markdown(f"• **{n['titulo']}** [Ler mais]({n['link']})")
+    else: st.warning("Não foi possível carregar as notícias do InfoMoney no momento.")
+with tab_inv:
+    n_inv = carregar_feed("https://br.investing.com/rss/news_25.rss")
+    if n_inv:
+        for n in n_inv: st.markdown(f"• **{n['titulo']}** [Ler mais]({n['link']})")
+    else: st.warning("Não foi possível carregar as notícias do Investing no momento.")
+with tab_mt:
+    n_mt = carregar_feed("https://www.moneytimes.com.br/feed/")
+    if n_mt:
+        for n in n_mt: st.markdown(f"• **{n['titulo']}** [Ler mais]({n['link']})")
+    else: st.warning("Não foi possível carregar as notícias do Money Times no momento.")
+
+# ==========================================
+# 7. RODAPÉ DE SEGURANÇA E RESPONSABILIDADE
+# ==========================================
 st.divider()
 st.info(aviso_risco)
