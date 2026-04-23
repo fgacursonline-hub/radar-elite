@@ -180,65 +180,43 @@ with c_sair:
 
 st.divider()
 
-# --- TERMÔMETRO MACRO GLOBAL COM AUTO-REFRESH ---
+# --- TERMÔMETRO MACRO GLOBAL ---
 st.subheader("🌐 Termômetro Macro Global")
 
-# Criamos um fragmento que atualiza sozinho a cada 60 segundos (60000ms)
-@st.fragment(run_every=60)
-def renderizar_termometro():
-    fuso_br = timezone(timedelta(hours=-3))
-    agora = datetime.now(fuso_br)
+fuso_br = timezone(timedelta(hours=-3))
+agora = datetime.now(fuso_br)
 
-    def is_mercado_aberto(data_atual):
-        if data_atual.weekday() >= 5: return False
-        if not (10 <= data_atual.hour < 18): return False
-        feriados_fixos = [(1, 1), (4, 21), (5, 1), (9, 7), (10, 12), (11, 2), (11, 15), (11, 20), (12, 25)]
-        if (data_atual.month, data_atual.day) in feriados_fixos: return False
-        return True
+def is_mercado_aberto(data_atual):
+    if data_atual.weekday() >= 5: return False
+    if not (10 <= data_atual.hour < 18): return False
+    feriados_fixos = [(1, 1), (4, 21), (5, 1), (9, 7), (10, 12), (11, 2), (11, 15), (11, 20), (12, 25)]
+    if (data_atual.month, data_atual.day) in feriados_fixos: return False
+    return True
 
-    texto_status = "🟢 B3 Aberta" if is_mercado_aberto(agora) else "🔴 B3 Fechada"
-    st.caption(f"{texto_status} | Atualizando automaticamente a cada 1 min | Última leitura: {agora.strftime('%H:%M:%S')}")
+texto_status = "🟢 B3 Aberta" if is_mercado_aberto(agora) else "🔴 B3 Fechada"
+st.caption(f"{texto_status} | Globais 24h. Última atualização: {agora.strftime('%d/%m às %H:%M')}.")
 
-    # Forçamos a limpeza do cache para pegar o dado novo da API
+# MUDANÇA: A frase agora é a padrão que você solicitou
+with st.spinner("Atualizando os dados da pagina, isso pode demorar. Aguarde!"):
     dados_macro = buscar_dados_macro()
 
-    if dados_macro:
-        # Primeira Linha
-        for i in range(0, 5):
-            cols = st.columns(5)
-            for j, col in enumerate(cols):
-                idx = i + j
-                if idx < len(dados_macro):
-                    item = dados_macro[idx]
-                    with col:
-                        st.metric(
-                            label=item['nome'], 
-                            value=item['valor'], 
-                            delta=f"{item['variacao']:.2f}%" if item['valor'] != 'N/A' else None
-                        )
-                        st.markdown(f"<a href='{item['url']}' target='_blank' style='text-decoration: none; font-size: 13px; color: #4da6ff;'>📊 Ver Gráfico</a>", unsafe_allow_html=True)
-            break # Garante que só faz a primeira linha aqui
-
+if dados_macro:
+    for i in range(0, len(dados_macro), 5):
+        cols = st.columns(5)
+        for j, col in enumerate(cols):
+            if i + j < len(dados_macro):
+                item = dados_macro[i + j]
+                with col:
+                    st.metric(
+                        label=item['nome'], 
+                        value=item['valor'], 
+                        delta=f"{item['variacao']:.2f}%" if item['valor'] != 'N/A' else None
+                    )
+                    st.markdown(f"<a href='{item['url']}' target='_blank' style='text-decoration: none; font-size: 13px; color: #4da6ff;'>📊 Ver Gráfico</a>", unsafe_allow_html=True)
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
-        # Segunda Linha
-        for i in range(5, 10):
-            cols = st.columns(5)
-            for j, col in enumerate(cols):
-                idx = i + j
-                if idx < len(dados_macro):
-                    item = dados_macro[idx]
-                    with col:
-                        st.metric(
-                            label=item['nome'], 
-                            value=item['valor'], 
-                            delta=f"{item['variacao']:.2f}%" if item['valor'] != 'N/A' else None
-                        )
-                        st.markdown(f"<a href='{item['url']}' target='_blank' style='text-decoration: none; font-size: 13px; color: #4da6ff;'>📊 Ver Gráfico</a>", unsafe_allow_html=True)
-            break
-            
-# Chama a função para desenhar na tela
-renderizar_termometro()
+st.divider()
+
 # ==========================================
 # 4. PAINEL DE DESTAQUES (ALTAS, QUEDAS E TOPOS)
 # ==========================================
@@ -256,7 +234,8 @@ with col_menu:
         label_visibility="collapsed" 
     )
 
-with st.spinner("Varrendo o mercado em busca de oportunidades extremas..."):
+# MUDANÇA: A frase agora é a padrão que você solicitou
+with st.spinner("Atualizando os dados da pagina, isso pode demorar. Aguarde!"):
     df_ranking, df_topos = buscar_ranking_ativos(todos_ativos)
 
 col_altas, col_quedas, col_topos = st.columns(3)
@@ -301,7 +280,7 @@ st.divider()
 st.subheader("🦉 Como as stocks estão agora? (Radar After-Market)")
 st.markdown("Confira a movimentação nos Estados Unidos neste exato momento e antecipe o humor da B3.")
 
-# Dicionário resumido (Tirado do clique do botão para ser usado em ambos os módulos)
+# Dicionário resumido
 bdr_setup_home = {
     'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ'},
     'P2LT34': {'us': 'PLTR', 'exchange': 'NASDAQ'},
@@ -342,7 +321,8 @@ if st.button("🔍 Escanear TUDO no After-Market Agora", type="primary", use_con
     tv_home = get_tv_conn_home()
         
     for idx, (bdr, info) in enumerate(bdr_setup_home.items()):
-        status_after.text(f"Corujando {info['us']} no mercado internacional... ({idx+1}/{len(bdr_setup_home)})")
+        # MUDANÇA: A frase de carregamento individual também foi atualizada
+        status_after.text(f"Atualizando os dados da pagina, isso pode demorar. Aguarde! ({idx+1}/{len(bdr_setup_home)})")
         p_bar_after.progress((idx + 1) / len(bdr_setup_home))
         
         fecho_regular = None
@@ -414,7 +394,7 @@ col_sel, col_btn = st.columns([3, 1], vertical_alignment="bottom")
 with col_sel:
     ativo_escolhido = st.selectbox(
         "Selecione a ação americana:", 
-        options=sorted(list(bdr_setup_home.keys())), # AQUI FOI APLICADA A ORDEM ALFABÉTICA
+        options=sorted(list(bdr_setup_home.keys())), 
         format_func=lambda x: f"{bdr_setup_home[x]['us']} (Ref: {x})"
     )
 with col_btn:
@@ -427,7 +407,8 @@ if btn_indiv:
     fecho_regular = None
     preco_atual = None
     
-    with st.spinner(f"Puxando cotação de {info['us']}..."):
+    # MUDANÇA: A frase agora é a padrão que você solicitou
+    with st.spinner("Atualizando os dados da pagina, isso pode demorar. Aguarde!"):
         try:
             df_reg = tv_indiv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
             if df_reg is not None and not df_reg.empty:
