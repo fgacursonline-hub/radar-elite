@@ -285,7 +285,8 @@ if st.button("🔍 Escanear TUDO no After-Market Agora", type="primary", use_con
         fecho_reg = None; preco_at = None
         try:
             df_reg = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
-            if df_reg is not None and not df_reg.empty: fecho_reg = df_reg['close'].iloc[-1]
+            if df_reg is not None and not df_reg.empty and len(df_reg) >= 2: 
+                fecho_reg = df_reg['close'].iloc[-2] # <--- CORREÇÃO: Pega sempre o fechamento de ONTEM
             if fecho_reg:
                 df_ext = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
                 if df_ext is not None and not df_ext.empty: preco_at = df_ext['close'].iloc[-1]
@@ -322,7 +323,6 @@ with col_sel:
 with col_btn:
     btn_indiv = st.button("🔍 Consultar Ativo", use_container_width=True)
 
-# AGORA FORA DAS COLUNAS (Ocupando a tela inteira)
 if btn_indiv:
     info = bdr_setup_home[ativo_sel]
     tv_ind = get_tv_conn_home()
@@ -334,12 +334,17 @@ if btn_indiv:
     
     with st.spinner("Atualizando os dados da pagina, isso pode demorar. Aguarde!"):
         try:
-            # 1. Puxando Dados da Ação Americana (US)
+            # 1. Puxando Dados da Ação Americana (US) com fechamento em D-1 fixo
             df_r = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
-            if df_r is not None and not df_r.empty: f_reg = df_r['close'].iloc[-1]
+            if df_r is not None and not df_r.empty and len(df_r) >= 2: 
+                f_reg = df_r['close'].iloc[-2] # <--- CORREÇÃO: Pega sempre o fechamento de ONTEM
+                
             if f_reg:
                 df_e = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
                 if df_e is not None and not df_e.empty: p_at = df_e['close'].iloc[-1]
+                else:
+                    df_fb = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2)
+                    if df_fb is not None and not df_fb.empty: p_at = df_fb['close'].iloc[-1]
             
             # 2. Puxando Dados do BDR Brasileiro (B3) simultaneamente
             df_bdr = tv_ind.get_hist(symbol=ativo_sel, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=2)
@@ -354,7 +359,7 @@ if btn_indiv:
         
         st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
         
-        # AGORA COM 4 COLUNAS: Lado a Lado EUA vs BRASIL
+        # 4 COLUNAS: Lado a Lado EUA vs BRASIL
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Ação (EUA)", info['us'])
         c2.metric(f"Cotação {info['us']} (Real-Time)", f"$ {p_at:.2f}", f"{v:.2f}%")
@@ -365,7 +370,7 @@ if btn_indiv:
         else:
             c4.metric(f"Cotação {ativo_sel} (B3)", "S/ Dados")
         
-        # Caixa de informação ocupando a largura toda logo abaixo
+        # Caixa de informação
         st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
         st.info("""
         🕒 **Relógio Oficial das Bolsas Americanas (NASDAQ / NYSE):**
