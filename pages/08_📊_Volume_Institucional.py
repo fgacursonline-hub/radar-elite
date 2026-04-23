@@ -70,23 +70,22 @@ def aplicar_fluxo_e_divergencia(df):
 # 3. INTERFACE PRINCIPAL
 # ==========================================
 st.title("📊 Fluxo Institucional (POC + VWAP + DELTA)")
-st.markdown("Rastreando a defesa dos tubarões e divergências de agressão em tempo real.")
 
 aba_radar, aba_individual = st.tabs(["📡 Radar Institucional (Delta)", "🔬 Raio-X Individual"])
 
 # ==========================================
-# ABA 1: RADAR INSTITUCIONAL (SCANNER)
+# ABA 1: RADAR INSTITUCIONAL
 # ==========================================
 with aba_radar:
-    c1, c2, c3 = st.columns([1, 1, 1])
+    c1, c2, c3 = st.columns(3)
     with c1:
         lista_sel = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos"], key="f_lst")
-        tempo_grafico = st.selectbox("Tempo Gráfico:", ['1d', '60m'], index=0, format_func=lambda x: {'60m': '60 min', '1d': 'Diário'}[x], key="f_tmp")
+        tempo_grafico = st.selectbox("Tempo Gráfico:", ['1d', '60m'], index=0, key="f_tmp")
     with c2:
-        alvo_pct_rad = st.number_input("Alvo de Lucro (%):", value=5.0, step=0.5, key="rad_alvo") / 100
-        stop_pct_rad = st.number_input("Stop Loss (%):", value=2.5, step=0.5, key="rad_stop") / 100
+        alvo_pct_rad = st.number_input("Alvo Lucro (%):", value=5.0, step=0.5) / 100
+        stop_pct_rad = st.number_input("Stop Loss (%):", value=2.5, step=0.5) / 100
     with c3:
-        st.info("💡 **Atenção:** A aba de Raio-X Individual agora detecta divergências de absorção institucional.")
+        st.info("💡 Radar de detecção de defesa institucional.")
     
     if st.button("🚀 Iniciar Varredura de Fluxo", type="primary", use_container_width=True):
         ativos = bdrs_elite if lista_sel == "BDRs Elite" else ibrx_selecao if lista_sel == "IBrX Seleção" else bdrs_elite + ibrx_selecao
@@ -95,7 +94,7 @@ with aba_radar:
 
         for idx, ativo_raw in enumerate(ativos):
             ativo = ativo_raw.replace('.SA', '')
-            s_text.text(f"🔍 Escaneando fluxo: {ativo} ({idx+1}/{len(ativos)})")
+            s_text.text(f"🔍 Analisando: {ativo} ({idx+1}/{len(ativos)})")
             p_bar.progress((idx + 1) / len(ativos))
             try:
                 df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=tradutor_intervalo[tempo_grafico], n_bars=150)
@@ -105,36 +104,32 @@ with aba_radar:
                 df['VWAP'] = ta.vwma(df['Close'], df['Volume'], length=20)
                 df = aplicar_fluxo_e_divergencia(df)
                 
-                atual = df.iloc[-1]
-                # Filtro de sinal: Acima da POC + Toque na VWAP + Delta Positivo
-                if atual['Close'] > df['POC'].iloc[-2] and atual['Low'] <= atual['VWAP'] and atual['Close'] >= atual['VWAP'] and atual['Delta_Acumulado'] > 0:
+                res_rad = df.iloc[-1]
+                if res_rad['Close'] > df['POC'].iloc[-2] and res_rad['Low'] <= res_rad['VWAP'] and res_rad['Close'] >= res_rad['VWAP'] and res_rad['Delta_Acumulado'] > 0:
                     ls_armados.append({
-                        'Ativo': ativo, 
-                        'Sinal': '🔥 DEFESA', 
-                        'Preço': f"R$ {atual['Close']:.2f}", 
-                        'Divergência': atual['Divergência']
+                        'Ativo': ativo, 'Sinal': '🔥 DEFESA', 'Preço': f"R$ {res_rad['Close']:.2f}", 'Divergência': res_rad['Divergência']
                     })
             except: pass
         
         s_text.empty(); p_bar.empty()
         if ls_armados:
-            st.success(f"🎯 {len(ls_armados)} ativos encontrados com defesa institucional!")
+            st.success(f"🎯 {len(ls_armados)} ativos encontrados.")
             st.dataframe(pd.DataFrame(ls_armados), use_container_width=True, hide_index=True)
-        else: st.warning("Nenhum sinal de defesa institucional no momento.")
+        else: st.warning("Nenhum sinal no momento.")
 
 # ==========================================
-# ABA 2: RAIO-X INDIVIDUAL (O Cérebro)
+# ABA 2: RAIO-X INDIVIDUAL
 # ==========================================
 with aba_individual:
-    st.subheader("🔬 Laboratório de Microestrutura e Absorção")
+    st.subheader("🔬 Laboratório de Microestrutura")
     col1, col2 = st.columns([1, 2])
     with col1:
         rx_ativo = st.text_input("Ativo (Ex: PETR4):", value="PETR4").upper().replace('.SA', '')
         rx_tempo = st.selectbox("Tempo:", ['1d', '60m'], key="rx_inst_t")
-        rx_btn = st.button("🔬 Analisar DNA e Divergências", use_container_width=True)
+        rx_btn = st.button("🔬 Analisar DNA", use_container_width=True)
     
     if rx_btn:
-        with st.spinner("Descriptografando agressão institucional..."):
+        with st.spinner("Mapeando ordens..."):
             df = tv.get_hist(symbol=rx_ativo, exchange='BMFBOVESPA', interval=tradutor_intervalo[rx_tempo], n_bars=100)
             if df is not None:
                 df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
@@ -152,11 +147,11 @@ with aba_individual:
                 c4.metric("Saldo Agres. (5p)", f"{res['Delta_Acumulado']:,.0f}", delta="COMPRADOR" if res['Delta_Acumulado'] > 0 else "VENDEDOR")
 
                 st.divider()
-                st.markdown("### 📋 Histórico Recente e Radar de Divergência")
+                st.markdown("### 📋 Histórico Recente de Agressão")
                 df_view = df[['Close', 'POC', 'VWAP', 'Saldo_Ag', 'Delta_Acumulado', 'Divergência']].tail(10).copy()
                 st.dataframe(df_view, use_container_width=True)
 
-                # 2. RESUMO TÁTICO (RESTAURADO COMPLETO)
+                # 2. VEREDITO DO CONSULTOR (RESTAURADO)
                 st.markdown("---")
                 st.subheader("🎯 Veredito do Consultor Quant")
                 
@@ -165,78 +160,51 @@ with aba_individual:
                 p_delta = res['Delta_Acumulado'] > 0
                 diver = res['Divergência']
 
-                # Info Box de Divergência
                 if "ALTA" in diver:
-                    txt_diver = "🔥 **ABSORÇÃO DE ALTA DETECTADA:** O preço caiu hoje, mas a agressão compradora aumentou!"
-                    st.info(txt_diver)
+                    st.info("🔥 **ABSORÇÃO DE ALTA DETECTADA:** O preço caiu hoje, mas a agressão compradora aumentou!")
                 elif "BAIXA" in diver:
-                    txt_diver = "⚠️ **EXAUSTÃO DE COMPRA DETECTADA:** O preço subiu, mas o Delta caiu."
-                    st.warning(txt_diver)
+                    st.warning("⚠️ **EXAUSTÃO DE COMPRA DETECTADA:** O preço subiu, mas o Delta caiu.")
                 else:
-                    txt_diver = "✅ **Fluxo em Convergência:** O preço e o Delta estão se movendo na mesma direção. Tendência saudável."
-                    st.success(txt_diver)
+                    st.success("✅ **Fluxo em Convergência:** O preço e o Delta estão se movendo na mesma direção. Tendência saudável.")
 
-                # --- DENTRO DO BLOCO DE RESUMO TÁTICO ---
-
-                # Checklist Detalhado (MELHORADO COM O NÚMERO DO DELTA)
+                # Checklist com o Número do Delta
                 st.markdown(f"""
                 * {'✅' if p_poc else '❌'} **Filtro POC:** Preço {'acima' if p_poc else 'abaixo'} do valor de maior volume (R$ {res['POC']:.2f}).
                 * {'✅' if p_vwap else '❌'} **Filtro VWAP:** O preço {'domina' if p_vwap else 'perdeu'} a média de execução institucional (R$ {res['VWAP']:.2f}).
-                * {'✅' if p_delta else '❌'} **Filtro Delta:** O saldo acumulado é de **{res['Delta_Acumulado']:,.0f}** ({'Positivo' if p_delta else 'Negativo'}).
+                * {'✅' if p_delta else '❌'} **Filtro Delta:** O saldo acumulado é de **{res['Delta_Acumulado']:,.0f}** ({'POSITIVO' if p_delta else 'NEGATIVO'}).
                 """)
 
-                # Explicação Específica no Veredito
-                if p_delta and res['Delta_Acumulado'] > 50000000: # Exemplo: Alerta para Delta > 50M
-                st.info(f"🚀 **ANÁLISE DE ELITE:** O Delta de {res['Delta_Acumulado']:,.0f} indica uma urgência institucional raríssima. Os tubarões estão 'limpando o book' sem se importar com o preço atual.")
-
-                # Veredito Final Visual
                 if p_poc and p_delta and p_vwap:
                     veredito = "COMPRA FORTE"
-                    st.success(f"⚖️ **VEREDITO FINAL: {veredito}.** Todos os indicadores institucionais estão alinhados. Alta convicção para o movimento.")
+                    st.success(f"⚖️ **VEREDITO FINAL: {veredito}.** Todos os indicadores alinhados. Alta convicção.")
                 elif "ALTA" in diver and p_poc:
-                    veredito = "COMPRA TÁTICA (ABSORÇÃO)"
+                    veredito = "COMPRA TÁTICA"
                     st.success(f"⚖️ **VEREDITO FINAL: {veredito}.**")
                 elif not p_poc and not p_delta:
-                    veredito = "VENDA FORTE / FUJA"
-                    st.error(f"⚖️ **VEREDITO FINAL: {veredito}.** O ativo está desvalorizado institucionalmente.")
+                    veredito = "VENDA FORTE"
+                    st.error(f"⚖️ **VEREDITO FINAL: {veredito}.** Evite compras.")
                 else:
                     veredito = "AGUARDAR"
                     st.warning(f"⚖️ **VEREDITO FINAL: {veredito}.**")
 
-                # ==========================================
-                # 3. PLANO DE VOO OPERACIONAL (MANTIDO)
-                # ==========================================
+                # 3. PLANO DE VOO (RESTAURADO)
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.expander("✈️ Plano de Voo Operacional", expanded=True):
-                    
                     if veredito == "COMPRA FORTE":
-                        st.markdown(f"""
-                        **Estratégia: Momentum Institucional**
-                        * **Gatilho Agressivo:** Compra a mercado agora (R$ {res['Close']:.2f}).
-                        * **Gatilho Conservador:** Ordem limitada na VWAP (R$ {res['VWAP']:.2f}).
-                        * **Stop Loss:** R$ {min(res['POC'], res['Close']*0.97):.2f} (Abaixo da POC ou 3% de risco).
-                        * **Alvo 1 (2:1):** R$ {res['Close'] + (res['Close'] - min(res['POC'], res['Close']*0.97))*2:.2f}.
-                        """)
+                        st.markdown(f"**Estratégia: Momentum Institucional**")
+                        st.write(f"* **Gatilho Agressivo:** Compra a mercado agora (R$ {res['Close']:.2f}).")
+                        st.write(f"* **Gatilho Conservador:** Ordem na VWAP (R$ {res['VWAP']:.2f}).")
+                        st.write(f"* **Stop Loss:** R$ {min(res['POC'], res['Close']*0.97):.2f}.")
+                        st.write(f"* **Alvo 1 (2:1):** R$ {res['Close'] + (res['Close'] - min(res['POC'], res['Close']*0.97))*2:.2f}.")
                     
-                    elif veredito == "COMPRA TÁTICA (ABSORÇÃO)":
-                        st.markdown(f"""
-                        **Estratégia: Armadilha de Fundo (Absorção)**
-                        * **Gatilho de Confirmação:** Compra R$ 0,01 acima da máxima de hoje (R$ {df['High'].iloc[-1] + 0.01:.2f}).
-                        * **Stop Loss:** R$ {df['Low'].iloc[-1] - 0.01:.2f} (Mínima de hoje).
-                        * **Alvo Curto:** Retorno à VWAP ou +3% (R$ {res['Close']*1.03:.2f}).
-                        """)
+                    elif veredito == "COMPRA TÁTICA":
+                        st.markdown(f"**Estratégia: Absorção**")
+                        st.write(f"* **Gatilho Confirmação:** Compra acima da máxima (R$ {res['High'] + 0.01:.2f}).")
+                        st.write(f"* **Stop Loss:** R$ {res['Low'] - 0.01:.2f} (Mínima de hoje).")
                     
-                    elif veredito == "VENDA FORTE / FUJA":
-                        st.markdown(f"""
-                        **Estratégia: Proteção de Capital**
-                        * **Ação:** Não abrir compras. Se estiver posicionado, considere reduzir exposição abaixo da POC.
-                        * **Gatilho de Venda (Short):** R$ 0,01 abaixo da mínima de hoje (R$ {df['Low'].iloc[-1] - 0.01:.2f}).
-                        * **Stop Loss:** R$ {res['VWAP']:.2f}.
-                        """)
+                    elif veredito == "VENDA FORTE":
+                        st.markdown(f"**Estratégia: Proteção**")
+                        st.write(f"* **Ação:** Sair do ativo ou não entrar. Gatilho de venda em R$ {res['Low'] - 0.01:.2f}.")
                     
                     else:
-                        st.markdown("""
-                        **Estratégia: Observação de Radar**
-                        * **Ação:** Aguarde o preço se afastar da VWAP ou o Delta virar para um lado claro.
-                        * **Próximo Passo:** Procure ativos na aba 'Radar' que já estejam com 'Veredito: Compra Forte'.
-                        """)
+                        st.write("Aguardar alinhamento dos filtros na VWAP.")
