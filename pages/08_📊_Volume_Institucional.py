@@ -67,9 +67,7 @@ st.title("📊 Fluxo Institucional (POC + VWAP + DELTA)")
 
 aba_radar, aba_individual = st.tabs(["📡 Radar Institucional (Delta)", "🔬 Raio-X Individual"])
 
-# ==========================================
-# ABA 1: RADAR INSTITUCIONAL (SCANNER)
-# ==========================================
+# ABA 1: RADAR (SCANNER REATIVADO)
 with aba_radar:
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -79,43 +77,64 @@ with aba_radar:
         alvo_pct_rad = st.number_input("Alvo Lucro (%):", value=5.0, step=0.5, key="rad_alvo") / 100
         stop_pct_rad = st.number_input("Stop Loss (%):", value=2.5, step=0.5, key="rad_stop") / 100
     with c3:
-        st.info("💡 Scanner de detecção de fluxo. Use o Raio-X para ver o Plano de Voo.")
+        st.info("💡 Scanner de fluxo. Use o Raio-X para ver o Plano de Voo detalhado.")
     
     if st.button("🚀 Iniciar Varredura de Fluxo", type="primary", use_container_width=True):
-        # ... (Mantendo a lógica de processamento que já funciona)
-        pass
+        ativos = bdrs_elite if lista_sel == "BDRs Elite" else ibrx_selecao if lista_sel == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        ls_armados = []
+        p_bar = st.progress(0); s_text = st.empty()
 
-    # --- GLOSSÁRIO DO RADAR ATUALIZADO ---
+        for idx, ativo_raw in enumerate(ativos):
+            ativo = ativo_raw.replace('.SA', '')
+            s_text.text(f"🔍 Analisando DNA: {ativo} ({idx+1}/{len(ativos)})")
+            p_bar.progress((idx + 1) / len(ativos))
+            try:
+                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=tradutor_intervalo[tempo_grafico], n_bars=150)
+                if df is None or len(df) < 50: continue
+                df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
+                df['POC'] = calcular_rolling_poc(df, periodo_lookback=30)
+                df['VWAP'] = ta.vwma(df['Close'], df['Volume'], length=20)
+                df = aplicar_fluxo_e_divergencia(df)
+                
+                res_rad = df.iloc[-1]
+                # Lógica de Defesa: Acima da POC + Defesa na VWAP + Delta Positivo
+                if res_rad['Close'] > df['POC'].iloc[-2] and res_rad['Low'] <= res_rad['VWAP'] and res_rad['Close'] >= res_rad['VWAP'] and res_rad['Delta_Acumulado'] > 0:
+                    ls_armados.append({
+                        'Ativo': ativo, 'Sinal': '🔥 DEFESA', 'Preço': f"R$ {res_rad['Close']:.2f}", 'Divergência': res_rad['Divergência']
+                    })
+            except: pass
+        
+        s_text.empty(); p_bar.empty()
+        if ls_armados:
+            st.success(f"🎯 {len(ls_armados)} ativos encontrados com defesa institucional!")
+            st.dataframe(pd.DataFrame(ls_armados), use_container_width=True, hide_index=True)
+        else: st.warning("Nenhum sinal detectado nas últimas barras.")
+
     st.markdown("---")
     st.markdown("### 📖 Glossário do Radar: Interpretando os Sinais")
-    
     col_l1, col_l2 = st.columns(2)
-    
     with col_l1:
         st.markdown("""
         **📌 Coluna: Sinal**
-        * **🔥 DEFESA:** É o sinal de alinhamento total. O preço está acima da POC (valor), tocou a VWAP (média institucional) e fechou acima dela com Delta Positivo.
-        * **Interpretação:** Institucionais consideram o preço da VWAP atrativo e estão "escorando" o mercado para manter a tendência de alta.
+        * **🔥 DEFESA:** Alinhamento total. Preço acima da POC, tocou a VWAP e fechou acima dela com Delta Positivo.
+        * **Interpretação:** Institucionais defendendo posição na média.
         """)
-    
     with col_l2:
         st.markdown("""
-        **📌 Coluna: Divergência (O 'Filtro' da Defesa)**
-        * **Traço (-):** Fluxo em convergência. Preço e Delta na mesma direção. Movimento saudável e previsível.
-        * **⚠️ ALTA (Absorção):** O sinal mais forte. O preço caiu para testar a VWAP, mas o Delta subiu. Indica que o "Smart Money" limpou o book de ofertas de forma passiva.
-        * **⚠️ BAIXA (Exaustão):** Alerta de perigo. O preço segurou na VWAP, mas a agressão compradora diminuiu drasticamente. Pode ser um repique sem continuidade.
+        **📌 Coluna: Divergência**
+        * **Traço (-):** Fluxo saudável. Preço e Delta na mesma direção.
+        * **⚠️ ALTA (Absorção):** Preço caiu mas o Delta subiu. Alguém "limpou o book" na compra.
+        * **⚠️ BAIXA (Exaustão):** Preço subiu mas o Delta caiu. Movimento sem combustível.
         """)
 
-# ==========================================
 # ABA 2: RAIO-X INDIVIDUAL
-# ==========================================
 with aba_individual:
-    st.subheader("🔬 Laboratório de Microestrutura e DNA de Fluxo")
+    st.subheader("🔬 Laboratório de Microestrutura")
     col1, col2 = st.columns([1, 2])
     with col1:
         rx_ativo = st.text_input("Ativo (Ex: PETR4):", value="PETR4").upper().replace('.SA', '')
         rx_tempo = st.selectbox("Tempo:", ['1d', '60m'], key="rx_inst_t")
-        rx_btn = st.button("🔬 Analisar Fluxo Completo", use_container_width=True)
+        rx_btn = st.button("🔬 Analisar DNA e Divergências", use_container_width=True)
     
     if rx_btn:
         with st.spinner("Descriptografando agressão institucional..."):
@@ -140,7 +159,7 @@ with aba_individual:
                 df_view = df[['Close', 'POC', 'VWAP', 'Saldo_Ag', 'Delta_Acumulado', 'Divergência']].tail(10).copy()
                 st.dataframe(df_view, use_container_width=True)
 
-                # 2. VEREDITO DO CONSULTOR QUANT
+                # 2. VEREDITO DO CONSULTOR QUANT (RESTAURADO)
                 st.markdown("---")
                 st.subheader("🎯 Veredito do Consultor Quant")
                 
@@ -154,7 +173,7 @@ with aba_individual:
                 elif "BAIXA" in diver:
                     st.warning("⚠️ **EXAUSTÃO DE COMPRA DETECTADA:** O preço subiu, mas o Delta caiu.")
                 else:
-                    st.success("✅ **Fluxo em Convergência:** O preço e o Delta estão se movendo na mesma direção. Tendência saudável.")
+                    st.success("✅ **Fluxo em Convergência:** O preço e o Delta estão na mesma direção. Tendência saudável.")
 
                 st.markdown(f"""
                 * {'✅' if p_poc else '❌'} **Filtro POC:** Preço {'acima' if p_poc else 'abaixo'} do valor de maior volume (R$ {res['POC']:.2f}).
@@ -170,7 +189,7 @@ with aba_individual:
                     st.success(f"⚖️ **VEREDITO FINAL: {veredito}.**")
                 elif not p_poc and not p_delta:
                     veredito = "VENDA FORTE"
-                    st.error(f"⚖️ **VEREDITO FINAL: {veredito}.** Evite compras.")
+                    st.error(f"⚖️ **VEREDITO FINAL: {veredito}.**")
                 else:
                     veredito = "AGUARDAR"
                     st.warning(f"⚖️ **VEREDITO FINAL: {veredito}.**")
@@ -189,24 +208,20 @@ with aba_individual:
                         st.write(f"* **Gatilho Confirmação:** Compra acima da máxima (R$ {df['High'].iloc[-1] + 0.01:.2f}).")
                         st.write(f"* **Stop Loss:** R$ {df['Low'].iloc[-1] - 0.01:.2f} (Mínima de hoje).")
                     elif veredito == "VENDA FORTE":
-                        st.markdown(f"**Estratégia: Proteção de Capital**")
+                        st.markdown(f"**Estratégia: Proteção**")
                         st.write(f"* **Ação:** Sair do ativo ou não entrar. Gatilho de venda em R$ {df['Low'].iloc[-1] - 0.01:.2f}.")
                     else:
-                        st.write("Aguardar alinhamento dos filtros na VWAP para buscar entrada.")
+                        st.write("Aguardar alinhamento dos filtros na VWAP.")
 
-                # ==========================================
-                # 4. GLOSSÁRIO DE CAMPO (MANTIDO)
-                # ==========================================
+                # 4. GLOSSÁRIO DE CAMPO
                 st.markdown("---")
                 st.markdown("### 📖 Glossário de Campo: Legenda do Fluxo Institucional")
                 st.markdown("""
-                * **datetime:** Registro exato de quando o candle foi fechado. Observe a sequência para ver a convicção do movimento.
-                * **Close:** Último preço negociado. Compare com a POC e VWAP para saber quem domina o território.
-                * **POC (Point of Control):** Preço com maior volume financeiro nos últimos 30 dias. Funciona como suporte de aço ou ímã de preço.
-                * **VWAP (VWMA20):** Preço médio ponderado pelo volume. É a linha de defesa principal dos robôs de bancos e fundos.
-                * **Saldo_Ag (Delta):** Diferença entre agressão de compra e venda no candle. Mede a urgência imediata dos tubarões.
-                * **Delta_Acumulado:** Soma da agressão dos últimos 5 períodos. Mostra se o "Smart Money" está acumulando ou distribuindo posições.
-                * **Divergência:** Sinal de alerta quando Preço e Delta não concordam. 
-                    * **Absorção (Alta):** Preço cai, mas Delta sobe. Institucionais segurando a queda "limpando o book". 
-                    * **Exaustão (Baixa):** Preço sobe, mas Delta cai. O movimento está ficando sem combustível institucional.
+                * **datetime:** Quando o candle foi fechado. Sequência indica convicção.
+                * **Close:** Último preço negociado.
+                * **POC (Point of Control):** Preço com maior volume (Suporte/Ímã).
+                * **VWAP (VWMA20):** Preço médio institucional (Linha de Defesa).
+                * **Saldo_Ag (Delta):** Agressividade imediata do tubarão.
+                * **Delta_Acumulado:** Acumulação ou Distribuição institucional (5 períodos).
+                * **Divergência:** Absorção (Alta) ou Exaustão (Baixa).
                 """)
