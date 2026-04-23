@@ -273,6 +273,7 @@ else:
     st.info("Aguardando cotações para gerar o ranking.")
 
 st.divider()
+
 # ==========================================
 # 🦉 RADAR DO AFTER-MARKET E CONSULTA INDIVIDUAL
 # ==========================================
@@ -392,7 +393,7 @@ col_sel, col_btn = st.columns([3, 1], vertical_alignment="bottom")
 with col_sel:
     ativo_escolhido = st.selectbox(
         "Selecione a ação americana:", 
-        options=list(bdr_setup_home.keys()), 
+        options=sorted(list(bdr_setup_home.keys())), # AQUI FOI APLICADA A ORDEM ALFABÉTICA
         format_func=lambda x: f"{bdr_setup_home[x]['us']} (Ref: {x})"
     )
 with col_btn:
