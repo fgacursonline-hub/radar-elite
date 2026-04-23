@@ -6,23 +6,29 @@ import pandas as pd
 import time
 
 # ==========================================
-# 1. CONFIGURAÇÃO DA PÁGINA E CSS
+# 1. CONFIGURAÇÃO DA PÁGINA E CSS (AJUSTADO)
 # ==========================================
 st.set_page_config(page_title="Caçadores de Elite", layout="wide", page_icon="🎯", initial_sidebar_state="collapsed")
 
-# --- CAMUFLAGEM: OCULTAR O MANUAL DO MENU LATERAL ---
+# --- CAMUFLAGEM E AJUSTES DE FONTE ---
 st.markdown("""
     <style>
+    /* Oculta o Manual do menu lateral */
     [data-testid="stSidebarNav"] a[href*="Manual"] {
         display: none !important;
     }
-    /* Reduz o tamanho do número principal para caber na coluna */
+    /* Ajusta os números do Termômetro Macro */
     [data-testid="stMetricValue"] {
         font-size: 1.4rem !important;
     }
-    /* Reduz ligeiramente o nome do ativo para ficar proporcional */
     [data-testid="stMetricLabel"] {
         font-size: 0.9rem !important;
+    }
+    /* NOVO: Ajuste para os cabeçalhos das caixas coloridas (Altas/Quedas) */
+    div[data-testid="stNotification"] h3 {
+        font-size: 1.1rem !important;
+        white-space: nowrap !important;
+        margin-bottom: 0px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -125,7 +131,7 @@ def buscar_dados_macro():
             resultados.append({'nome': config['nome'], 'valor': 'N/A', 'variacao': 0, 'url': config['url']})
     return resultados
 
-@st.cache_data(ttl=600) # Ranking dura 10 min no cache
+@st.cache_data(ttl=600) 
 def buscar_ranking_ativos(ativos):
     tv_local = TvDatafeed()
     lista_rank = []
@@ -137,26 +143,18 @@ def buscar_ranking_ativos(ativos):
             if df is not None and len(df) >= 2:
                 c = df['close']
                 hj = c.iloc[-1]
-                
                 v_dia = ((hj - c.iloc[-2]) / c.iloc[-2]) * 100 if len(c) >= 2 else 0
                 v_sem = ((hj - c.iloc[-6]) / c.iloc[-6]) * 100 if len(c) >= 6 else v_dia
                 v_mes = ((hj - c.iloc[-22]) / c.iloc[-22]) * 100 if len(c) >= 22 else v_sem
                 v_ano = ((hj - c.iloc[-253]) / c.iloc[-253]) * 100 if len(c) >= 253 else v_mes
                 
-                lista_rank.append({
-                    'Ativo': ativo, 'Preço': hj, 
-                    'Dia': v_dia, 'Semana': v_sem, 'Mês': v_mes, 'Ano': v_ano
-                })
+                lista_rank.append({'Ativo': ativo, 'Preço': hj, 'Dia': v_dia, 'Semana': v_sem, 'Mês': v_mes, 'Ano': v_ano})
                 
                 max_historica = df['high'].iloc[:-1].max()
                 if df['high'].iloc[-1] > max_historica:
-                    rompendo_topo.append({
-                        'Ativo': ativo, 'Preço': hj, 
-                        'Dia': v_dia, 'Semana': v_sem, 'Mês': v_mes, 'Ano': v_ano
-                    })
-        except Exception: pass
+                    rompendo_topo.append({'Ativo': ativo, 'Preço': hj, 'Dia': v_dia, 'Semana': v_sem, 'Mês': v_mes, 'Ano': v_ano})
+        except: pass
         time.sleep(0.01)
-        
     return pd.DataFrame(lista_rank), pd.DataFrame(rompendo_topo)
 
 def formata_moeda_pct(val, is_pct=False):
@@ -169,7 +167,7 @@ def colorir_tabela(row):
     return [f'color: {cor}'] * len(row)
 
 # ==========================================
-# 3. TELA APÓS LOGIN (DASHBOARD)
+# 3. INTERFACE PRINCIPAL
 # ==========================================
 c_tit, c_sair = st.columns([8, 1])
 with c_tit:
@@ -183,13 +181,12 @@ with c_sair:
 
 st.divider()
 
-# --- BLOCO 1: TERMÔMETRO MACRO (AUTO-REFRESH 60s) ---
+# --- TERMÔMETRO MACRO (AUTO-REFRESH 60s) ---
 @st.fragment(run_every=60)
 def renderizar_termometro():
     st.subheader("🌐 Termômetro Macro Global")
     fuso_br = timezone(timedelta(hours=-3))
     agora = datetime.now(fuso_br)
-    
     texto_status = "🟢 B3 Aberta" if (10 <= agora.hour < 18 and agora.weekday() < 5) else "🔴 B3 Fechada"
     st.caption(f"{texto_status} | Atualização Automática (60s) | Leitura: {agora.strftime('%H:%M:%S')}")
 
@@ -205,12 +202,12 @@ def renderizar_termometro():
                     with col:
                         st.metric(label=item['nome'], value=item['valor'], delta=f"{item['variacao']:.2f}%" if item['valor'] != 'N/A' else None)
                         st.markdown(f"<a href='{item['url']}' target='_blank' style='text-decoration: none; font-size: 13px; color: #4da6ff;'>📊 Ver Gráfico</a>", unsafe_allow_html=True)
-            st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
 renderizar_termometro()
 st.divider()
 
-# --- BLOCO 2: RADAR DE DESTAQUES (AUTO-REFRESH 600s / 10 min) ---
+# --- RADAR DE DESTAQUES (AUTO-REFRESH 10 min) ---
 @st.fragment(run_every=600)
 def renderizar_radar_destaques():
     col_title, col_menu = st.columns([1, 1], vertical_alignment="center")
@@ -259,6 +256,22 @@ st.divider()
 st.subheader("🦉 Como as stocks estão agora? (Radar After-Market)")
 st.markdown("Confira a movimentação nos Estados Unidos neste exato momento e antecipe o humor da B3.")
 
+bdr_setup_home = {
+    'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ'}, 'P2LT34': {'us': 'PLTR', 'exchange': 'NASDAQ'},
+    'ROXO34': {'us': 'NU', 'exchange': 'NYSE'}, 'INBR32': {'us': 'INTR', 'exchange': 'NASDAQ'},
+    'M1TA34': {'us': 'META', 'exchange': 'NASDAQ'}, 'TSLA34': {'us': 'TSLA', 'exchange': 'NASDAQ'},
+    'LILY34': {'us': 'LLY', 'exchange': 'NYSE'}, 'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ'},
+    'AURA33': {'us': 'AUGO', 'exchange': 'NASDAQ'}, 'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ'},
+    'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ'}, 'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ'},
+    'MELI34': {'us': 'MELI', 'exchange': 'NASDAQ'}, 'C2OI34': {'us': 'COIN', 'exchange': 'NASDAQ'},
+    'ORCL34': {'us': 'ORCL', 'exchange': 'NYSE'}, 'M2ST34': {'us': 'MSTR', 'exchange': 'NASDAQ'},
+    'A1MD34': {'us': 'AMD', 'exchange': 'NASDAQ'}, 'NFLX34': {'us': 'NFLX', 'exchange': 'NASDAQ'},
+    'ITLC34': {'us': 'INTC', 'exchange': 'NASDAQ'}, 'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ'},
+    'COCA34': {'us': 'KO', 'exchange': 'NYSE'}, 'JBSS32': {'us': 'JBSAY', 'exchange': 'OTC'},
+    'AAPL34': {'us': 'AAPL', 'exchange': 'NASDAQ'}, 'XPBR31': {'us': 'XP', 'exchange': 'NASDAQ'},
+    'STOC34': {'us': 'STNE', 'exchange': 'NASDAQ'}
+}
+
 @st.cache_resource
 def get_tv_conn_home():
     return TvDatafeed()
@@ -269,21 +282,20 @@ if st.button("🔍 Escanear TUDO no After-Market Agora", type="primary", use_con
     for idx, (bdr, info) in enumerate(bdr_setup_home.items()):
         status_after.text(f"Atualizando os dados da pagina, isso pode demorar. Aguarde! ({idx+1}/{len(bdr_setup_home)})")
         p_bar_after.progress((idx + 1) / len(bdr_setup_home))
-        fecho_regular = None; preco_atual = None
+        fecho_reg = None; preco_at = None
         try:
             df_reg = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
-            if df_reg is not None and not df_reg.empty: fecho_regular = df_reg['close'].iloc[-1]
-            if fecho_regular is not None:
+            if df_reg is not None and not df_reg.empty: fecho_reg = df_reg['close'].iloc[-1]
+            if fecho_reg:
                 df_ext = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
-                if df_ext is not None and not df_ext.empty: preco_atual = df_ext['close'].iloc[-1]
+                if df_ext is not None and not df_ext.empty: preco_at = df_ext['close'].iloc[-1]
                 else:
-                    df_fallback = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2)
-                    if df_fallback is not None and not df_fallback.empty: preco_atual = df_fallback['close'].iloc[-1]
+                    df_fb = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2)
+                    if df_fb is not None and not df_fb.empty: preco_at = df_fb['close'].iloc[-1]
         except: pass 
-        if fecho_regular is not None and preco_atual is not None:
-            var_pct = ((preco_atual / fecho_regular) - 1) * 100; str_after = f"$ {preco_atual:.2f}"; str_var = f"+{var_pct:.2f}%" if var_pct > 0 else f"{var_pct:.2f}%"; raw_var = var_pct; str_fecho = f"$ {fecho_regular:.2f}"
-        else: str_after = "Desatualizado"; str_var = "-"; raw_var = -999.0; str_fecho = f"$ {fecho_regular:.2f}" if fecho_regular is not None else "S/ Dados"
-        ls_after.append({'BDR (B3)': bdr, 'Ticker EUA': info['us'], 'Fecho Oficial': str_fecho, 'Preço After-Market': str_after, 'Variação (%)': str_var, '_var_raw': raw_var})
+        if fecho_reg and preco_at:
+            var = ((preco_at / fecho_reg) - 1) * 100; ls_after.append({'BDR (B3)': bdr, 'Ticker EUA': info['us'], 'Fecho Oficial': f"$ {fecho_reg:.2f}", 'Preço After-Market': f"$ {preco_at:.2f}", 'Variação (%)': f"+{var:.2f}%" if var > 0 else f"{var:.2f}%", '_var_raw': var})
+        else: ls_after.append({'BDR (B3)': bdr, 'Ticker EUA': info['us'], 'Fecho Oficial': f"$ {fecho_reg:.2f}" if fecho_reg else "S/ Dados", 'Preço After-Market': "Desatualizado", 'Variação (%)': "-", '_var_raw': -999.0})
         time.sleep(0.05)
     p_bar_after.empty(); status_after.empty()
     if ls_after:
@@ -292,40 +304,70 @@ if st.button("🔍 Escanear TUDO no After-Market Agora", type="primary", use_con
             try:
                 if row['Variação (%)'] == "-": return ['color: #a5a5a5'] * len(row)
                 val = float(row['Variação (%)'].replace('%', '').replace('+', ''))
-                if val > 0: return ['color: #00FF00; font-weight: bold'] * len(row)
-                elif val < 0: return ['color: #ff4d4d; font-weight: bold'] * len(row)
-            except: pass
-            return [''] * len(row)
+                return [f'color: {"#00FF00" if val > 0 else "#ff4d4d"}; font-weight: bold'] * len(row)
+            except: return [''] * len(row)
         st.dataframe(df_after.style.apply(colorir_after, axis=1), use_container_width=True, hide_index=True)
 
 st.markdown("#### 🎯 Alguma Stock específica?")
 col_sel, col_btn = st.columns([3, 1], vertical_alignment="bottom")
 with col_sel:
-    ativo_escolhido = st.selectbox("Selecione a ação americana:", options=sorted(list(bdr_setup_home.keys())), format_func=lambda x: f"{bdr_setup_home[x]['us']} (Ref: {x})")
+    ativo_sel = st.selectbox("Selecione a ação americana:", options=sorted(list(bdr_setup_home.keys())), format_func=lambda x: f"{bdr_setup_home[x]['us']} (Ref: {x})")
 with col_btn:
-    btn_indiv = st.button("🔍 Consultar Ativo", use_container_width=True)
-if btn_indiv:
-    info = bdr_setup_home[ativo_escolhido]; tv_indiv = get_tv_conn_home(); fecho_regular = None; preco_atual = None
-    with st.spinner("Atualizando os dados da pagina, isso pode demorar. Aguarde!"):
-        try:
-            df_reg = tv_indiv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
-            if df_reg is not None and not df_reg.empty: fecho_regular = df_reg['close'].iloc[-1]
-            if fecho_regular is not None:
-                df_ext = tv_indiv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
-                if df_ext is not None and not df_ext.empty: preco_atual = df_ext['close'].iloc[-1]
-                else:
-                    df_fallback = tv_indiv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2)
-                    if df_fallback is not None and not df_fallback.empty: preco_atual = df_fallback['close'].iloc[-1]
-        except: pass
-    if fecho_regular is not None and preco_atual is not None:
-        var_pct = ((preco_atual / fecho_regular) - 1) * 100
-        c1, c2, c3 = st.columns(3); c1.metric("Ação (US)", info['us']); c2.metric("BDR Correspondente", ativo_escolhido); c3.metric("Preço Atual", f"$ {preco_atual:.2f}", f"{var_pct:.2f}%")
-    else: st.error("Desatualizado.")
+    if st.button("🔍 Consultar Ativo", use_container_width=True):
+        info = bdr_setup_home[ativo_sel]; tv_ind = get_tv_conn_home(); f_reg = None; p_at = None
+        with st.spinner("Atualizando os dados da pagina, isso pode demorar. Aguarde!"):
+            try:
+                df_r = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
+                if df_r is not None and not df_r.empty: f_reg = df_r['close'].iloc[-1]
+                if f_reg:
+                    df_e = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
+                    if df_e is not None and not df_e.empty: p_at = df_e['close'].iloc[-1]
+            except: pass
+        if f_reg and p_at:
+            v = ((p_at / f_reg) - 1) * 100; c1, c2, c3 = st.columns(3); c1.metric("Ação (US)", info['us']); c2.metric("BDR", ativo_sel); c3.metric("Preço Atual", f"$ {p_at:.2f}", f"{v:.2f}%")
+        else: st.error("Desatualizado.")
 
 # ==========================================
-# 5. ARSENAL, INTELIGÊNCIA E NOTÍCIAS (OMITIDOS PARA BREVIDADE, MANTENHA O SEU)
+# 5. ARSENAL, INTELIGÊNCIA E LINKS ÚTEIS
 # ==========================================
 st.divider()
 st.subheader("🛠️ O Seu Arsenal de Ferramentas")
-# ... Mantenha as seções de Arsenal, Links Úteis e Notícias como estavam ...
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.info("### 📉 Regressão à Média\nVarreduras de **IFR** e **Canais de Keltner**.")
+    st.success("### 📊 Fluxo Institucional\nEncontre defesas de tubarões na **VWAP**.")
+with c2:
+    st.warning("### 🔥 Seguidores de Tendência\nMonitore o **Setup 9.1** e **Fura-Teto**.")
+    st.error("### 📐 Fibo & Smart Money\nOpere com o **Rastreador Fibonacci**.")
+with c3:
+    st.markdown("<div style='background-color: #2b2b2b; padding: 15px; border-radius: 10px; border-left: 5px solid #a3a3a3;'><h3 style='margin-top: 0;'>🕯️ Price Action</h3>Padrões de Candles em zonas de valor.</div>", unsafe_allow_html=True)
+
+st.divider()
+st.subheader("🧭 Inteligência de Mercado & Dados de Ativos")
+cl1, cl2, cl3 = st.columns(3)
+with cl1:
+    st.markdown("#### 📅 Central de Calendários")
+    st.link_button("Acessar Calendários", "https://br.investing.com/economic-calendar", use_container_width=True)
+with cl2:
+    st.markdown("#### 🔍 Rastreadores")
+    st.link_button("Filtro Investing", "https://br.investing.com/stock-screener", use_container_width=True)
+    st.link_button("Screener TradingView", "https://br.tradingview.com/screener/", use_container_width=True)
+with cl3:
+    st.markdown("#### 🐋 Smart Money")
+    st.link_button("Investing Pro Ideas", "https://br.investing.com/pro/ideas", use_container_width=True)
+    st.link_button("HedgeFollow (Fundos)", "https://hedgefollow.com/", use_container_width=True)
+
+st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+cl4, cl5, cl6 = st.columns(3)
+with cl4:
+    st.markdown("#### 📊 Plataformas de Dados")
+    st.link_button("StatusInvest", "https://statusinvest.com.br/", use_container_width=True)
+with cl5:
+    st.markdown("#### 🏢 Raio-X Fundamentalista")
+    st.link_button("Fundamentus", "https://www.fundamentus.com.br/", use_container_width=True)
+with cl6:
+    st.markdown("#### 🌍 Portais Globais")
+    st.link_button("Investing.com", "https://br.investing.com/", use_container_width=True)
+
+st.divider()
 st.info(aviso_risco)
