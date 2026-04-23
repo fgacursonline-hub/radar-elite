@@ -8,6 +8,44 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ==========================================
+# 0. FUNÇÕES MATEMÁTICAS DE ELITE (NOVO)
+# ==========================================
+def aplicar_filtro_keltner_bb(df, length=20, mult_kc=1.5, mult_bb=2.0):
+    """
+    Motor TTM Squeeze traduzido do Pine Script.
+    """
+    # 1. Linha Central
+    df['Basis'] = df['Close'].rolling(window=length).mean()
+
+    # 2. Cálculo do True Range (TR)
+    df['prev_close'] = df['Close'].shift(1)
+    df['tr1'] = df['High'] - df['Low']
+    df['tr2'] = abs(df['High'] - df['prev_close'])
+    df['tr3'] = abs(df['Low'] - df['prev_close'])
+    df['TR'] = df[['tr1', 'tr2', 'tr3']].max(axis=1)
+
+    # 3. Canais de Keltner
+    df['Range_KC'] = df['TR'].rolling(window=length).mean()
+    df['KC_Upper'] = df['Basis'] + (df['Range_KC'] * mult_kc)
+    df['KC_Lower'] = df['Basis'] - (df['Range_KC'] * mult_kc)
+
+    # 4. Bandas de Bollinger (ddof=0 para igualar ao TradingView)
+    df['Stdev'] = df['Close'].rolling(window=length).std(ddof=0)
+    df['Dev_BB'] = mult_bb * df['Stdev']
+    df['BB_Upper'] = df['Basis'] + df['Dev_BB']
+    df['BB_Lower'] = df['Basis'] - df['Dev_BB']
+
+    # 5. Lógica de Explosão (Bollinger rasga o Keltner)
+    df['isDanger'] = (df['BB_Lower'] < df['KC_Lower']) | (df['BB_Upper'] > df['KC_Upper'])
+
+    # 6. Gatilho de Início exato
+    df['Inicio_Tendencia'] = df['isDanger'] & (~df['isDanger'].shift(1).fillna(False))
+
+    # Limpeza
+    df.drop(columns=['prev_close', 'tr1', 'tr2', 'tr3', 'TR', 'Range_KC', 'Stdev', 'Dev_BB'], inplace=True)
+    return df
+
+# ==========================================
 # 1. SEGURANÇA E CONEXÃO
 # ==========================================
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
@@ -70,33 +108,25 @@ with col_botao:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     st.link_button("📖 Ler Manual", "https://seusite.com/manual_volatilidade", use_container_width=True)
 
-aba_radar, aba_individual = st.tabs(["📡 Scanner de Volatilidade", "🔬 Raio-X Individual"])
+# AGORA TEMOS 3 ABAS
+aba_radar, aba_ttm, aba_individual = st.tabs(["📡 Scanner Tático", "🧨 Motor TTM Squeeze (NOVO)", "🔬 Raio-X Individual"])
 
 # ==========================================
-# ABA 1: SCANNER DE COMPRESSÃO DE VOLATILIDADE
+# ABA 1: SCANNER TÁTICO (Original mantido)
 # ==========================================
 with aba_radar:
     st.subheader("🔍 Scanner de Compressão de Volatilidade")
-    st.markdown("Varre o mercado em busca de Molas Comprimidas (NR4/NR7) e Contra-Golpes Táticos. O objetivo é antecipar a ruptura de zonas de acumulação e engolfos direcionais.")
+    st.markdown("Varre o mercado em busca de Molas Comprimidas (NR4/NR7) e Contra-Golpes Táticos.")
     
     c1, c2, c3 = st.columns(3)
     with c1:
         lista_sel = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="vol_lst")
-        tipo_setup = st.selectbox("Estratégia de Elite:", [
-            "Mola Comprimida (NR4)", 
-            "Mola Mestra (NR7)", 
-            "Contra-Golpe Tático"
-        ], key="vol_setup")
+        tipo_setup = st.selectbox("Estratégia de Elite:", ["Mola Comprimida (NR4)", "Mola Mestra (NR7)", "Contra-Golpe Tático"], key="vol_setup")
     with c2:
         tempo_grafico = st.selectbox("Tempo Gráfico:", ['1d', '1wk', '60m', '15m'], index=0, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="vol_tmp")
-        tipo_filtro = st.selectbox("Filtro de Compressão (Caixote):", [
-            "Bollinger Squeeze (Bandas Estreitas)", 
-            "Médias Emboladas (MME9 próxima à MM21)", 
-            "Sem Filtro (Sinal Puro)"
-        ], key="vol_filtro", disabled=("Contra-Golpe" in tipo_setup)) 
+        tipo_filtro = st.selectbox("Filtro de Compressão (Caixote):", ["Bollinger Squeeze (Bandas Estreitas)", "Médias Emboladas (MME9 próxima à MM21)", "Sem Filtro (Sinal Puro)"], key="vol_filtro", disabled=("Contra-Golpe" in tipo_setup)) 
     with c3:
         st.info("💡 **Dica Tática:** O Contra-Golpe exige MM21 inclinada a favor do movimento. A Mola Comprimida prospera na letargia e baixa volatilidade.")
-        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
     nome_botao = tipo_setup.split('(')[0].strip()
     btn_iniciar = st.button(f"🚀 Iniciar Scanner: {nome_botao}", type="primary", use_container_width=True)
@@ -124,17 +154,14 @@ with aba_radar:
                 df['Range'] = df['High'] - df['Low']
                 df['MM21'] = ta.sma(df['Close'], length=21)
                 df['MME9'] = ta.ema(df['Close'], length=9)
-                
-                # Mapeamento de Cores dos Candles
                 df['Cor'] = 'Verde'
                 df.loc[df['Close'] < df['Open'], 'Cor'] = 'Vermelho'
                 
-                # --- LÓGICA 1: MOLA COMPRIMIDA (NR4) & MOLA MESTRA (NR7) ---
+                # --- LÓGICA 1: MOLA ---
                 if "Mola" in tipo_setup:
                     janela = 4 if "NR4" in tipo_setup else 7
                     df[f'Min_Range'] = df['Range'].rolling(window=janela).min()
                     
-                    # Filtro Institucional de Caixote
                     mercado_lateral = True
                     if "Bollinger" in tipo_filtro:
                         bb = ta.bbands(df['Close'], length=20, std=2)
@@ -153,14 +180,11 @@ with aba_radar:
 
                 # --- LÓGICA 2: CONTRA-GOLPE TÁTICO ---
                 elif "Contra-Golpe" in tipo_setup:
-                    # Direcional da Tendência
                     tendencia_alta = df['MM21'].iloc[-1] > df['MM21'].iloc[-2]
                     tendencia_baixa = df['MM21'].iloc[-1] < df['MM21'].iloc[-2]
                     
-                    # Análise do Conjunto (i-2, i-1, i)
                     c0, c1, c2 = df['Cor'].iloc[-3], df['Cor'].iloc[-2], df['Cor'].iloc[-1]
                     
-                    # Sinal Tático de Compra: Tendência Alta + Recuo (Vermelho - Verde - Vermelho)
                     if tendencia_alta and c0 == 'Vermelho' and c1 == 'Verde' and c2 == 'Vermelho':
                         max_conjunto = df['High'].iloc[-3:].max()
                         ls_sinais.append({
@@ -169,7 +193,6 @@ with aba_radar:
                             'Gatilho Venda': '-', 'Obs': 'Armadilha para Vendidos Armada'
                         })
                     
-                    # Sinal Tático de Venda: Tendência Baixa + Respiro (Verde - Vermelho - Verde)
                     elif tendencia_baixa and c0 == 'Verde' and c1 == 'Vermelho' and c2 == 'Verde':
                         min_conjunto = df['Low'].iloc[-3:].min()
                         ls_sinais.append({
@@ -184,7 +207,6 @@ with aba_radar:
         s_text.empty()
         p_bar.empty()
 
-        # --- EXIBIÇÃO DE RESULTADOS TÁTICOS ---
         st.divider()
         if ls_sinais:
             st.success(f"🎯 Varredura concluída! {len(ls_sinais)} oportunidades táticas detectadas.")
@@ -192,10 +214,74 @@ with aba_radar:
         else:
             st.warning("O campo de batalha está neutro hoje. Nenhum padrão de explosão ou contra-golpe validado.")
 
-with aba_individual:
-    st.info("Aba de Raio-X Individual em desenvolvimento. Próximo passo: Backtest de Alvos Matemáticos.")
-    # ==========================================
-# ABA 2: RAIO-X INDIVIDUAL (BACKTEST)
+# ==========================================
+# ABA 2: NOVO MOTOR TTM SQUEEZE (PINE PARA PYTHON)
+# ==========================================
+with aba_ttm:
+    st.subheader("🧨 Motor de Explosão: TTM Squeeze")
+    st.markdown("O sistema rastreia ativos que estavam em forte consolidação (Bollinger dentro do Keltner) e que **hoje** iniciaram uma explosão direcional de força institucional.")
+    
+    col_t1, col_t2, col_t3 = st.columns(3)
+    with col_t1:
+        ttm_lista = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="ttm_lst")
+        ttm_length = st.number_input("Períodos (Keltner e Volatilidade)", value=20, step=1)
+    with col_t2:
+        ttm_tempo = st.selectbox("Tempo Gráfico:", ['1d', '60m', '15m'], index=0, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário'}[x], key="ttm_tmp")
+        ttm_mult_kc = st.number_input("Multiplicador do Canal Keltner", value=1.5, step=0.1)
+    with col_t3:
+        st.error("🚨 **Sinal de Perigo:** O robô só avisa quando as Bandas de Bollinger rasgam o Keltner para fora.")
+        ttm_mult_bb = st.number_input("Multiplicador do Bollinger", value=2.0, step=0.1)
+
+    btn_ttm = st.button("🧨 Varrer o Mercado (TTM Squeeze)", type="primary", use_container_width=True)
+
+    if btn_ttm:
+        ativos_ttm = bdrs_elite if ttm_lista == "BDRs Elite" else ibrx_selecao if ttm_lista == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        intervalo_tv = tradutor_intervalo.get(ttm_tempo, Interval.in_daily)
+        
+        sinais_ttm = []
+        p_bar_ttm = st.progress(0)
+        st_txt_ttm = st.empty()
+
+        for idx, ativo_raw in enumerate(ativos_ttm):
+            ativo = ativo_raw.replace('.SA', '')
+            st_txt_ttm.text(f"🧨 Analisando compressão: {ativo} ({idx+1}/{len(ativos_ttm)})")
+            p_bar_ttm.progress((idx + 1) / len(ativos_ttm))
+
+            try:
+                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=100)
+                if df is None or len(df) < 30: continue
+                df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                
+                # Roda a função traduzida
+                df = aplicar_filtro_keltner_bb(df, length=ttm_length, mult_kc=ttm_mult_kc, mult_bb=ttm_mult_bb)
+                
+                # Se hoje é o início de uma tendência forte
+                if df['Inicio_Tendencia'].iloc[-1] == True:
+                    
+                    # Para saber se rasgou para cima ou para baixo
+                    direcao = "📈 ALTA (Comprador)" if df['Close'].iloc[-1] > df['Basis'].iloc[-1] else "📉 BAIXA (Vendedor)"
+                    
+                    sinais_ttm.append({
+                        'Ativo': ativo,
+                        'Alerta': '🚨 EXPLOSÃO TTM',
+                        'Direção do Rompimento': direcao,
+                        'Preço Atual': f"R$ {df['Close'].iloc[-1]:.2f}"
+                    })
+            except Exception as e: pass
+            time.sleep(0.01)
+
+        st_txt_ttm.empty()
+        p_bar_ttm.empty()
+
+        st.divider()
+        if sinais_ttm:
+            st.success(f"🔥 Foram detectadas {len(sinais_ttm)} explosões de volatilidade hoje!")
+            st.dataframe(pd.DataFrame(sinais_ttm), use_container_width=True, hide_index=True)
+        else:
+            st.warning("O mercado está calmo. Nenhuma quebra de Keltner identificada neste momento.")
+
+# ==========================================
+# ABA 3: RAIO-X INDIVIDUAL (Mantido Original)
 # ==========================================
 with aba_individual:
     st.subheader("🔬 Raio-X Individual: Laboratório de Backtest")
@@ -206,16 +292,8 @@ with aba_individual:
         rx_ativo = st.text_input("Ativo (Ex: M1TA34):", value="M1TA34", key="rx_vol_ativo")
         rx_periodo = st.selectbox("Período do Backtest:", options=['3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="rx_vol_per")
     with col2:
-        rx_setup = st.selectbox("Estratégia de Elite:", [
-            "Mola Comprimida (NR4)", 
-            "Mola Mestra (NR7)", 
-            "Contra-Golpe Tático"
-        ], key="rx_vol_setup")
-        rx_filtro = st.selectbox("Filtro de Compressão:", [
-            "Bollinger Squeeze", 
-            "Médias Emboladas", 
-            "Sem Filtro"
-        ], key="rx_vol_filtro", disabled=("Contra-Golpe" in rx_setup))
+        rx_setup = st.selectbox("Estratégia de Elite:", ["Mola Comprimida (NR4)", "Mola Mestra (NR7)", "Contra-Golpe Tático"], key="rx_vol_setup")
+        rx_filtro = st.selectbox("Filtro de Compressão:", ["Bollinger Squeeze", "Médias Emboladas", "Sem Filtro"], key="rx_vol_filtro", disabled=("Contra-Golpe" in rx_setup))
     with col3:
         rx_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="rx_vol_tmp")
         rx_capital = st.number_input("Capital por Operação (R$):", value=10000.0, step=1000.0, key="rx_vol_cap")
@@ -236,7 +314,6 @@ with aba_individual:
                     else:
                         df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                         
-                        # --- PREPARAÇÃO DE DADOS ---
                         df_full['Range'] = df_full['High'] - df_full['Low']
                         df_full['MM21'] = ta.sma(df_full['Close'], length=21)
                         df_full['MME9'] = ta.ema(df_full['Close'], length=9)
@@ -244,7 +321,6 @@ with aba_individual:
                         df_full['Cor'] = 'Verde'
                         df_full.loc[df_full['Close'] < df_full['Open'], 'Cor'] = 'Vermelho'
                         
-                        # Cálculo Dinâmico de Bollinger (Blindado contra erro de versão)
                         bb = ta.bbands(df_full['Close'], length=20, std=2)
                         if bb is not None and not bb.empty:
                             col_u = [c for c in bb.columns if 'BBU' in c][0]
@@ -258,7 +334,6 @@ with aba_individual:
 
                         df_full = df_full.dropna()
 
-                        # Corte de Tempo
                         data_atual = df_full.index[-1]
                         if rx_periodo == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
                         elif rx_periodo == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
@@ -271,10 +346,9 @@ with aba_individual:
                         df_back = df.reset_index()
                         col_data = df_back.columns[0]
 
-                        # --- VARIÁVEIS DE ESTADO DO ROBÔ ---
                         trades = []
                         em_pos = False
-                        direcao = 0 # 1 = Compra, -1 = Venda
+                        direcao = 0
                         preco_entrada = 0.0
                         stop_loss = 0.0
                         alvo = 0.0
@@ -292,14 +366,12 @@ with aba_individual:
 
                         vitorias, derrotas = 0, 0
 
-                        # --- MOTOR DE BACKTEST ---
                         for i in range(7, len(df_back)):
                             atual = df_back.iloc[i]
                             ontem = df_back.iloc[i-1]
 
-                            # 1. GERENCIAMENTO DE POSIÇÃO
                             if em_pos:
-                                if direcao == 1: # COMPRADO
+                                if direcao == 1: 
                                     if atual['Low'] <= stop_loss:
                                         d_sai = atual[col_data]
                                         lucro = rx_capital * ((stop_loss / preco_entrada) - 1)
@@ -311,7 +383,7 @@ with aba_individual:
                                         trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Tipo': 'Compra 🟢', 'Lucro (R$)': lucro, 'Situação': 'Alvo Atingido 🎯'})
                                         vitorias += 1; em_pos = False
 
-                                elif direcao == -1: # VENDIDO
+                                elif direcao == -1: 
                                     if atual['High'] >= stop_loss:
                                         d_sai = atual[col_data]
                                         lucro = rx_capital * ((preco_entrada - stop_loss) / preco_entrada)
@@ -322,9 +394,8 @@ with aba_individual:
                                         lucro = rx_capital * ((preco_entrada - alvo) / preco_entrada)
                                         trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Tipo': 'Venda 🔴', 'Lucro (R$)': lucro, 'Situação': 'Alvo Atingido 🎯'})
                                         vitorias += 1; em_pos = False
-                                continue # Se estava em posição e gerenciou, pula para o próximo dia
+                                continue 
 
-                            # 2. VERIFICAÇÃO DE GATILHOS (ENTRADA)
                             entrou_hoje = False
                             if setup_compra_armado:
                                 if atual['High'] > gatilho_compra:
@@ -336,7 +407,7 @@ with aba_individual:
                                 else:
                                     validade_setup -= 1
                                     if validade_setup <= 0 or atual['Low'] < sl_pendente_c:
-                                        setup_compra_armado = False # Expirou ou perdeu suporte
+                                        setup_compra_armado = False 
 
                             if not entrou_hoje and setup_venda_armado:
                                 if atual['Low'] < gatilho_venda:
@@ -350,12 +421,10 @@ with aba_individual:
                                     if validade_setup <= 0 or atual['High'] > sl_pendente_v:
                                         setup_venda_armado = False
 
-                            # 3. BUSCA DE NOVOS SETUPS (Se não estiver posicionado e não entrou hoje)
                             if not em_pos and not entrou_hoje:
-                                # --- LÓGICA MOLA COMPRIMIDA ---
                                 if "Mola" in rx_setup:
                                     janela = 4 if "NR4" in rx_setup else 7
-                                    min_range_janela = df_back['Range'].iloc[i-janela:i].min() # Mínimo até ontem
+                                    min_range_janela = df_back['Range'].iloc[i-janela:i].min() 
                                     
                                     mercado_lateral = True
                                     if "Bollinger" in rx_filtro:
@@ -373,9 +442,8 @@ with aba_individual:
                                         amplitude = ontem['Range']
                                         alvo_pendente_c = gatilho_compra + amplitude
                                         alvo_pendente_v = gatilho_venda - amplitude
-                                        validade_setup = 1 # Rompimento obrigatório no dia seguinte
+                                        validade_setup = 1 
 
-                                # --- LÓGICA CONTRA-GOLPE TÁTICO ---
                                 elif "Contra-Golpe" in rx_setup:
                                     tend_alta = df_back['MM21'].iloc[i-1] > df_back['MM21'].iloc[i-2]
                                     tend_baixa = df_back['MM21'].iloc[i-1] < df_back['MM21'].iloc[i-2]
@@ -389,7 +457,7 @@ with aba_individual:
                                         gatilho_compra = max_conj + 0.01
                                         sl_pendente_c = min_conj - 0.01
                                         alvo_pendente_c = gatilho_compra + (max_conj - min_conj)
-                                        validade_setup = 5 # Tem até 5 dias para romper
+                                        validade_setup = 5 
 
                                     elif tend_baixa and c_2 == 'Verde' and c_1 == 'Vermelho' and c_0 == 'Verde':
                                         setup_venda_armado = True
@@ -400,7 +468,6 @@ with aba_individual:
                                         alvo_pendente_v = gatilho_venda - (max_conj - min_conj)
                                         validade_setup = 5
 
-                        # --- EXIBIÇÃO DE RESULTADOS ---
                         st.divider()
                         st.markdown(f"### 📊 Resultado: {ativo_input} ({rx_setup.split('(')[0].strip()})")
                         
