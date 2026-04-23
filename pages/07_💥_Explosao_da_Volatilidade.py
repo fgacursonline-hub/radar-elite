@@ -8,7 +8,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# 0. FUNÇÕES MATEMÁTICAS DE ELITE (NOVO)
+# 0. FUNÇÕES MATEMÁTICAS DE ELITE
 # ==========================================
 def aplicar_filtro_keltner_bb(df, length=20, mult_kc=1.5, mult_bb=2.0):
     """
@@ -108,11 +108,10 @@ with col_botao:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     st.link_button("📖 Ler Manual", "https://seusite.com/manual_volatilidade", use_container_width=True)
 
-# AGORA TEMOS 3 ABAS
-aba_radar, aba_ttm, aba_individual = st.tabs(["📡 Scanner Tático", "🧨 Motor TTM Squeeze (NOVO)", "🔬 Raio-X Individual"])
+aba_radar, aba_ttm, aba_individual = st.tabs(["📡 Scanner Tático", "🧨 Motor TTM Squeeze", "🔬 Raio-X Individual"])
 
 # ==========================================
-# ABA 1: SCANNER TÁTICO (Original mantido)
+# ABA 1: SCANNER TÁTICO
 # ==========================================
 with aba_radar:
     st.subheader("🔍 Scanner de Compressão de Volatilidade")
@@ -150,14 +149,12 @@ with aba_radar:
 
                 df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 
-                # --- INDICADORES BASE ---
                 df['Range'] = df['High'] - df['Low']
                 df['MM21'] = ta.sma(df['Close'], length=21)
                 df['MME9'] = ta.ema(df['Close'], length=9)
                 df['Cor'] = 'Verde'
                 df.loc[df['Close'] < df['Open'], 'Cor'] = 'Vermelho'
                 
-                # --- LÓGICA 1: MOLA ---
                 if "Mola" in tipo_setup:
                     janela = 4 if "NR4" in tipo_setup else 7
                     df[f'Min_Range'] = df['Range'].rolling(window=janela).min()
@@ -178,7 +175,6 @@ with aba_radar:
                             'Gatilho Venda': f"R$ {df['Low'].iloc[-1]-0.01:.2f}", 'Obs': f"Pressão máxima em {janela} períodos"
                         })
 
-                # --- LÓGICA 2: CONTRA-GOLPE TÁTICO ---
                 elif "Contra-Golpe" in tipo_setup:
                     tendencia_alta = df['MM21'].iloc[-1] > df['MM21'].iloc[-2]
                     tendencia_baixa = df['MM21'].iloc[-1] < df['MM21'].iloc[-2]
@@ -215,7 +211,7 @@ with aba_radar:
             st.warning("O campo de batalha está neutro hoje. Nenhum padrão de explosão ou contra-golpe validado.")
 
 # ==========================================
-# ABA 2: NOVO MOTOR TTM SQUEEZE (PINE PARA PYTHON)
+# ABA 2: MOTOR TTM SQUEEZE
 # ==========================================
 with aba_ttm:
     st.subheader("🧨 Motor de Explosão: TTM Squeeze")
@@ -229,7 +225,7 @@ with aba_ttm:
         ttm_tempo = st.selectbox("Tempo Gráfico:", ['1d', '60m', '15m'], index=0, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário'}[x], key="ttm_tmp")
         ttm_mult_kc = st.number_input("Multiplicador do Canal Keltner", value=1.5, step=0.1)
     with col_t3:
-        st.error("🚨 **Sinal de Perigo:** O robô só avisa quando as Bandas de Bollinger rasgam o Keltner para fora.")
+        st.error("🚨 **Sinal de Perigo:** O robô detecta a exata ignição direcional das bandas.")
         ttm_mult_bb = st.number_input("Multiplicador do Bollinger", value=2.0, step=0.1)
 
     btn_ttm = st.button("🧨 Varrer o Mercado (TTM Squeeze)", type="primary", use_container_width=True)
@@ -252,19 +248,20 @@ with aba_ttm:
                 if df is None or len(df) < 30: continue
                 df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 
-                # Roda a função traduzida
                 df = aplicar_filtro_keltner_bb(df, length=ttm_length, mult_kc=ttm_mult_kc, mult_bb=ttm_mult_bb)
                 
-                # Se hoje é o início de uma tendência forte
                 if df['Inicio_Tendencia'].iloc[-1] == True:
+                    # Verifica a direção comparando com a linha central do Keltner
+                    is_alta = df['Close'].iloc[-1] > df['Basis'].iloc[-1]
                     
-                    # Para saber se rasgou para cima ou para baixo
-                    direcao = "📈 ALTA (Comprador)" if df['Close'].iloc[-1] > df['Basis'].iloc[-1] else "📉 BAIXA (Vendedor)"
+                    direcao = "📈 ALTA" if is_alta else "📉 BAIXA"
+                    gatilho_entrada = df['High'].iloc[-1] + 0.01 if is_alta else df['Low'].iloc[-1] - 0.01
                     
                     sinais_ttm.append({
                         'Ativo': ativo,
-                        'Alerta': '🚨 EXPLOSÃO TTM',
-                        'Direção do Rompimento': direcao,
+                        'Alerta': '🚨 IGNICÃO TTM',
+                        'Direção': direcao,
+                        'Gatilho (Entrada)': f"R$ {gatilho_entrada:.2f}",
                         'Preço Atual': f"R$ {df['Close'].iloc[-1]:.2f}"
                     })
             except Exception as e: pass
@@ -275,13 +272,13 @@ with aba_ttm:
 
         st.divider()
         if sinais_ttm:
-            st.success(f"🔥 Foram detectadas {len(sinais_ttm)} explosões de volatilidade hoje!")
+            st.success(f"🔥 Foram detectadas {len(sinais_ttm)} ignições de volatilidade hoje!")
             st.dataframe(pd.DataFrame(sinais_ttm), use_container_width=True, hide_index=True)
         else:
-            st.warning("O mercado está calmo. Nenhuma quebra de Keltner identificada neste momento.")
+            st.warning("O mercado está calmo. Nenhuma ignição direcional identificada neste momento.")
 
 # ==========================================
-# ABA 3: RAIO-X INDIVIDUAL (Mantido Original)
+# ABA 3: RAIO-X INDIVIDUAL
 # ==========================================
 with aba_individual:
     st.subheader("🔬 Raio-X Individual: Laboratório de Backtest")
