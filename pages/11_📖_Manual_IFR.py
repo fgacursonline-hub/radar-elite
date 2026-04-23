@@ -1,16 +1,16 @@
 import streamlit as st
-import pandas as pd  # <-- AQUI ESTÁ A CORREÇÃO: O motor de tabelas ativado!
+import pandas as pd
 
 # ==========================================
 # 1. CONFIGURAÇÃO DA PÁGINA E CAMUFLAGEM
 # ==========================================
 st.set_page_config(page_title="Manual IFR | Caçadores de Elite", layout="wide", page_icon="📖")
 
-# --- CAMUFLAGEM: OCULTAR O MANUAL DO MENU LATERAL ---
+# --- CAMUFLAGEM AGRESSIVA: OCULTAR O MANUAL DO MENU LATERAL ---
 st.markdown("""
     <style>
-    /* Procura qualquer link no menu lateral que contenha a palavra 'Manual' e oculta a linha inteira */
-    [data-testid="stSidebarNavItems"] li:has(a[href*="Manual"]) {
+    /* Força o desaparecimento de qualquer link no menu lateral que contenha a palavra 'Manual' */
+    [data-testid="stSidebarNav"] a[href*="Manual"] {
         display: none !important;
     }
     </style>
@@ -134,6 +134,5 @@ st.info("*O mercado fará de tudo para tirar você do eixo. Confie no backtest, 
 st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
 col_voltar, col_vazia = st.columns([1, 4])
 with col_voltar:
-    # Este botão retorna para a raiz do seu app. Se o IFR for a home, '/' funciona. 
-    # Se o IFR for outra página (ex: pages/IFR.py), você precisa usar o nome do arquivo sem extensão e sem emojis, ex: "IFR"
-    st.page_link("/", label="⬅️ Voltar ao Início", use_container_width=True)
+    # Substituído por link_button que é blindado contra erros de rota interna do Streamlit
+    st.link_button("⬅️ Voltar ao Terminal IFR", "/IFR", use_container_width=True)
