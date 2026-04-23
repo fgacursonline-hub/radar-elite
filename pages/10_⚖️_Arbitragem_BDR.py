@@ -24,14 +24,14 @@ tv = get_tv_connection()
 # ==========================================
 bdr_setup = {
     'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ', 'paridade': 48},
-    'P2LT34': {'us': 'PLTR', 'exchange': 'NYSE', 'paridade': 1},
+    'P2LT34': {'us': 'PLTR', 'exchange': 'NASDAQ', 'paridade': 1},
     'ROXO34': {'us': 'NU', 'exchange': 'NYSE', 'paridade': 6},
     'INBR32': {'us': 'INTR', 'exchange': 'NASDAQ', 'paridade': 1},
     'M1TA34': {'us': 'META', 'exchange': 'NASDAQ', 'paridade': 28},
     'TSLA34': {'us': 'TSLA', 'exchange': 'NASDAQ', 'paridade': 30},
     'LILY34': {'us': 'LLY', 'exchange': 'NYSE', 'paridade': 30},
     'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ', 'paridade': 20},  
-    'AURA33': {'us': 'AUGO', 'exchange': 'NASDAQ', 'paridade': 1},   # <-- Ticker Atualizado para AUGO na NASDAQ    
+    'AURA33': {'us': 'AUGO', 'exchange': 'NASDAQ', 'paridade': 1},       
     'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ', 'paridade': 12}, 
     'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ', 'paridade': 24},  
     'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ', 'paridade': 6},    
@@ -84,7 +84,7 @@ aba_oraculo, aba_radar, aba_historico = st.tabs([
 # ==========================================
 with aba_oraculo:
     st.subheader("🔮 O Oráculo de Abertura (Caçador de Gaps)")
-    st.markdown("O robô calcula o preço teórico da abertura da B3 usando a **Visão Noturna (Pre-Market / After-Hours)** dos EUA.")
+    st.warning('**Oráculo:** Usa-se de manhã cedo (antes das 10h). Compara o "Ontem" do Brasil com o "Hoje" dos EUA.')
 
     btn_oraculo = st.button("🔍 Prever Gaps de Abertura Hoje", type="primary", use_container_width=True, key="btn_oraculo")
 
@@ -149,7 +149,7 @@ with aba_oraculo:
 # ==========================================
 with aba_radar:
     st.subheader("📡 Radar de Distorção (Spread Intraday)")
-    st.markdown("Monitorização com **Visão Noturna**. O robô lê os dados fora do horário comercial para detetar anomalias no fechamento/abertura.")
+    st.warning('**Radar:** Usa-se durante o dia (com o mercado aberto). Compara o "Agora" do Brasil com o "Agora" dos EUA.')
 
     btn_radar = st.button("📡 Escanear Distorções Agora", type="primary", use_container_width=True, key="btn_radar")
 
@@ -211,7 +211,7 @@ with aba_radar:
 # ==========================================
 with aba_historico:
     st.subheader("📉 Arbitragem Histórica (Z-Score & Mean Reversion)")
-    st.markdown("O robô calcula o *Ratio* diário dos últimos 250 dias e extrai o **Z-Score** para revelar as anomalias estruturais.")
+    st.warning('**Z-Score:** Usa-se para swing trade. Compara o "Comportamento de 1 Ano" para achar distorções raras.')
 
     c_h1, c_h2, c_h3 = st.columns(3)
     with c_h1:
