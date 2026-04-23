@@ -276,7 +276,6 @@ else:
 # ==========================================
 # 🦉 RADAR DO AFTER-MARKET E CONSULTA INDIVIDUAL
 # ==========================================
-st.divider()
 st.subheader("🦉 Como as stocks estão agora? (Radar After-Market)")
 st.markdown("Confira a movimentação nos Estados Unidos neste exato momento e antecipe o humor da B3.")
 
@@ -438,6 +437,7 @@ if btn_indiv:
 # ==========================================
 # 5. O SEU ARSENAL E LINKS ÚTEIS
 # ==========================================
+st.divider()
 st.subheader("🛠️ O Seu Arsenal de Ferramentas")
 c1, c2, c3 = st.columns(3)
 with c1:
