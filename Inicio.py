@@ -84,7 +84,7 @@ aba_oraculo, aba_radar, aba_historico = st.tabs([
 # ==========================================
 with aba_oraculo:
     st.subheader("🔮 O Oráculo de Abertura (Caçador de Gaps)")
-    st.info('**Oráculo:** Usa-se de manhã cedo (antes das 10h). Compara o "Ontem" do Brasil com o "Hoje" dos EUA.')
+    st.warning('**Oráculo:** Usa-se de manhã cedo (antes das 10h). Compara o "Ontem" do Brasil com o "Hoje" dos EUA.')
 
     btn_oraculo = st.button("🔍 Prever Gaps de Abertura Hoje", type="primary", use_container_width=True, key="btn_oraculo")
 
@@ -149,7 +149,7 @@ with aba_oraculo:
 # ==========================================
 with aba_radar:
     st.subheader("📡 Radar de Distorção (Spread Intraday)")
-    st.info('**Radar:** Usa-se durante o dia (com o mercado aberto). Compara o "Agora" do Brasil com o "Agora" dos EUA.')
+    st.warning('**Radar:** Usa-se durante o dia (com o mercado aberto). Compara o "Agora" do Brasil com o "Agora" dos EUA.')
 
     btn_radar = st.button("📡 Escanear Distorções Agora", type="primary", use_container_width=True, key="btn_radar")
 
@@ -211,7 +211,7 @@ with aba_radar:
 # ==========================================
 with aba_historico:
     st.subheader("📉 Arbitragem Histórica (Z-Score & Mean Reversion)")
-    st.info('**Z-Score:** Usa-se para swing trade. Compara o "Comportamento de 1 Ano" para achar distorções raras.')
+    st.warning('**Z-Score:** Usa-se para swing trade. Compara o "Comportamento de 1 Ano" para achar distorções raras.')
 
     c_h1, c_h2, c_h3 = st.columns(3)
     with c_h1:
