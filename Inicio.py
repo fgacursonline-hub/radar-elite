@@ -282,17 +282,16 @@ st.markdown("Confira a movimentação nos Estados Unidos neste exato momento e a
 
 if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_width=True):
     
-    # Dicionário resumido
     bdr_setup_home = {
         'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ'},
-        'P2LT34': {'us': 'PLTR', 'exchange': 'NASDAQ'},
+        'P2LT34': {'us': 'PLTR', 'exchange': 'NASDAQ'}, 
         'ROXO34': {'us': 'NU', 'exchange': 'NYSE'},
         'INBR32': {'us': 'INTR', 'exchange': 'NASDAQ'},
         'M1TA34': {'us': 'META', 'exchange': 'NASDAQ'},
         'TSLA34': {'us': 'TSLA', 'exchange': 'NASDAQ'},
         'LILY34': {'us': 'LLY', 'exchange': 'NYSE'},
         'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ'},  
-        'AURA33': {'us': 'AUGO', 'exchange': 'NASDAQ'},       
+        'AURA33': {'us': 'AUGO', 'exchange': 'NASDAQ'},    
         'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ'}, 
         'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ'},  
         'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ'},    
@@ -324,43 +323,50 @@ if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_w
         status_after.text(f"Corujando {info['us']} no mercado internacional... ({idx+1}/{len(bdr_setup_home)})")
         p_bar_after.progress((idx + 1) / len(bdr_setup_home))
         
+        fecho_regular = None
+        preco_atual = None
+        
         try:
-            # 1. Puxa o Fechamento Regular (pregão oficial)
+            # 1. Puxa o Fechamento Regular
             df_reg = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
-            if df_reg is None or df_reg.empty: continue
-            fecho_regular = df_reg['close'].iloc[-1]
-            
-            # 2. Puxa o Preço em Tempo Real / After-Hours
-            df_ext = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
-            
-            preco_atual = None
-            if df_ext is not None and not df_ext.empty:
-                preco_atual = df_ext['close'].iloc[-1]
-            else:
-                # 3. FALLBACK para bolsa OTC
-                df_fallback = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2)
-                if df_fallback is not None and not df_fallback.empty:
-                    preco_atual = df_fallback['close'].iloc[-1]
-            
-            if preco_atual is not None:
-                var_pct = ((preco_atual / fecho_regular) - 1) * 100
-                str_after = f"$ {preco_atual:.2f}"
-                str_var = f"+{var_pct:.2f}%" if var_pct > 0 else f"{var_pct:.2f}%"
-                raw_var = var_pct
-            else:
-                str_after = "Desatualizado"
-                str_var = "-"
-                raw_var = -999.0 
+            if df_reg is not None and not df_reg.empty:
+                fecho_regular = df_reg['close'].iloc[-1]
                 
-            ls_after.append({
-                'BDR (B3)': bdr,
-                'Ticker EUA': info['us'],
-                'Fecho Oficial': f"$ {fecho_regular:.2f}",
-                'Preço After-Market': str_after,
-                'Variação (%)': str_var,
-                '_var_raw': raw_var
-            })
-        except: pass
+            if fecho_regular is not None:
+                # 2. Puxa o Preço em Tempo Real / After-Hours
+                df_ext = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
+                
+                if df_ext is not None and not df_ext.empty:
+                    preco_atual = df_ext['close'].iloc[-1]
+                else:
+                    # 3. FALLBACK: Tenta sem visão noturna (Para OTC)
+                    df_fallback = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2)
+                    if df_fallback is not None and not df_fallback.empty:
+                        preco_atual = df_fallback['close'].iloc[-1]
+        except:
+            pass # Previne que qualquer falha pule a iteração
+            
+        # Tratamento de Saída Garantida na Tabela
+        if fecho_regular is not None and preco_atual is not None:
+            var_pct = ((preco_atual / fecho_regular) - 1) * 100
+            str_after = f"$ {preco_atual:.2f}"
+            str_var = f"+{var_pct:.2f}%" if var_pct > 0 else f"{var_pct:.2f}%"
+            raw_var = var_pct
+            str_fecho = f"$ {fecho_regular:.2f}"
+        else:
+            str_after = "Desatualizado"
+            str_var = "-"
+            raw_var = -999.0 
+            str_fecho = f"$ {fecho_regular:.2f}" if fecho_regular is not None else "S/ Dados"
+            
+        ls_after.append({
+            'BDR (B3)': bdr,
+            'Ticker EUA': info['us'],
+            'Fecho Oficial': str_fecho,
+            'Preço After-Market': str_after,
+            'Variação (%)': str_var,
+            '_var_raw': raw_var
+        })
         time.sleep(0.05)
         
     p_bar_after.empty()
