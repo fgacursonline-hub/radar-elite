@@ -67,17 +67,64 @@ def aplicar_fluxo_e_divergencia(df):
     return df
 
 # ==========================================
-# 3. INTERFACE
+# 3. INTERFACE PRINCIPAL
 # ==========================================
 st.title("📊 Fluxo Institucional (POC + VWAP + DELTA)")
+st.markdown("Rastreando a defesa dos tubarões e divergências de agressão em tempo real.")
 
 aba_radar, aba_individual = st.tabs(["📡 Radar Institucional (Delta)", "🔬 Raio-X Individual"])
 
-# ABA 1: RADAR (SCANNER)
+# ==========================================
+# ABA 1: RADAR INSTITUCIONAL (SCANNER)
+# ==========================================
 with aba_radar:
-    st.info("Utilize a aba Raio-X para análise detalhada com resumo tático e plano de voo.")
+    c1, c2, c3 = st.columns([1, 1, 1])
+    with c1:
+        lista_sel = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos"], key="f_lst")
+        tempo_grafico = st.selectbox("Tempo Gráfico:", ['1d', '60m'], index=0, format_func=lambda x: {'60m': '60 min', '1d': 'Diário'}[x], key="f_tmp")
+    with c2:
+        alvo_pct_rad = st.number_input("Alvo de Lucro (%):", value=5.0, step=0.5, key="rad_alvo") / 100
+        stop_pct_rad = st.number_input("Stop Loss (%):", value=2.5, step=0.5, key="rad_stop") / 100
+    with c3:
+        st.info("💡 **Atenção:** A aba de Raio-X Individual agora detecta divergências de absorção institucional.")
+    
+    if st.button("🚀 Iniciar Varredura de Fluxo", type="primary", use_container_width=True):
+        ativos = bdrs_elite if lista_sel == "BDRs Elite" else ibrx_selecao if lista_sel == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        ls_armados = []
+        p_bar = st.progress(0); s_text = st.empty()
 
-# ABA 2: RAIO-X INDIVIDUAL (COM PLANO DE VOO)
+        for idx, ativo_raw in enumerate(ativos):
+            ativo = ativo_raw.replace('.SA', '')
+            s_text.text(f"🔍 Escaneando fluxo: {ativo} ({idx+1}/{len(ativos)})")
+            p_bar.progress((idx + 1) / len(ativos))
+            try:
+                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=tradutor_intervalo[tempo_grafico], n_bars=150)
+                if df is None or len(df) < 50: continue
+                df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
+                df['POC'] = calcular_rolling_poc(df, periodo_lookback=30)
+                df['VWAP'] = ta.vwma(df['Close'], df['Volume'], length=20)
+                df = aplicar_fluxo_e_divergencia(df)
+                
+                atual = df.iloc[-1]
+                # Filtro de sinal: Acima da POC + Toque na VWAP + Delta Positivo
+                if atual['Close'] > df['POC'].iloc[-2] and atual['Low'] <= atual['VWAP'] and atual['Close'] >= atual['VWAP'] and atual['Delta_Acumulado'] > 0:
+                    ls_armados.append({
+                        'Ativo': ativo, 
+                        'Sinal': '🔥 DEFESA', 
+                        'Preço': f"R$ {atual['Close']:.2f}", 
+                        'Divergência': atual['Divergência']
+                    })
+            except: pass
+        
+        s_text.empty(); p_bar.empty()
+        if ls_armados:
+            st.success(f"🎯 {len(ls_armados)} ativos encontrados com defesa institucional!")
+            st.dataframe(pd.DataFrame(ls_armados), use_container_width=True, hide_index=True)
+        else: st.warning("Nenhum sinal de defesa institucional no momento.")
+
+# ==========================================
+# ABA 2: RAIO-X INDIVIDUAL (O Cérebro)
+# ==========================================
 with aba_individual:
     st.subheader("🔬 Laboratório de Microestrutura e Absorção")
     col1, col2 = st.columns([1, 2])
@@ -109,7 +156,7 @@ with aba_individual:
                 df_view = df[['Close', 'POC', 'VWAP', 'Saldo_Ag', 'Delta_Acumulado', 'Divergência']].tail(10).copy()
                 st.dataframe(df_view, use_container_width=True)
 
-                # 2. RESUMO TÁTICO
+                # 2. RESUMO TÁTICO (RESTAURADO COMPLETO)
                 st.markdown("---")
                 st.subheader("🎯 Veredito do Consultor Quant")
                 
@@ -118,31 +165,40 @@ with aba_individual:
                 p_delta = res['Delta_Acumulado'] > 0
                 diver = res['Divergência']
 
+                # Info Box de Divergência
                 if "ALTA" in diver:
                     txt_diver = "🔥 **ABSORÇÃO DE ALTA DETECTADA:** O preço caiu hoje, mas a agressão compradora aumentou!"
+                    st.info(txt_diver)
                 elif "BAIXA" in diver:
                     txt_diver = "⚠️ **EXAUSTÃO DE COMPRA DETECTADA:** O preço subiu, mas o Delta caiu."
+                    st.warning(txt_diver)
                 else:
-                    txt_diver = "✅ **Fluxo em Convergência:** O preço e o Delta estão na mesma direção."
+                    txt_diver = "✅ **Fluxo em Convergência:** O preço e o Delta estão se movendo na mesma direção. Tendência saudável."
+                    st.success(txt_diver)
 
-                st.info(txt_diver)
+                # Checklist Detalhado (RESTAURADO)
+                st.markdown(f"""
+                * {'✅' if p_poc else '❌'} **Filtro POC:** Preço {'acima' if p_poc else 'abaixo'} do valor de maior volume ({res['POC']:.2f}).
+                * {'✅' if p_vwap else '❌'} **Filtro VWAP:** O preço {'domina' if p_vwap else 'perdeu'} a média de execução institucional ({res['VWAP']:.2f}).
+                * {'✅' if p_delta else '❌'} **Filtro Delta:** O saldo acumulado é {'POSITIVO' if p_delta else 'NEGATIVO'}.
+                """)
 
-                # Veredito Logico
+                # Veredito Final Visual
                 if p_poc and p_delta and p_vwap:
                     veredito = "COMPRA FORTE"
-                    st.success(f"⚖️ **VEREDITO FINAL:** **{veredito}**. Indicadores alinhados.")
+                    st.success(f"⚖️ **VEREDITO FINAL: {veredito}.** Todos os indicadores institucionais estão alinhados. Alta convicção para o movimento.")
                 elif "ALTA" in diver and p_poc:
                     veredito = "COMPRA TÁTICA (ABSORÇÃO)"
-                    st.success(f"⚖️ **VEREDITO FINAL:** **{veredito}**.")
+                    st.success(f"⚖️ **VEREDITO FINAL: {veredito}.**")
                 elif not p_poc and not p_delta:
                     veredito = "VENDA FORTE / FUJA"
-                    st.error(f"⚖️ **VEREDITO FINAL:** **{veredito}**.")
+                    st.error(f"⚖️ **VEREDITO FINAL: {veredito}.** O ativo está desvalorizado institucionalmente.")
                 else:
                     veredito = "AGUARDAR"
-                    st.warning(f"⚖️ **VEREDITO FINAL:** **{veredito}**.")
+                    st.warning(f"⚖️ **VEREDITO FINAL: {veredito}.**")
 
                 # ==========================================
-                # 3. NOVO: PLANO DE VOO PARA CADA CENÁRIO
+                # 3. PLANO DE VOO OPERACIONAL (MANTIDO)
                 # ==========================================
                 st.markdown("<br>", unsafe_allow_html=True)
                 with st.expander("✈️ Plano de Voo Operacional", expanded=True):
@@ -159,8 +215,8 @@ with aba_individual:
                     elif veredito == "COMPRA TÁTICA (ABSORÇÃO)":
                         st.markdown(f"""
                         **Estratégia: Armadilha de Fundo (Absorção)**
-                        * **Gatilho de Confirmação:** Compra R$ 0,01 acima da máxima de hoje (R$ {res['High'] + 0.01:.2f}).
-                        * **Stop Loss:** R$ {res['Low'] - 0.01:.2f} (Mínima de hoje).
+                        * **Gatilho de Confirmação:** Compra R$ 0,01 acima da máxima de hoje (R$ {df['High'].iloc[-1] + 0.01:.2f}).
+                        * **Stop Loss:** R$ {df['Low'].iloc[-1] - 0.01:.2f} (Mínima de hoje).
                         * **Alvo Curto:** Retorno à VWAP ou +3% (R$ {res['Close']*1.03:.2f}).
                         """)
                     
@@ -168,7 +224,7 @@ with aba_individual:
                         st.markdown(f"""
                         **Estratégia: Proteção de Capital**
                         * **Ação:** Não abrir compras. Se estiver posicionado, considere reduzir exposição abaixo da POC.
-                        * **Gatilho de Venda (Short):** R$ 0,01 abaixo da mínima de hoje (R$ {res['Low'] - 0.01:.2f}).
+                        * **Gatilho de Venda (Short):** R$ 0,01 abaixo da mínima de hoje (R$ {df['Low'].iloc[-1] - 0.01:.2f}).
                         * **Stop Loss:** R$ {res['VWAP']:.2f}.
                         """)
                     
