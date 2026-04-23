@@ -342,7 +342,6 @@ if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_w
                 if df_fallback is not None and not df_fallback.empty:
                     preco_atual = df_fallback['close'].iloc[-1]
             
-            # Cálculo da Variação Exata ou Marcação de Desatualizado
             if preco_atual is not None:
                 var_pct = ((preco_atual / fecho_regular) - 1) * 100
                 str_after = f"$ {preco_atual:.2f}"
@@ -351,7 +350,7 @@ if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_w
             else:
                 str_after = "Desatualizado"
                 str_var = "-"
-                raw_var = -999.0 # Joga para o final da lista para não atrapalhar o topo
+                raw_var = -999.0 
                 
             ls_after.append({
                 'BDR (B3)': bdr,
@@ -374,7 +373,7 @@ if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_w
         
         def colorir_after(row):
             try:
-                if row['Variação (%)'] == "-": return ['color: #a5a5a5'] * len(row) # Desatualizado fica em cinza
+                if row['Variação (%)'] == "-": return ['color: #a5a5a5'] * len(row)
                 
                 val = float(row['Variação (%)'].replace('%', '').replace('+', ''))
                 if val > 0: return ['color: #00FF00; font-weight: bold'] * len(row)
@@ -420,6 +419,7 @@ with cl1:
 with cl2:
     st.markdown("#### 🔍 Rastreadores")
     st.link_button("Filtro | Comparador de Ações", "https://br.investing.com/stock-screener", use_container_width=True)
+    st.link_button("Screener TradingView", "https://br.tradingview.com/screener/", use_container_width=True)
     st.caption("Filtre o mercado através de múltiplos indicadores técnicos e fundamentalistas.")
 
 with cl3:
