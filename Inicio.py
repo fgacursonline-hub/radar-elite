@@ -386,7 +386,6 @@ if st.button("🔍 Escanear TUDO no After-Market Agora", type="primary", use_con
         st.warning("Nenhum dado capturado no momento.")
 
 # --- NOVO BLOCO: VERIFICAÇÃO INDIVIDUAL DE STOCK ---
-st.markdown("---")
 st.markdown("#### 🎯 Alguma Stock específica?")
 
 col_sel, col_btn = st.columns([3, 1], vertical_alignment="bottom")
@@ -429,7 +428,6 @@ if btn_indiv:
         c1, c2, c3 = st.columns(3)
         c1.metric("Ação (US)", info['us'])
         c2.metric("BDR Correspondente", ativo_escolhido)
-        # O delta já colore automaticamente de verde (subida) ou vermelho (queda)
         c3.metric("Preço Atual", f"$ {preco_atual:.2f}", f"{var_pct:.2f}%")
     else:
         st.error("Desatualizado. O mercado americano não retornou os dados em tempo real.")
