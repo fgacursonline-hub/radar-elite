@@ -32,7 +32,6 @@ tradutor_intervalo = {
 bdrs_elite = ['NVDC34.SA', 'P2LT34.SA', 'ROXO34.SA', 'INBR32.SA', 'M1TA34.SA', 'TSLA34.SA', 'LILY34.SA', 'AMZO34.SA', 'AURA33.SA', 'GOGL34.SA', 'MSFT34.SA', 'MUTC34.SA', 'MELI34.SA', 'C2OI34.SA', 'ORCL34.SA', 'M2ST34.SA', 'A1MD34.SA', 'NFLX34.SA', 'ITLC34.SA', 'AVGO34.SA', 'COCA34.SA', 'JBSS32.SA', 'AAPL34.SA', 'XPBR31.SA', 'STOC34.SA']
 ibrx_selecao = ['PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA', 'BBAS3.SA', 'B3SA3.SA', 'ABEV3.SA', 'WEGE3.SA', 'AXIA3.SA', 'SUZB3.SA', 'RENT3.SA', 'RADL3.SA', 'EQTL3.SA', 'LREN3.SA', 'PRIO3.SA', 'HAPV3.SA', 'GGBR4.SA', 'VBBR3.SA', 'SBSP3.SA', 'CMIG4.SA', 'CPLE3.SA', 'ENEV3.SA', 'TIMS3.SA', 'TOTS3.SA', 'EGIE3.SA', 'CSAN3.SA', 'ALOS3.SA', 'DIRR3.SA', 'VIVT3.SA', 'KLBN11.SA', 'UGPA3.SA', 'PSSA3.SA', 'CYRE3.SA', 'ASAI3.SA', 'RAIL3.SA', 'ISAE3.SA', 'CSNA3.SA', 'MGLU3.SA', 'EMBJ3.SA', 'TAEE11.SA', 'BBSE3.SA', 'FLRY3.SA', 'MULT3.SA', 'TFCO4.SA', 'LEVE3.SA', 'CPFE3.SA', 'GOAU4.SA', 'MRVE3.SA', 'YDUQ3.SA', 'SMTO3.SA', 'SLCE3.SA', 'CVCB3.SA', 'USIM5.SA', 'BRAP4.SA', 'BRAV3.SA', 'EZTC3.SA', 'PCAR3.SA', 'AUAU3.SA', 'DXCO3.SA', 'CASH3.SA', 'VAMO3.SA', 'AZZA3.SA', 'AURE3.SA', 'BEEF3.SA', 'ECOR3.SA', 'FESA4.SA', 'POMO4.SA', 'CURY3.SA', 'INTB3.SA', 'JHSF3.SA', 'LIGT3.SA', 'LOGG3.SA', 'MDIA3.SA', 'MBRF3.SA', 'NEOE3.SA', 'QUAL3.SA', 'RAPT4.SA', 'ROMI3.SA', 'SANB11.SA', 'SIMH3.SA', 'TEND3.SA', 'VULC3.SA', 'PLPL3.SA', 'CEAB3.SA', 'UNIP6.SA', 'LWSA3.SA', 'BPAC11.SA', 'GMAT3.SA', 'CXSE3.SA', 'ABCB4.SA', 'CSMG3.SA', 'SAPR11.SA', 'GRND3.SA', 'BRAP3.SA', 'LAVV3.SA', 'RANI3.SA', 'ITSA3.SA', 'ALUP11.SA', 'FIQE3.SA', 'COGN3.SA', 'IRBR3.SA', 'SEER3.SA', 'ANIM3.SA', 'JSLG3.SA', 'POSI3.SA', 'MYPK3.SA', 'SOJA3.SA', 'BLAU3.SA', 'PGMN3.SA', 'TUPY3.SA', 'VVEO3.SA', 'MELK3.SA', 'SHUL4.SA', 'BRSR6.SA']
 
-# Criando a lista unificada para o menu
 lista_unificada = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
 
 # ==========================================
@@ -70,7 +69,9 @@ st.title("📊 Fluxo Institucional (POC + VWAP + DELTA)")
 
 aba_radar, aba_individual = st.tabs(["📡 Radar Institucional (Delta)", "🔬 Raio-X Individual"])
 
-# ABA 1: RADAR (SCANNER)
+# ==========================================
+# ABA 1: RADAR INSTITUCIONAL (SCANNER)
+# ==========================================
 with aba_radar:
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -89,7 +90,7 @@ with aba_radar:
 
         for idx, ativo_raw in enumerate(ativos):
             ativo = ativo_raw.replace('.SA', '')
-            s_text.text(f"🔍 Analisando: {ativo} ({idx+1}/{len(ativos)})")
+            s_text.text(f"🔍 Analisando DNA: {ativo} ({idx+1}/{len(ativos)})")
             p_bar.progress((idx + 1) / len(ativos))
             try:
                 df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=tradutor_intervalo[tempo_grafico], n_bars=150)
@@ -101,9 +102,7 @@ with aba_radar:
                 
                 res_rad = df.iloc[-1]
                 if res_rad['Close'] > df['POC'].iloc[-2] and res_rad['Low'] <= res_rad['VWAP'] and res_rad['Close'] >= res_rad['VWAP'] and res_rad['Delta_Acumulado'] > 0:
-                    ls_armados.append({
-                        'Ativo': ativo, 'Sinal': '🔥 DEFESA', 'Preço': f"R$ {res_rad['Close']:.2f}", 'Divergência': res_rad['Divergência']
-                    })
+                    ls_armados.append({'Ativo': ativo, 'Sinal': '🔥 DEFESA', 'Preço': f"R$ {res_rad['Close']:.2f}", 'Divergência': res_rad['Divergência']})
             except: pass
         
         s_text.empty(); p_bar.empty()
@@ -118,20 +117,24 @@ with aba_radar:
     with col_l1:
         st.markdown("""
         **📌 Coluna: Sinal**
-        * **🔥 DEFESA:** Alinhamento total. Preço acima da POC, tocou a VWAP e fechou acima dela com Delta Positivo.
+        * **🔥 DEFESA:** Alinhamento total. O preço está acima da POC (valor), tocou a VWAP (média institucional) e fechou acima dela com Delta Positivo.
+        * **Interpretação:** Institucionais consideram o preço da VWAP atrativo e estão "escorando" o mercado para manter a tendência de alta.
         """)
     with col_l2:
         st.markdown("""
-        **📌 Coluna: Divergência**
-        * **⚠️ ALTA (Absorção):** Preço caiu mas o Delta subiu. Alguém "limpou o book" na compra.
+        **📌 Coluna: Divergência (O 'Filtro' da Defesa)**
+        * **Traço (-):** Fluxo em convergência. Preço e Delta na mesma direção. Movimento saudável e previsível.
+        * **⚠️ ALTA (Absorção):** O sinal mais forte. O preço caiu para testar a VWAP, mas o Delta subiu. Indica que o "Smart Money" limpou o book de ofertas de forma passiva.
+        * **⚠️ BAIXA (Exaustão):** Alerta de perigo. O preço segurou na VWAP, mas a agressão compradora diminuiu drasticamente. Pode ser um repique sem continuidade.
         """)
 
-# ABA 2: RAIO-X INDIVIDUAL (COM MENU SELETO)
+# ==========================================
+# ABA 2: RAIO-X INDIVIDUAL (MÁXIMA POTÊNCIA)
+# ==========================================
 with aba_individual:
     st.subheader("🔬 Laboratório de Microestrutura e DNA de Fluxo")
     col1, col2 = st.columns([1, 2])
     with col1:
-        # NOVO: Selectbox em vez de Text Input
         rx_ativo = st.selectbox("Escolha o Ativo do Cadastro:", options=lista_unificada, key="rx_sel_ativo")
         rx_tempo = st.selectbox("Tempo:", ['1d', '60m'], key="rx_inst_t")
         rx_btn = st.button("🔬 Analisar DNA e Divergências", use_container_width=True)
@@ -147,7 +150,6 @@ with aba_individual:
                 
                 res = df.iloc[-1]
                 
-                # 1. MÉTRICAS TOPO
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Preço Atual", f"R$ {res['Close']:.2f}")
                 c2.metric("POC (30d)", f"R$ {res['POC']:.2f}", f"{(res['Close']/res['POC']-1)*100:.2f}%")
@@ -155,11 +157,10 @@ with aba_individual:
                 c4.metric("Saldo Agres. (5p)", f"{res['Delta_Acumulado']:,.0f}", delta="COMPRADOR" if res['Delta_Acumulado'] > 0 else "VENDEDOR")
 
                 st.divider()
-                st.markdown("### 📋 Histórico Recente e Radar de Divergência")
+                st.markdown("### 📋 Histórico Recente de Agressão")
                 df_view = df[['Close', 'POC', 'VWAP', 'Saldo_Ag', 'Delta_Acumulado', 'Divergência']].tail(10).copy()
                 st.dataframe(df_view, use_container_width=True)
 
-                # 2. VEREDITO DO CONSULTOR QUANT
                 st.markdown("---")
                 st.subheader("🎯 Veredito do Consultor Quant")
                 
@@ -169,11 +170,11 @@ with aba_individual:
                 diver = res['Divergência']
 
                 if "ALTA" in diver:
-                    st.info("🔥 **ABSORÇÃO DE ALTA DETECTADA:** O preço caiu hoje, mas a agressão compradora aumentou!")
+                    st.info("🔥 **ABSORÇÃO DE ALTA DETECTADA:** O preço caiu hoje, mas a agressão compradora aumentou! Os institucionais estão segurando a queda de forma agressiva.")
                 elif "BAIXA" in diver:
-                    st.warning("⚠️ **EXAUSTÃO DE COMPRA DETECTADA:** O preço subiu, mas o Delta caiu.")
+                    st.warning("⚠️ **EXAUSTÃO DE COMPRA DETECTADA:** O preço subiu, mas o Delta caiu. Movimento ficando sem combustível institucional.")
                 else:
-                    st.success("✅ **Fluxo em Convergência:** O preço e o Delta estão se movendo na mesma direção.")
+                    st.success("✅ **Fluxo em Convergência:** O preço e o Delta estão se movendo na mesma direção. Tendência saudável.")
 
                 st.markdown(f"""
                 * {'✅' if p_poc else '❌'} **Filtro POC:** Preço {'acima' if p_poc else 'abaixo'} do valor de maior volume (R$ {res['POC']:.2f}).
@@ -183,31 +184,44 @@ with aba_individual:
 
                 if p_poc and p_delta and p_vwap:
                     veredito = "COMPRA FORTE"
-                    st.success(f"⚖️ **VEREDITO FINAL: {veredito}.** Todos os indicadores alinhados.")
+                    st.success(f"⚖️ **VEREDITO FINAL: {veredito}.** Todos os indicadores alinhados. Alta convicção para o movimento.")
                 elif "ALTA" in diver and p_poc:
                     veredito = "COMPRA TÁTICA"
-                    st.success(f"⚖️ **VEREDITO FINAL: {veredito}.**")
+                    st.success(f"⚖️ **VEREDITO FINAL: {veredito} (ABSORÇÃO).** Entre aproveitando a exaustão dos vendedores.")
                 elif not p_poc and not p_delta:
                     veredito = "VENDA FORTE"
-                    st.error(f"⚖️ **VEREDITO FINAL: {veredito}.**")
+                    st.error(f"⚖️ **VEREDITO FINAL: {veredito}.** Evite compras; o ativo está desvalorizado e sob pressão.")
                 else:
                     veredito = "AGUARDAR"
-                    st.warning(f"⚖️ **VEREDITO FINAL: {veredito}.**")
+                    st.warning(f"⚖️ **VEREDITO FINAL: {veredito}.** Mercado em briga sem definição clara de vencedor.")
 
-                # 3. PLANO DE VOO OPERACIONAL
+                st.markdown("<br>", unsafe_allow_html=True)
                 with st.expander("✈️ Plano de Voo Operacional", expanded=True):
                     if veredito == "COMPRA FORTE":
-                        st.write(f"* **Gatilho:** Compra na VWAP (R$ {res['VWAP']:.2f}) ou Máxima.")
-                        st.write(f"* **Stop Loss:** R$ {min(res['POC'], res['Close']*0.97):.2f}.")
-                        st.write(f"* **Alvo:** R$ {res['Close'] + (res['Close'] - min(res['POC'], res['Close']*0.97))*2:.2f}.")
+                        st.markdown("**Estratégia: Momentum Institucional**")
+                        st.write(f"* **Gatilho:** Compra na VWAP (R$ {res['VWAP']:.2f}) ou Rompimento da Máxima.")
+                        st.write(f"* **Stop Loss:** R$ {min(res['POC'], res['Close']*0.97):.2f} (Abaixo da POC ou 3% de risco).")
+                        st.write(f"* **Alvo 1 (2:1):** R$ {res['Close'] + (res['Close'] - min(res['POC'], res['Close']*0.97))*2:.2f}.")
+                    elif veredito == "COMPRA TÁTICA":
+                        st.markdown("**Estratégia: Armadilha de Fundo (Absorção)**")
+                        st.write(f"* **Gatilho Confirmação:** Compra R$ 0,01 acima da máxima de hoje (R$ {df['High'].iloc[-1] + 0.01:.2f}).")
+                        st.write(f"* **Stop Loss:** R$ {df['Low'].iloc[-1] - 0.01:.2f} (Mínima de hoje).")
+                    elif veredito == "VENDA FORTE":
+                        st.markdown("**Estratégia: Proteção de Capital**")
+                        st.write(f"* **Ação:** Sair do ativo. Gatilho de venda em R$ {df['Low'].iloc[-1] - 0.01:.2f}.")
                     else:
-                        st.write("Aguardar alinhamento institucional para disparar gatilho.")
+                        st.write("Aguardar alinhamento dos filtros na VWAP para buscar entrada.")
 
-                # 4. GLOSSÁRIO DE CAMPO
                 st.markdown("---")
                 st.markdown("### 📖 Glossário de Campo: Legenda do Fluxo Institucional")
                 st.markdown("""
-                * **POC (Point of Control):** Preço com maior volume financeiro nos últimos 30 dias.
-                * **VWAP (VWMA20):** Preço médio ponderado pelo volume. Defesa institucional.
-                * **Delta_Acumulado:** Soma da agressão dos últimos 5 períodos. Acumulação ou Distribuição.
+                * **datetime:** Registro exato de quando o candle foi fechado. Sequência indica a convicção do movimento.
+                * **Close:** Último preço negociado. Compare com a POC e VWAP para saber quem domina o território.
+                * **POC (Point of Control):** Preço com maior volume financeiro nos últimos 30 dias. Suporte de aço ou ímã de preço.
+                * **VWAP (VWMA20):** Preço médio ponderado pelo volume. Linha de defesa principal dos robôs de bancos e fundos.
+                * **Saldo_Ag (Delta):** Diferença entre agressão de compra e venda no candle. Mede a urgência imediata.
+                * **Delta_Acumulado:** Soma da agressão dos últimos 5 períodos. Mostra se há acumulação ou distribuição.
+                * **Divergência:** Sinal de alerta quando Preço e Delta não concordam. 
+                    * **Absorção (Alta):** Preço cai, mas Delta subiu. Institucionais segurando a queda limpando o book. 
+                    * **Exaustão (Baixa):** Preço subiu, mas Delta caiu. O movimento está ficando sem combustível.
                 """)
