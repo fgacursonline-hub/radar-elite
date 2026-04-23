@@ -274,49 +274,50 @@ else:
 
 
 # ==========================================
-# 🦉 RADAR DO AFTER-MARKET (INÍCIO)
+# 🦉 RADAR DO AFTER-MARKET E CONSULTA INDIVIDUAL
 # ==========================================
 st.divider()
 st.subheader("🦉 Como as stocks estão agora? (Radar After-Market)")
 st.markdown("Confira a movimentação nos Estados Unidos neste exato momento e antecipe o humor da B3.")
 
-if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_width=True):
-    
-    bdr_setup_home = {
-        'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ'},
-        'P2LT34': {'us': 'PLTR', 'exchange': 'NASDAQ'}, 
-        'ROXO34': {'us': 'NU', 'exchange': 'NYSE'},
-        'INBR32': {'us': 'INTR', 'exchange': 'NASDAQ'},
-        'M1TA34': {'us': 'META', 'exchange': 'NASDAQ'},
-        'TSLA34': {'us': 'TSLA', 'exchange': 'NASDAQ'},
-        'LILY34': {'us': 'LLY', 'exchange': 'NYSE'},
-        'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ'},  
-        'AURA33': {'us': 'AUGO', 'exchange': 'NASDAQ'},    
-        'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ'}, 
-        'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ'},  
-        'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ'},    
-        'MELI34': {'us': 'MELI', 'exchange': 'NASDAQ'},
-        'C2OI34': {'us': 'COIN', 'exchange': 'NASDAQ'},
-        'ORCL34': {'us': 'ORCL', 'exchange': 'NYSE'},
-        'M2ST34': {'us': 'MSTR', 'exchange': 'NASDAQ'},  
-        'A1MD34': {'us': 'AMD', 'exchange': 'NASDAQ'},    
-        'NFLX34': {'us': 'NFLX', 'exchange': 'NASDAQ'},  
-        'ITLC34': {'us': 'INTC', 'exchange': 'NASDAQ'},    
-        'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ'},  
-        'COCA34': {'us': 'KO', 'exchange': 'NYSE'},       
-        'JBSS32': {'us': 'JBSAY', 'exchange': 'OTC'},
-        'AAPL34': {'us': 'AAPL', 'exchange': 'NASDAQ'},
-        'XPBR31': {'us': 'XP', 'exchange': 'NASDAQ'},
-        'STOC34': {'us': 'STNE', 'exchange': 'NASDAQ'}
-    }
-    
+# Dicionário resumido (Tirado do clique do botão para ser usado em ambos os módulos)
+bdr_setup_home = {
+    'NVDC34': {'us': 'NVDA', 'exchange': 'NASDAQ'},
+    'P2LT34': {'us': 'PLTR', 'exchange': 'NASDAQ'},
+    'ROXO34': {'us': 'NU', 'exchange': 'NYSE'},
+    'INBR32': {'us': 'INTR', 'exchange': 'NASDAQ'},
+    'M1TA34': {'us': 'META', 'exchange': 'NASDAQ'},
+    'TSLA34': {'us': 'TSLA', 'exchange': 'NASDAQ'},
+    'LILY34': {'us': 'LLY', 'exchange': 'NYSE'},
+    'AMZO34': {'us': 'AMZN', 'exchange': 'NASDAQ'},  
+    'AURA33': {'us': 'AUGO', 'exchange': 'NASDAQ'},       
+    'GOGL34': {'us': 'GOOGL', 'exchange': 'NASDAQ'}, 
+    'MSFT34': {'us': 'MSFT', 'exchange': 'NASDAQ'},  
+    'MUTC34': {'us': 'MU', 'exchange': 'NASDAQ'},    
+    'MELI34': {'us': 'MELI', 'exchange': 'NASDAQ'},
+    'C2OI34': {'us': 'COIN', 'exchange': 'NASDAQ'},
+    'ORCL34': {'us': 'ORCL', 'exchange': 'NYSE'},
+    'M2ST34': {'us': 'MSTR', 'exchange': 'NASDAQ'},  
+    'A1MD34': {'us': 'AMD', 'exchange': 'NASDAQ'},    
+    'NFLX34': {'us': 'NFLX', 'exchange': 'NASDAQ'},  
+    'ITLC34': {'us': 'INTC', 'exchange': 'NASDAQ'},    
+    'AVGO34': {'us': 'AVGO', 'exchange': 'NASDAQ'},  
+    'COCA34': {'us': 'KO', 'exchange': 'NYSE'},       
+    'JBSS32': {'us': 'JBSAY', 'exchange': 'OTC'},
+    'AAPL34': {'us': 'AAPL', 'exchange': 'NASDAQ'},
+    'XPBR31': {'us': 'XP', 'exchange': 'NASDAQ'},
+    'STOC34': {'us': 'STNE', 'exchange': 'NASDAQ'}
+}
+
+@st.cache_resource
+def get_tv_conn_home():
+    return TvDatafeed()
+
+if st.button("🔍 Escanear TUDO no After-Market Agora", type="primary", use_container_width=True):
     ls_after = []
     p_bar_after = st.progress(0)
     status_after = st.empty()
     
-    @st.cache_resource
-    def get_tv_conn_home():
-        return TvDatafeed()
     tv_home = get_tv_conn_home()
         
     for idx, (bdr, info) in enumerate(bdr_setup_home.items()):
@@ -327,26 +328,22 @@ if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_w
         preco_atual = None
         
         try:
-            # 1. Puxa o Fechamento Regular
             df_reg = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
             if df_reg is not None and not df_reg.empty:
                 fecho_regular = df_reg['close'].iloc[-1]
                 
             if fecho_regular is not None:
-                # 2. Puxa o Preço em Tempo Real / After-Hours
                 df_ext = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
                 
                 if df_ext is not None and not df_ext.empty:
                     preco_atual = df_ext['close'].iloc[-1]
                 else:
-                    # 3. FALLBACK: Tenta sem visão noturna (Para OTC)
                     df_fallback = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2)
                     if df_fallback is not None and not df_fallback.empty:
                         preco_atual = df_fallback['close'].iloc[-1]
         except:
-            pass # Previne que qualquer falha pule a iteração
+            pass 
             
-        # Tratamento de Saída Garantida na Tabela
         if fecho_regular is not None and preco_atual is not None:
             var_pct = ((preco_atual / fecho_regular) - 1) * 100
             str_after = f"$ {preco_atual:.2f}"
@@ -374,13 +371,11 @@ if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_w
     
     if ls_after:
         df_after = pd.DataFrame(ls_after)
-        
         df_after = df_after.sort_values(by='_var_raw', ascending=False).drop(columns=['_var_raw'])
         
         def colorir_after(row):
             try:
                 if row['Variação (%)'] == "-": return ['color: #a5a5a5'] * len(row)
-                
                 val = float(row['Variação (%)'].replace('%', '').replace('+', ''))
                 if val > 0: return ['color: #00FF00; font-weight: bold'] * len(row)
                 elif val < 0: return ['color: #ff4d4d; font-weight: bold'] * len(row)
@@ -390,6 +385,55 @@ if st.button("🔍 Escanear After-Market Agora", type="primary", use_container_w
         st.dataframe(df_after.style.apply(colorir_after, axis=1), use_container_width=True, hide_index=True)
     else:
         st.warning("Nenhum dado capturado no momento.")
+
+# --- NOVO BLOCO: VERIFICAÇÃO INDIVIDUAL DE STOCK ---
+st.markdown("---")
+st.markdown("#### 🎯 Alguma Stock específica?")
+
+col_sel, col_btn = st.columns([3, 1], vertical_alignment="bottom")
+with col_sel:
+    ativo_escolhido = st.selectbox(
+        "Selecione a ação americana:", 
+        options=list(bdr_setup_home.keys()), 
+        format_func=lambda x: f"{bdr_setup_home[x]['us']} (Ref: {x})"
+    )
+with col_btn:
+    btn_indiv = st.button("🔍 Consultar Ativo", use_container_width=True)
+
+if btn_indiv:
+    info = bdr_setup_home[ativo_escolhido]
+    tv_indiv = get_tv_conn_home()
+    
+    fecho_regular = None
+    preco_atual = None
+    
+    with st.spinner(f"Puxando cotação de {info['us']}..."):
+        try:
+            df_reg = tv_indiv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
+            if df_reg is not None and not df_reg.empty:
+                fecho_regular = df_reg['close'].iloc[-1]
+                
+            if fecho_regular is not None:
+                df_ext = tv_indiv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
+                if df_ext is not None and not df_ext.empty:
+                    preco_atual = df_ext['close'].iloc[-1]
+                else:
+                    df_fallback = tv_indiv.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2)
+                    if df_fallback is not None and not df_fallback.empty:
+                        preco_atual = df_fallback['close'].iloc[-1]
+        except Exception as e:
+            pass
+            
+    if fecho_regular is not None and preco_atual is not None:
+        var_pct = ((preco_atual / fecho_regular) - 1) * 100
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Ação (US)", info['us'])
+        c2.metric("BDR Correspondente", ativo_escolhido)
+        # O delta já colore automaticamente de verde (subida) ou vermelho (queda)
+        c3.metric("Preço Atual", f"$ {preco_atual:.2f}", f"{var_pct:.2f}%")
+    else:
+        st.error("Desatualizado. O mercado americano não retornou os dados em tempo real.")
 
 # ==========================================
 # 5. O SEU ARSENAL E LINKS ÚTEIS
