@@ -131,13 +131,27 @@ def buscar_dados_macro():
             resultados.append({'nome': config['nome'], 'valor': 'N/A', 'variacao': 0, 'url': config['url']})
     return resultados
 
-@st.cache_data(ttl=600) 
-def buscar_ranking_ativos(ativos):
+# NOVA FUNÇÃO: Substitui o @st.cache_data para permitir a exibição da Barra Azul
+def buscar_ranking_ativos_com_progresso(ativos):
+    agora = datetime.now()
+    
+    # 1. Verifica se já temos os dados no "cérebro" do robô e se são recentes (menos de 590 segundos)
+    if 'rank_cache_time' in st.session_state and 'rank_data' in st.session_state:
+        if (agora - st.session_state['rank_cache_time']).total_seconds() < 590:
+            return st.session_state['rank_data'][0], st.session_state['rank_data'][1]
+
+    # 2. Se não tiver no cache, vamos caçar e mostrar a barra azul!
     tv_local = TvDatafeed()
     lista_rank = []
     rompendo_topo = []
     
-    for ativo in ativos:
+    p_bar = st.progress(0)
+    status_text = st.empty()
+    total_ativos = len(ativos)
+    
+    for idx, ativo in enumerate(ativos):
+        status_text.text(f"Atualizando os dados da pagina, isso pode demorar. Aguarde! ({idx+1}/{total_ativos})")
+        p_bar.progress((idx + 1) / total_ativos)
         try:
             df = tv_local.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=4000)
             if df is not None and len(df) >= 2:
@@ -155,7 +169,18 @@ def buscar_ranking_ativos(ativos):
                     rompendo_topo.append({'Ativo': ativo, 'Preço': hj, 'Dia': v_dia, 'Semana': v_sem, 'Mês': v_mes, 'Ano': v_ano})
         except: pass
         time.sleep(0.01)
-    return pd.DataFrame(lista_rank), pd.DataFrame(rompendo_topo)
+        
+    p_bar.empty()
+    status_text.empty()
+    
+    df_rank = pd.DataFrame(lista_rank)
+    df_topos = pd.DataFrame(rompendo_topo)
+    
+    # 3. Salva os dados na memória para não carregar de novo pelos próximos 10 minutos
+    st.session_state['rank_data'] = (df_rank, df_topos)
+    st.session_state['rank_cache_time'] = agora
+    
+    return df_rank, df_topos
 
 def formata_moeda_pct(val, is_pct=False):
     if is_pct: return f"+{val:.2f}%" if val > 0 else f"{val:.2f}%"
@@ -220,8 +245,8 @@ def renderizar_radar_destaques():
     with col_menu:
         horizonte = st.segmented_control("Prazo Analítico", options=["Dia", "Semana", "Mês", "Ano"], default="Dia", label_visibility="collapsed")
 
-    with st.spinner("Atualizando os dados da pagina, isso pode demorar. Aguarde!"):
-        df_ranking, df_topos = buscar_ranking_ativos(todos_ativos)
+    # MUDANÇA: O spinner foi removido daqui e substituído pela barra azul dentro da função
+    df_ranking, df_topos = buscar_ranking_ativos_com_progresso(todos_ativos)
 
     col_altas, col_quedas, col_topos = st.columns(3)
 
@@ -286,7 +311,7 @@ if st.button("🔍 Escanear TUDO no After-Market Agora", type="primary", use_con
         try:
             df_reg = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
             if df_reg is not None and not df_reg.empty and len(df_reg) >= 2: 
-                fecho_reg = df_reg['close'].iloc[-2] # <--- CORREÇÃO: Pega sempre o fechamento de ONTEM
+                fecho_reg = df_reg['close'].iloc[-2] 
             if fecho_reg:
                 df_ext = tv_home.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
                 if df_ext is not None and not df_ext.empty: preco_at = df_ext['close'].iloc[-1]
@@ -334,10 +359,9 @@ if btn_indiv:
     
     with st.spinner("Atualizando os dados da pagina, isso pode demorar. Aguarde!"):
         try:
-            # 1. Puxando Dados da Ação Americana (US) com fechamento em D-1 fixo
             df_r = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_daily, n_bars=2)
             if df_r is not None and not df_r.empty and len(df_r) >= 2: 
-                f_reg = df_r['close'].iloc[-2] # <--- CORREÇÃO: Pega sempre o fechamento de ONTEM
+                f_reg = df_r['close'].iloc[-2] 
                 
             if f_reg:
                 df_e = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2, extended_session=True)
@@ -346,7 +370,6 @@ if btn_indiv:
                     df_fb = tv_ind.get_hist(symbol=info['us'], exchange=info['exchange'], interval=Interval.in_15_minute, n_bars=2)
                     if df_fb is not None and not df_fb.empty: p_at = df_fb['close'].iloc[-1]
             
-            # 2. Puxando Dados do BDR Brasileiro (B3) simultaneamente
             df_bdr = tv_ind.get_hist(symbol=ativo_sel, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=2)
             if df_bdr is not None and not df_bdr.empty:
                 p_bdr = df_bdr['close'].iloc[-1]
@@ -359,7 +382,6 @@ if btn_indiv:
         
         st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
         
-        # 4 COLUNAS: Lado a Lado EUA vs BRASIL
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Ação (EUA)", info['us'])
         c2.metric(f"Cotação {info['us']} (Real-Time)", f"$ {p_at:.2f}", f"{v:.2f}%")
@@ -370,7 +392,6 @@ if btn_indiv:
         else:
             c4.metric(f"Cotação {ativo_sel} (B3)", "S/ Dados")
         
-        # Caixa de informação
         st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
         st.info("""
         🕒 **Relógio Oficial das Bolsas Americanas (NASDAQ / NYSE):**
