@@ -67,7 +67,9 @@ st.title("📊 Fluxo Institucional (POC + VWAP + DELTA)")
 
 aba_radar, aba_individual = st.tabs(["📡 Radar Institucional (Delta)", "🔬 Raio-X Individual"])
 
-# ABA 1: RADAR (SCANNER)
+# ==========================================
+# ABA 1: RADAR INSTITUCIONAL (SCANNER)
+# ==========================================
 with aba_radar:
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -98,7 +100,9 @@ with aba_radar:
                 
                 res_rad = df.iloc[-1]
                 if res_rad['Close'] > df['POC'].iloc[-2] and res_rad['Low'] <= res_rad['VWAP'] and res_rad['Close'] >= res_rad['VWAP'] and res_rad['Delta_Acumulado'] > 0:
-                    ls_armados.append({'Ativo': ativo, 'Sinal': '🔥 DEFESA', 'Preço': f"R$ {res_rad['Close']:.2f}", 'Divergência': res_rad['Divergência']})
+                    ls_armados.append({
+                        'Ativo': ativo, 'Sinal': '🔥 DEFESA', 'Preço': f"R$ {res_rad['Close']:.2f}", 'Divergência': res_rad['Divergência']
+                    })
             except: pass
         
         s_text.empty(); p_bar.empty()
@@ -107,7 +111,19 @@ with aba_radar:
             st.dataframe(pd.DataFrame(ls_armados), use_container_width=True, hide_index=True)
         else: st.warning("Nenhum sinal no momento.")
 
+    # --- GLOSSÁRIO DA ABA RADAR ---
+    st.markdown("---")
+    st.markdown("### 📖 Glossário do Radar")
+    st.markdown("""
+    * **Ativo:** Código da ação (ticker) sendo analisada.
+    * **Sinal:** Indica o padrão de entrada (Ex: 🔥 DEFESA indica toque na VWAP com Delta Positivo).
+    * **Preço:** Cotação atual/fechamento que disparou o radar.
+    * **Divergência:** Indica se o preço e o Delta estão em direções opostas (Sinal de Absorção).
+    """)
+
+# ==========================================
 # ABA 2: RAIO-X INDIVIDUAL
+# ==========================================
 with aba_individual:
     st.subheader("🔬 Laboratório de Microestrutura e DNA de Fluxo")
     col1, col2 = st.columns([1, 2])
@@ -194,7 +210,7 @@ with aba_individual:
                         st.write("Aguardar alinhamento dos filtros na VWAP para buscar entrada.")
 
                 # ==========================================
-                # 4. GLOSSÁRIO DE CAMPO (LEGENDA)
+                # 4. GLOSSÁRIO DE CAMPO (MANTIDO)
                 # ==========================================
                 st.markdown("---")
                 st.markdown("### 📖 Glossário de Campo: Legenda do Fluxo Institucional")
