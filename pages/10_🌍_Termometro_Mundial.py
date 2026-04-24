@@ -90,38 +90,67 @@ with st.expander("📖 Como interpretar o Termômetro?", expanded=False):
     """)
 
 # ==========================================
-# 🗺️ MAPA DE CALOR GLOBAL (TRADINGVIEW)
+# 🗺️ MAPAS DE CALOR GLOBAIS (TRADINGVIEW)
 # ==========================================
 st.divider()
-st.subheader("🗺️ Mapa de Calor: Wall Street (S&P 500)")
+st.subheader("🗺️ Mapas de Calor Setoriais")
 st.markdown("Identifique instantaneamente onde o dinheiro está entrando e de onde está fugindo hoje.")
 
-html_heatmap = """
-<div class="tradingview-widget-container">
-  <div class="tradingview-widget-container__widget"></div>
-  <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>
-  {
-  "exchanges": [],
-  "dataSource": "SPX500",
-  "grouping": "sector",
-  "blockSize": "market_cap_basic",
-  "blockColor": "change",
-  "locale": "br",
-  "symbolUrl": "",
-  "colorTheme": "dark",
-  "hasTopBar": false,
-  "isDataSetEnabled": false,
-  "isZoomEnabled": true,
-  "hasSymbolTooltip": true,
-  "width": "100%",
-  "height": "100%"
-}
-  </script>
-</div>
-"""
-components.html(html_heatmap, height=250)
+tab_br, tab_eua = st.tabs(["🇧🇷 Ibovespa (B3)", "🇺🇸 S&P 500 (Wall Street)"])
 
-st.caption("💡 **Dica de Caçador:** O tamanho do bloco representa o valor de mercado (Market Cap). Blocos verdes intensos indicam forte entrada de fluxo.")
+with tab_br:
+    html_heatmap_br = """
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>
+      {
+      "exchanges": ["BMFBOVESPA"],
+      "dataSource": "IBOV",
+      "grouping": "sector",
+      "blockSize": "market_cap_basic",
+      "blockColor": "change",
+      "locale": "br",
+      "symbolUrl": "",
+      "colorTheme": "dark",
+      "hasTopBar": false,
+      "isDataSetEnabled": false,
+      "isZoomEnabled": true,
+      "hasSymbolTooltip": true,
+      "width": "100%",
+      "height": "100%"
+    }
+      </script>
+    </div>
+    """
+    components.html(html_heatmap_br, height=550)
+
+with tab_eua:
+    html_heatmap_eua = """
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>
+      {
+      "exchanges": [],
+      "dataSource": "SPX500",
+      "grouping": "sector",
+      "blockSize": "market_cap_basic",
+      "blockColor": "change",
+      "locale": "br",
+      "symbolUrl": "",
+      "colorTheme": "dark",
+      "hasTopBar": false,
+      "isDataSetEnabled": false,
+      "isZoomEnabled": true,
+      "hasSymbolTooltip": true,
+      "width": "100%",
+      "height": "100%"
+    }
+      </script>
+    </div>
+    """
+    components.html(html_heatmap_eua, height=550)
+
+st.caption("💡 **Dica de Caçador:** O tamanho do bloco representa o valor de mercado (Market Cap). Blocos verdes intensos indicam forte entrada de fluxo no setor.")
 
 # ==========================================
 # 🐋 INTELIGÊNCIA DE FLUXO (SALDO ESTRANGEIRO)
