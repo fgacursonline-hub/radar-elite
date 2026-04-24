@@ -3,12 +3,6 @@ from tvDatafeed import TvDatafeed, Interval
 import pandas as pd
 import numpy as np
 import warnings
-import sys
-import os
-
-# Adiciona a pasta principal ao caminho do Python para ele achar o config_ativos
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 
 # --- IMPORTAÇÃO CENTRALIZADA ---
 from config_ativos import bdrs_elite, ibrx_selecao, pares_elite
