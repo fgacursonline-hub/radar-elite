@@ -45,7 +45,7 @@ lista_b3_pura = sorted(list(set(list(pares_elite.keys()) + ['PETR4', 'VALE3', 'I
 # 2. INTERFACE
 # ==========================================
 st.title("📊 Comparador de Performance: Prova Real")
-st.markdown("Analise a força relativa e identifique atrasos de preço (Arbitragem).")
+st.markdown("Analise a força relativa e o impacto do Câmbio no seu patrimônio.")
 
 tab_geral, tab_inter = st.tabs(["🌎 Comparativo B3", "🇺🇸 Duelo BDR vs Stock + DÓLAR"])
 
@@ -71,9 +71,9 @@ with tab_geral:
         if not df_final.empty:
             st.line_chart(df_final)
 
-# --- ABA 2: INTERNACIONAL COM TRADUÇÃO DE DESVIO ---
+# --- ABA 2: INTERNACIONAL COM PROVA REAL (DÓLAR) ---
 with tab_inter:
-    st.subheader("⚙️ Duelo BDR vs Stock com Prova Real")
+    st.subheader("⚙️ Duelo BDR vs Stock com Prova Real do Dólar")
     ci1, ci2, ci3 = st.columns([2, 1, 1])
     with ci1:
         bdr_sel = st.selectbox("Selecione a BDR:", options=sorted(pares_elite.keys()), index=0)
@@ -84,67 +84,65 @@ with tab_inter:
     with ci3:
         periodo_inter = st.slider("Barras:", 20, 300, 100, key="p_inter")
 
-    if st.button("📈 Gerar Análise de Arbitragem", type="primary", use_container_width=True):
-        with st.spinner("Sincronizando ativos e câmbio..."):
+    if st.button("📈 Gerar Prova Real (BDR + Stock + Dólar)", type="primary", use_container_width=True):
+        with st.spinner("Sincronizando mercados globais e câmbio..."):
+            # Busca Ativos
             df_bdr = tv.get_hist(symbol=bdr_sel, exchange='BMFBOVESPA', interval=tradutor_intervalo[tempo_inter], n_bars=periodo_inter)
             df_stock = tv.get_hist(symbol=stock_sel, exchange='NYSE', interval=tradutor_intervalo[tempo_inter], n_bars=periodo_inter)
             if df_stock is None: df_stock = tv.get_hist(symbol=stock_sel, exchange='NASDAQ', interval=tradutor_intervalo[tempo_inter], n_bars=periodo_inter)
+            
+            # BUSCA DÓLAR (USDBRL) - Prova Real
             df_dolar = tv.get_hist(symbol='USDBRL', exchange='FX_IDC', interval=tradutor_intervalo[tempo_inter], n_bars=periodo_inter)
 
             if all(v is not None for v in [df_bdr, df_stock, df_dolar]):
-                # Sincronização
+                # Sincronização de Datas
                 for df in [df_bdr, df_stock, df_dolar]:
                     df.index = pd.to_datetime(df.index).tz_localize(None)
                     if tempo_inter == '1d': df.index = df.index.normalize()
 
-                # Normalização
+                # Normalização (Base Zero)
                 df_bdr[bdr_sel] = ((df_bdr['close'] / df_bdr['close'].iloc[0]) - 1) * 100
                 df_stock[stock_sel] = ((df_stock['close'] / df_stock['close'].iloc[0]) - 1) * 100
-                df_dolar['DÓLAR'] = ((df_dolar['close'] / df_dolar['close'].iloc[0]) - 1) * 100
+                df_dolar['DÓLAR (Câmbio)'] = ((df_dolar['close'] / df_dolar['close'].iloc[0]) - 1) * 100
 
+                # Merge das 3 linhas
                 df_prova = pd.merge(df_bdr[[bdr_sel]], df_stock[[stock_sel]], left_index=True, right_index=True, how='inner')
-                df_prova = pd.merge(df_prova, df_dolar[['DÓLAR']], left_index=True, right_index=True, how='inner')
+                df_prova = pd.merge(df_prova, df_dolar[['DÓLAR (Câmbio)']], left_index=True, right_index=True, how='inner')
 
                 if not df_prova.empty:
                     st.line_chart(df_prova, use_container_width=True)
+                    
                     st.divider()
                     
+                    # Painel de Análise
+                    c1, c2, c3 = st.columns(3)
                     v_bdr = df_prova[bdr_sel].iloc[-1]
                     v_stock = df_prova[stock_sel].iloc[-1]
-                    v_dolar = df_prova['DÓLAR'].iloc[-1]
+                    v_dolar = df_prova['DÓLAR (Câmbio)'].iloc[-1]
                     
-                    c1, c2, c3 = st.columns(3)
                     c1.metric(f"Retorno {bdr_sel}", f"{v_bdr:.2f}%")
                     c2.metric(f"Retorno {stock_sel}", f"{v_stock:.2f}%")
-                    c3.metric("Variação Dólar", f"{v_dolar:.2f}%")
+                    c3.metric("Variação Dólar", f"{v_dolar:.2f}%", delta_color="normal")
 
-                    # MATEMÁTICA DO DESVIO
+                    # INSIGHT MATEMÁTICO
                     retorno_teorico = v_stock + v_dolar
                     desvio_final = v_bdr - retorno_teorico
                     
                     st.subheader("🔬 Veredito da Arbitragem")
-                    
-                    # --- LOGICA SOLICITADA: EXPLICAR O ATRASO ---
-                    if desvio_final < -1.0:
-                        st.warning(f"⚠️ DESVIO DE {desvio_final:.2f}% DETECTADO")
-                        st.markdown(f"**ANÁLISE:** A BDR **{bdr_sel}** está **ATRASADA** em relação à Stock original + Dólar.")
-                        st.write(f"Pela soma teórica, ela deveria estar rendendo {retorno_teorico:.2f}%. Existe um 'gap' de {abs(desvio_final):.2f}% para ser fechado.")
-                    
-                    elif desvio_final > 1.0:
-                        st.error(f"🚨 DESVIO DE +{desvio_final:.2f}% DETECTADO")
-                        st.markdown(f"**ANÁLISE:** A BDR **{bdr_sel}** está **MAIS CARA** (Puxada) que a Stock original.")
-                        st.write(f"O preço na B3 superou a paridade teórica de {retorno_teorico:.2f}%.")
-                    
+                    if abs(desvio_final) > 3:
+                        st.warning(f"⚠️ DESVIO CRÍTICO: {desvio_final:.2f}%")
+                        st.write(f"Pela soma (Stock + Dólar), sua BDR deveria estar rendendo **{retorno_teorico:.2f}%**, mas está em **{v_bdr:.2f}%**.")
+                        st.info("💡 Se o desvio for negativo, a BDR está BARATA (oportunidade). Se for positivo, a BDR está CARA.")
                     else:
-                        st.success(f"✅ EFICIÊNCIA: Desvio de apenas {desvio_final:.2f}%")
-                        st.write("O mercado está em simetria institucional perfeita.")
+                        st.success(f"✅ EFICIÊNCIA: Desvio de apenas {desvio_final:.2f}%. O mercado está precificando corretamente.")
                 else:
                     st.error("Erro na sincronização de datas.")
 
 # --- MANUAL ---
 st.markdown("---")
-with st.expander("📖 Manual da Prova Real", expanded=False):
+with st.expander("📖 Como usar a Prova Real?", expanded=True):
     st.markdown("""
-    * **O que é o Atraso?** Se o desvio for negativo, significa que a Stock subiu nos EUA (ou o dólar subiu aqui) e a BDR ainda não reagiu. É uma oportunidade de compra.
-    * **O que é o Puxado?** Se o desvio for positivo, a BDR subiu além da conta. Cuidado com compras no topo sem o apoio da Stock americana.
+    1.  **A Regra:** Uma BDR é o preço da Stock multiplicado pelo Dólar.
+    2.  **A Prova:** No gráfico, se a linha da Stock sobe e o Dólar cai, a BDR (linha principal) deve ficar estável.
+    3.  **Arbitragem:** Se a soma das linhas Stock + Dólar for muito diferente da linha BDR, você encontrou uma distorção de preço.
     """)
