@@ -34,29 +34,19 @@ st.markdown("Opere o fluxo com base matemática: Oportunidades, Gestão de Posi�
 # ==========================================
 # 3. PAINEL DE CONTROLE (FILTROS)
 # ==========================================
-st.markdown("""
-<style>
-    .painel-box {
-        border: 2px solid #FF4B4B; border-radius: 10px; padding: 20px; background-color: #1E1E1E;
-    }
-</style>
-""", unsafe_allow_html=True)
+with st.container(border=True):
+    col_f1, col_f2, col_f3 = st.columns(3)
 
-st.markdown('<div class="painel-box">', unsafe_allow_html=True)
-col_f1, col_f2, col_f3 = st.columns(3)
+    with col_f1:
+        lista_opcoes = ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"]
+        lista_selecionada = st.selectbox("Lista de Ativos:", lista_opcoes)
 
-with col_f1:
-    lista_opcoes = ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"]
-    lista_selecionada = st.selectbox("Lista de Ativos:", lista_opcoes)
+    with col_f2:
+        capital_trade = st.number_input("Capital por Trade (R$):", value=10000.00, step=1000.00)
 
-with col_f2:
-    capital_trade = st.number_input("Capital por Trade (R$):", value=10000.00, step=1000.00)
-
-with col_f3:
-    tempo_grafico = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"])
-    intervalo_yf = "1d" if "1d" in tempo_grafico else "1wk"
-
-st.markdown('</div>', unsafe_allow_html=True)
+    with col_f3:
+        tempo_grafico = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"])
+        intervalo_yf = "1d" if "1d" in tempo_grafico else "1wk"
 
 # Definição dos ativos baseado na seleção
 if lista_selecionada == "BDRs Elite":
@@ -69,7 +59,6 @@ else:
 ativos_alvo = sorted(list(set([a.replace('.SA', '') for a in ativos_alvo])))
 
 btn_iniciar = st.button("🚀 Iniciar Varredura e Backtest TPV", type="primary", use_container_width=True)
-
 # ==========================================
 # 4. MOTOR DE BACKTEST E RASTREAMENTO
 # ==========================================
