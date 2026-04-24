@@ -331,7 +331,7 @@ if st.button("🔍 Escanear TUDO no After-Market Agora", type="primary", use_con
             except: return [''] * len(row)
         st.dataframe(df_after.style.apply(colorir_after, axis=1), use_container_width=True, hide_index=True)
 
-st.markdown("#### 🎯 Alguma Stock específica?")
+        st.markdown("#### 🎯 Alguma Stock específica?")
 
 col_sel, col_btn = st.columns([3, 1], vertical_alignment="bottom")
 
@@ -400,6 +400,37 @@ if btn_indiv:
         """)
     else: 
         st.error("Desatualizado. Não foi possível puxar os dados do servidor americano.")
+
+        # ==========================================
+        # Cole isso ABAIXO do seu bloco azul da "Zona Morta"
+        # ==========================================
+
+        st.divider() # Cria uma linha para separar os assuntos
+
+        st.markdown("### 🕵️‍♂️ Termômetro do Varejo (Robinhood)")
+        st.caption("Verifique se o movimento está sendo puxado pela euforia da pessoa física americana.")
+
+        # Aviso de Sentimento (Fundo Amarelo para destacar que não é oficial)
+        st.warning("⚠️ **Nota de Rastreio:** Este link não representa dados oficiais de volume institucional da SEC ou B3. Ele reflete estritamente o 'sentimento' e a especulação de investidores de varejo no aplicativo Robinhood.")
+
+        # O menu puxando as Stocks
+        from config_ativos import pares_elite # Caso ainda não esteja importado no topo deste arquivo
+        lista_stocks_eua = sorted(list(set(pares_elite.values())))
+
+        stock_selecionada = st.selectbox(
+        "Selecione a ação americana para espionar:", 
+        options=lista_stocks_eua,
+        index=lista_stocks_eua.index("TSLA") if "TSLA" in lista_stocks_eua else 0
+        )
+
+        # O Botão Dinâmico
+        url_robinhood = f"https://robinhood.com/us/en/stocks/{stock_selecionada}/"
+
+st.link_button(
+    f"👀 Investigar fluxo de {stock_selecionada} na Robinhood", 
+    url=url_robinhood, 
+    use_container_width=True
+)
 
 # ==========================================
 # 5. ARSENAL, INTELIGÊNCIA E LINKS ÚTEIS
