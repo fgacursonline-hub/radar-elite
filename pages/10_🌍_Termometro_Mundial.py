@@ -191,7 +191,8 @@ with c2:
 if btn_investigar and ativo_alvo:
     st.markdown(f"### 📊 Dossiê Institucional: {ativo_alvo}")
     
-    url_statusinvest = f"https://statusinvest.com.br/acoes/{ativo_alvo.lower()}"
+    # Este código tenta forçar o navegador a caçar as palavras 'ALUGUEL DE AÇÕES' na página
+    url_statusinvest = f"https://statusinvest.com.br/acoes/{ativo_alvo.lower()}#:~:text=ALUGUEL%20DE%20AÇÕES"
     
     col_info1, col_info2 = st.columns(2)
     
