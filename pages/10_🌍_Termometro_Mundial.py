@@ -137,7 +137,7 @@ with tab_eua:
     <div class="tradingview-widget-container"><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>
     {"exchanges":[],"dataSource":"SPX500","grouping":"sector","blockSize":"market_cap_basic","blockColor":"change","locale":"br","colorTheme":"dark","width":"100%","height":"100%"}
     </script></div>"""
-    components.html(html_heatmap_eua, height=550)
+    components.html(html_heatmap_eua, height=200)
 
 # ==========================================
 # 🩸 RADAR DE ALUGUEL E SHORT SQUEEZE
