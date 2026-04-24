@@ -10,7 +10,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
-    from config_ativos import bdrs_elite, ibrx_selecao, pares_elite
+    from config_ativos import bdrs_elite, ibrx_selecao, pares_elite, benchmarks_elite
 except ImportError:
     st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
     st.stop()
