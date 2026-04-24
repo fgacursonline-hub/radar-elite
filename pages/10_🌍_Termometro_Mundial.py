@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 import requests
 import streamlit.components.v1 as components
 import pandas as pd
+import yfinance as yf
 
 # ==========================================
 # 1. SEGURANÇA E CONFIGURAÇÃO
@@ -13,17 +14,14 @@ if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, faça login na página inicial (Home).")
     st.stop()
 
-st.title("🌍 Termômetro Mundial")
-st.markdown("Sua central de inteligência macroeconômica e sentimento de mercado.")
+st.title("🌍 Termômetro de Sentimento")
+st.markdown("Compare o humor de Wall Street com a força do Ibovespa em tempo real.")
 
 # ==========================================
-# 🧠 TERMÔMETRO INSTITUCIONAL (FEAR & GREED)
+# 🧠 FUNÇÕES DE CAPTURA (USA & BR)
 # ==========================================
-st.divider()
-st.subheader("🧠 Medo & Ganância (Fear & Greed Index)")
-st.markdown("Identifique extremos emocionais do mercado americano para alinhar sua tática de entrada e saída.")
 
-@st.cache_data(ttl=1800) # Atualiza a cada 30 minutos
+@st.cache_data(ttl=1800)
 def buscar_fear_and_greed():
     url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -32,272 +30,138 @@ def buscar_fear_and_greed():
         data = r.json()
         score = int(data['fear_and_greed']['score'])
         rating = data['fear_and_greed']['rating'].title()
-        
         tradutor = {
-            "Extreme Fear": "Pânico Extremo 🩸",
-            "Fear": "Medo 🔴",
-            "Neutral": "Neutro 🟡",
-            "Greed": "Ganância 🟢",
-            "Extreme Greed": "Euforia Extrema 🚀"
+            "Extreme Fear": "Pânico 🩸", "Fear": "Medo 🔴", "Neutral": "Neutro 🟡",
+            "Greed": "Ganância 🟢", "Extreme Greed": "Euforia 🚀"
         }
-        rating_pt = tradutor.get(rating, rating)
-        
-        return score, rating_pt
+        return score, tradutor.get(rating, rating)
     except:
-        return 50, "Dados Indisponíveis"
-
-score_fg, rating_fg = buscar_fear_and_greed()
-
-# Velocímetro de Elite
-fig = go.Figure(go.Indicator(
-    mode = "gauge+number",
-    value = score_fg,
-    domain = {'x': [0, 1], 'y': [0, 1]},
-    title = {'text': f"<b>Status Atual do Mercado:</b><br><span style='font-size:0.8em;color:gray'>{rating_fg}</span>"},
-    gauge = {
-        'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "white"},
-        'bar': {'color': "rgba(255, 255, 255, 0.4)", 'thickness': 0.25}, 
-        'bgcolor': "rgba(0,0,0,0)",
-        'steps': [
-            {'range': [0, 25], 'color': "#ff4d4d"},   
-            {'range': [25, 45], 'color': "#ff9933"},  
-            {'range': [45, 55], 'color': "#ffcc00"},  
-            {'range': [55, 75], 'color': "#99cc33"},  
-            {'range': [75, 100], 'color': "#33cc33"}  
-        ],
-        'threshold': {
-            'line': {'color': "white", 'width': 4},
-            'thickness': 0.75,
-            'value': score_fg
-        }
-    }
-))
-
-fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"}, height=350, margin=dict(l=20, r=20, t=50, b=20))
-
-col_vazio1, col_gauge, col_vazio2 = st.columns([1, 2, 1])
-with col_gauge:
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-
-with st.expander("📖 Como interpretar o Termômetro?", expanded=False):
-    st.markdown("""
-    O índice mede a emoção predominante em Wall Street. O dinheiro inteligente usa esses extremos para operar contra a manada:
-    
-    * 🩸 **0 a 25 (Pânico Extremo):** O mercado está em liquidação e o varejo está vendendo por desespero. Historicamente, é a zona de suporte máxima. **Foco em gatilhos de COMPRA.**
-    * 🔴 **25 a 45 (Medo):** A incerteza domina e os preços sofrem pressão vendedora. Tubarões começam a montar posições silenciosamente.
-    * 🟡 **45 a 55 (Neutro):** Mercado sem convicção clara, lateralizado. Momento de cautela.
-    * 🟢 **55 a 75 (Ganância):** Otimismo e fluxo constante de capital entrando. Excelente momento para surfar tendências.
-    * 🚀 **75 a 100 (Euforia Extrema):** O varejo está comprando topo agressivamente com medo de ficar de fora (FOMO). **Foco em proteção de lucros ou gatilhos de VENDA.**
-    """)
-import yfinance as yf
-
-# ==========================================
-# 🇧🇷 TERMÔMETRO BRASIL (PROXIED)
-# ==========================================
-st.divider()
-st.subheader("🇧🇷 Termômetro Brasil (Sentimento B3)")
-st.markdown("Cálculo baseado na força relativa do Ibovespa e Volatilidade.")
+        return 50, "Indisponível"
 
 @st.cache_data(ttl=3600)
 def calcular_sentimento_brasil():
     try:
-        # Puxamos os dados do Ibovespa
         ibov = yf.download("^BVSP", period="60d", interval="1d", progress=False)
+        if ibov.empty: return 50, "B3 sem dados"
         
-        # Cálculo simples de IFR (RSI) para medir Euforia/Medo
-        delta = ibov['Close'].diff()
+        # Limpeza de colunas (correção do erro de processamento)
+        if isinstance(ibov.columns, pd.MultiIndex):
+            fechamentos = ibov['Close']['^BVSP']
+        else:
+            fechamentos = ibov['Close']
+
+        # Cálculo do IFR (RSI) Seguro
+        delta = fechamentos.diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss
         rsi = 100 - (100 / (1 + rs))
         
-        # O valor atual do IFR (último dia)
-        score_br = int(rsi.iloc[-1])
-        
-        if score_br >= 70: status = "Euforia Extrema 🚀"
+        score_br = int(rsi.dropna().iloc[-1])
+        if score_br >= 70: status = "Euforia 🚀"
         elif score_br >= 60: status = "Ganância 🟢"
         elif score_br >= 40: status = "Neutro 🟡"
         elif score_br >= 30: status = "Medo 🔴"
-        else: status = "Pânico Extremo 🩸"
-        
+        else: status = "Pânico 🩸"
         return score_br, status
     except:
-        return 50, "Erro ao processar dados B3"
-
-score_br, status_br = calcular_sentimento_brasil()
-
-# Velocímetro Brasil
-fig_br = go.Figure(go.Indicator(
-    mode = "gauge+number",
-    value = score_br,
-    title = {'text': f"<b>Status B3:</b><br><span style='font-size:0.8em;color:gray'>{status_br}</span>"},
-    gauge = {
-        'axis': {'range': [0, 100]},
-        'bar': {'color': "white"},
-        'steps': [
-            {'range': [0, 30], 'color': "#ff4d4d"},   
-            {'range': [30, 45], 'color': "#ff9933"},  
-            {'range': [45, 55], 'color': "#ffcc00"},  
-            {'range': [55, 70], 'color': "#99cc33"},  
-            {'range': [70, 100], 'color': "#33cc33"}  
-        ]
-    }
-))
-
-fig_br.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"}, height=350)
-st.plotly_chart(fig_br, use_container_width=True)
+        return 50, "Erro B3"
 
 # ==========================================
-# 🗺️ MAPAS DE CALOR GLOBAIS (TRADINGVIEW)
+# 📊 EXIBIÇÃO LADO A LADO (GAUGES)
+# ==========================================
+st.divider()
+score_us, status_us = buscar_fear_and_greed()
+score_br, status_br = calcular_sentimento_brasil()
+
+col_us, col_br = st.columns(2)
+
+with col_us:
+    fig_us = go.Figure(go.Indicator(
+        mode = "gauge+number", value = score_us,
+        title = {'text': f"🇺🇸 Wall Street (F&G)<br><span style='font-size:0.8em;color:gray'>{status_us}</span>"},
+        gauge = {
+            'axis': {'range': [0, 100]},
+            'steps': [
+                {'range': [0, 25], 'color': "#ff4d4d"}, {'range': [25, 45], 'color': "#ff9933"},
+                {'range': [45, 55], 'color': "#ffcc00"}, {'range': [55, 75], 'color': "#99cc33"},
+                {'range': [75, 100], 'color': "#33cc33"}
+            ],
+            'bar': {'color': "white", 'thickness': 0.2}
+        }
+    ))
+    fig_us.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"}, height=300, margin=dict(l=30, r=30, t=50, b=20))
+    st.plotly_chart(fig_us, use_container_width=True)
+
+with col_br:
+    fig_br = go.Figure(go.Indicator(
+        mode = "gauge+number", value = score_br,
+        title = {'text': f"🇧🇷 Ibovespa (IFR)<br><span style='font-size:0.8em;color:gray'>{status_br}</span>"},
+        gauge = {
+            'axis': {'range': [0, 100]},
+            'steps': [
+                {'range': [0, 30], 'color': "#ff4d4d"}, {'range': [30, 45], 'color': "#ff9933"},
+                {'range': [45, 55], 'color': "#ffcc00"}, {'range': [55, 70], 'color': "#99cc33"},
+                {'range': [70, 100], 'color': "#33cc33"}
+            ],
+            'bar': {'color': "white", 'thickness': 0.2}
+        }
+    ))
+    fig_br.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"}, height=300, margin=dict(l=30, r=30, t=50, b=20))
+    st.plotly_chart(fig_br, use_container_width=True)
+
+# ==========================================
+# 🗺️ MAPAS DE CALOR SETORIAIS
 # ==========================================
 st.divider()
 st.subheader("🗺️ Mapas de Calor Setoriais")
-st.markdown("Identifique instantaneamente onde o dinheiro está entrando e de onde está fugindo hoje.")
-
 tab_br, tab_eua = st.tabs(["🇧🇷 Ibovespa (B3)", "🇺🇸 S&P 500 (Wall Street)"])
 
 with tab_br:
     html_heatmap_br = """
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>
-      {
-      "exchanges": ["BMFBOVESPA"],
-      "dataSource": "IBOV",
-      "grouping": "sector",
-      "blockSize": "market_cap_basic",
-      "blockColor": "change",
-      "locale": "br",
-      "symbolUrl": "",
-      "colorTheme": "dark",
-      "hasTopBar": false,
-      "isDataSetEnabled": false,
-      "isZoomEnabled": true,
-      "hasSymbolTooltip": true,
-      "width": "100%",
-      "height": "100%"
-    }
-      </script>
-    </div>
-    """
+    <div class="tradingview-widget-container"><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>
+    {"exchanges":["BMFBOVESPA"],"dataSource":"IBOV","grouping":"sector","blockSize":"market_cap_basic","blockColor":"change","locale":"br","colorTheme":"dark","width":"100%","height":"100%"}
+    </script></div>"""
     components.html(html_heatmap_br, height=550)
 
 with tab_eua:
     html_heatmap_eua = """
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>
-      {
-      "exchanges": [],
-      "dataSource": "SPX500",
-      "grouping": "sector",
-      "blockSize": "market_cap_basic",
-      "blockColor": "change",
-      "locale": "br",
-      "symbolUrl": "",
-      "colorTheme": "dark",
-      "hasTopBar": false,
-      "isDataSetEnabled": false,
-      "isZoomEnabled": true,
-      "hasSymbolTooltip": true,
-      "width": "100%",
-      "height": "100%"
-    }
-      </script>
-    </div>
-    """
-    components.html(html_heatmap_eua, height=250)
-
-st.caption("💡 **Dica de Caçador:** O tamanho do bloco representa o valor de mercado (Market Cap). Blocos verdes intensos indicam forte entrada de fluxo no setor.")
-
-# ==========================================
-# 🐋 INTELIGÊNCIA DE FLUXO (SALDO ESTRANGEIRO)
-# ==========================================
-st.divider()
-st.subheader("🐋 Fluxo Institucional (O rastro do Gringo B3)")
-st.markdown("Monitore se os grandes tubarões estrangeiros estão aportando ou retirando dinheiro da nossa bolsa.")
-
-col_gringo1, col_gringo2 = st.columns([2, 1])
-
-with col_gringo1:
-    st.info("### 🇧🇷 Relatório Oficial (B3)\nO arquivo original da B3 é um relatório formatado com múltiplas tabelas. Baixe o CSV oficial para extrair o saldo mensal do investidor estrangeiro.")
-    st.link_button("📥 Fazer Download Rápido do Relatório B3 (.csv)", "https://sistemaswebb3-listados.b3.com.br/marketDataProxy/MarketDataCall/GetDownloadMarketData/RELATORIO_DADOS_DE_MERCADO.csv", use_container_width=True)
-
-with col_gringo2:
-    with st.expander("📖 Rastreio Tático", expanded=True):
-        st.markdown("""
-        * **Gringo Comprando + IBOV Subindo:** Alta verdadeira e sustentável.
-        * **Gringo Vendendo + IBOV Subindo:** Armadilha (Varejo puxando sozinho).
-        * *Atenção:* Os dados da B3 possuem um atraso estrutural de **D+2**.
-        """)
+    <div class="tradingview-widget-container"><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>
+    {"exchanges":[],"dataSource":"SPX500","grouping":"sector","blockSize":"market_cap_basic","blockColor":"change","locale":"br","colorTheme":"dark","width":"100%","height":"100%"}
+    </script></div>"""
+    components.html(html_heatmap_eua, height=550)
 
 # ==========================================
 # 🩸 RADAR DE ALUGUEL E SHORT SQUEEZE
 # ==========================================
 st.divider()
 st.subheader("🩸 Radar de Aluguel e Short Squeeze")
-st.markdown("Rastreie onde os institucionais estão apostando na queda e cace explosões de preço.")
 
-# 1. LISTA DE ATIVOS CADASTRADOS (Adicione ou remova tickers aqui conforme seu radar)
-ativos_cadastrados = [
-    "MGLU3", "PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "ABEV3", 
-    "ITSA4", "WEGE3", "EMBR3", "CSNA3", "GGBR4", "LREN3", "RENT3", 
-    "SUZB3", "JBSS3", "BEEF3", "MRFG3", "BRFS3", "ASAI3", "CRFB3", 
-    "AZUL4", "COGN3", "BHIA3", "AMER3", "CVCB3", "PRIO3", "ELET3", "GOAU4"
-]
-ativos_cadastrados = sorted(ativos_cadastrados) # Organiza por ordem alfabética
+ativos_cadastrados = sorted(["MGLU3", "PETR4", "VALE3", "ITUB4", "BBAS3", "COGN3", "BHIA3", "AZUL4", "EMBR3", "PRIO3"])
 
 c1, c2 = st.columns([2, 1], vertical_alignment="bottom")
-
 with c1:
-    # Trocamos o campo de escrita pelo MENU de seleção
-    ativo_alvo = st.selectbox(
-        "Selecione o Ativo para Investigação:", 
-        options=ativos_cadastrados, 
-        index=ativos_cadastrados.index("MGLU3") if "MGLU3" in ativos_cadastrados else 0,
-        key="aluguel_ticker"
-    )
-
+    ativo_alvo = st.selectbox("Selecione o Ativo:", options=ativos_cadastrados, key="aluguel_ticker")
 with c2:
-    btn_investigar = st.button("🔍 Investigar Posição Vendida", use_container_width=True, type="primary")
+    btn_investigar = st.button("🔍 Investigar", use_container_width=True, type="primary")
 
-if btn_investigar and ativo_alvo:
-    st.markdown(f"### 📊 Dossiê Institucional: {ativo_alvo}")
+if btn_investigar:
+    st.markdown(f"### 📊 Dossiê: {ativo_alvo}")
+    url_si = f"https://statusinvest.com.br/acoes/{ativo_alvo.lower()}#:~:text=ALUGUEL%20DE%20AÇÕES"
     
-    # Link com fragmento de texto (O tobogã que você testou e funcionou!)
-    url_statusinvest = f"https://statusinvest.com.br/acoes/{ativo_alvo.lower()}#:~:text=ALUGUEL%20DE%20AÇÕES"
-    
-    col_info1, col_info2 = st.columns(2)
-    
-    with col_info1:
-        st.info("#### 📉 Dados de Empréstimo B3")
-        st.markdown(f"Clique no botão abaixo e **role a página** para encontrar o quadro verde de 'Aluguel'.")
-        st.link_button(f"🚀 Abrir Painel de {ativo_alvo}", url=url_statusinvest, use_container_width=True)
-        
-    with col_info2:
-        st.error("#### 💣 Risco de Short Squeeze")
-        st.markdown("Foco na **Taxa do Tomador**. Se ela estiver subindo, o prejuízo dos vendidos está aumentando.")
-        url_tv = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{ativo_alvo}"
-        st.link_button(f"📈 Ver Gráfico Real-Time", url=url_tv, use_container_width=True)
+    col_i1, col_i2 = st.columns(2)
+    with col_i1:
+        st.info("📉 **Dados de Empréstimo B3**\nRole até o final para ver o quadro de Aluguel.")
+        st.link_button(f"🚀 Abrir Painel de {ativo_alvo}", url=url_si, use_container_width=True)
+    with col_i2:
+        st.error("💣 **Risco de Short Squeeze**\nFoco na Taxa do Tomador. Se estiver subindo, o prejuízo dos vendidos aumenta.")
+        st.link_button(f"📈 Ver Gráfico {ativo_alvo}", url=f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{ativo_alvo}", use_container_width=True)
 
-    st.markdown("---")
-    st.markdown("### 🧠 Tabela Tática de Sentimento (O Rastro do Dinheiro)")
-    
-    # Tabela Interpretativa
     st.markdown("""
-    | Taxa do Tomador (A.A.) | Status do Aluguel | Sentimento Institucional | Ação do Caçador |
-    | :--- | :--- | :--- | :--- |
-    | **0% a 2%** | **Normal** | Mercado em equilíbrio. | Operar apenas pelo gráfico. |
-    | **2% a 7%** | **Atenção** | Grandes fundos montando venda. | Cuidado com compras de topo. |
-    | **7% a 15%** | **Alerta Urso** | Pessimismo elevado (Muitos vendidos). | Monitorar suportes para reversão. |
-    | **Acima de 15%** | **BARRIL DE PÓLVORA** | Vendidos desesperados (Pânico). | **FOCO EM COMPRA (Short Squeeze).** |
+    | Taxa Tomador | Status | Ação do Caçador |
+    | :--- | :--- | :--- |
+    | **0% a 7%** | Atenção | Institucionais vendendo. Cuidado com compras. |
+    | **7% a 15%** | Alerta Urso | Pessimismo elevado. Monitorar reversão. |
+    | **> 15%** | **BARRIL DE PÓLVORA** | **Foco em COMPRA (Short Squeeze).** |
     """)
-
-    st.warning("""
-    🚀 **O que é o BARRIL DE PÓLVORA?**
-    Diferente do que muitos pensam, isso é **MUITO BOM para quem quer comprar**. 
-    
-    Significa que a ação está "carregada" de apostas na queda. Se o preço subir apenas um pouco, esses grandes fundos serão obrigados a **COMPRAR TUDO DE VOLTA** desesperadamente para não quebrarem. Essa compra forçada gera um "efeito manada" que faz a ação **SUBIR com violência extrema** (o Short Squeeze).
-    """)
-
-    st.success(f"🎯 **Direção Provável:** Em caso de 'Barril de Pólvora', a mola está esticada. O rompimento de qualquer topo no gráfico de {ativo_alvo} pode gerar uma alta explosiva de 10% ou 20% em poucos dias.")
+    st.warning("🚀 **Barril de Pólvora:** Indica energia acumulada para subida violenta. Vendidos serão forçados a comprar para fechar posição.")
