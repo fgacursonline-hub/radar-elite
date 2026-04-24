@@ -34,7 +34,7 @@ if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
 st.title("🎯 Máquina Quantitativa: TPV (Tendência Preço/Volume)")
 
 # Criação das Abas Principais
-aba_radar, aba_individual = st.tabs(["🌐 Radar Global (Scanner)", "🔬 Raio-X Individual (Backtest)"])
+aba_radar, aba_individual = st.tabs(["🌐 Radar Global (Scanner & Top 20)", "🔬 Raio-X Individual (Backtest)"])
 
 # ==========================================
 # 3. MOTOR MATEMÁTICO (FUNÇÕES)
@@ -53,10 +53,10 @@ def calcular_tpv(df):
     return df.dropna()
 
 # ==========================================
-# ABA 1: RADAR GLOBAL (O SCANNER)
+# ABA 1: RADAR GLOBAL (SCANNER + TOP 20)
 # ==========================================
 with aba_radar:
-    st.markdown("Varredura completa buscando ativos que estão dando entrada agora.")
+    st.markdown("Varredura completa buscando ativos dando entrada agora e o ranking histórico do setup.")
     
     with st.container(border=True):
         col_f1, col_f2, col_f3 = st.columns(3)
@@ -80,7 +80,7 @@ with aba_radar:
     btn_iniciar_global = st.button("🚀 Iniciar Varredura Global", type="primary", use_container_width=True)
 
     if btn_iniciar_global:
-        oportunidades, andamento = [], []
+        oportunidades, andamento, historico = [], [], []
         p_bar = st.progress(0)
         s_text = st.empty()
         
@@ -93,6 +93,8 @@ with aba_radar:
                 if df.empty: continue
                 
                 trade_aberto = None
+                trades_fechados = []
+                
                 for j in range(len(df)):
                     linha = df.iloc[j]
                     data = df.index[j]
@@ -111,21 +113,37 @@ with aba_radar:
                         dd_atual = (linha['Low'] / trade_aberto['pico']) - 1
                         if dd_atual < trade_aberto['pior_queda']: trade_aberto['pior_queda'] = dd_atual
                         
-                        # Lógica de Saída (Alvo, Stop ou Indicador)
                         bateu_stop = usar_stop_g and (linha['Low'] <= trade_aberto['entrada_preco'] * (1 - stop_pct_g))
                         bateu_alvo = usar_alvo_g and (linha['High'] >= trade_aberto['entrada_preco'] * (1 + alvo_pct_g))
                         
                         if bateu_stop or bateu_alvo or linha['Cruzou_Venda']:
-                            trade_aberto = None # Operação encerrada
+                            preco_saida = trade_aberto['entrada_preco'] * (1 - stop_pct_g) if bateu_stop else (trade_aberto['entrada_preco'] * (1 + alvo_pct_g) if bateu_alvo else linha['Close'])
+                            lucro_rs = capital_trade_global * ((preco_saida / trade_aberto['entrada_preco']) - 1)
+                            
+                            trades_fechados.append({'lucro_rs': lucro_rs, 'pior_queda': trade_aberto['pior_queda']})
+                            trade_aberto = None
                 
+                # Trata operação em andamento
                 if trade_aberto is not None:
                     dias = (datetime.now().date() - trade_aberto['entrada_data'].date()).days
                     resultado = (df['Close'].iloc[-1] / trade_aberto['entrada_preco']) - 1
                     andamento.append({"Ativo": ativo, "Entrada": trade_aberto['entrada_data'].strftime("%d/%m/%Y"), "Dias": dias, "PM": trade_aberto['entrada_preco'], "Cotação Atual": df['Close'].iloc[-1], "Proj. Máx": trade_aberto['pior_queda'], "Resultado Atual": resultado})
+                
+                # Agrega para o Top 20
+                if trades_fechados:
+                    total_trades = len(trades_fechados)
+                    lucro_total = sum(t['lucro_rs'] for t in trades_fechados)
+                    pior_dd = min(t['pior_queda'] for t in trades_fechados)
+                    investimento = capital_trade_global * total_trades
+                    historico.append({
+                        "Ativo": ativo, "Trades": total_trades, "Pior Queda": pior_dd,
+                        "Investimento": investimento, "Lucro R$": lucro_total, "Resultado": lucro_total / investimento if investimento > 0 else 0
+                    })
             except: pass
         
         p_bar.empty(); s_text.empty()
         
+        # 1. OPORTUNIDADES
         st.subheader("🚀 Oportunidades Hoje (Sinal Ativo)")
         if oportunidades:
             df_op = pd.DataFrame(oportunidades)
@@ -133,6 +151,7 @@ with aba_radar:
             st.dataframe(df_op, use_container_width=True, hide_index=True)
         else: st.info("Nenhum ativo disparou sinal de entrada no pregão atual.")
 
+        # 2. EM ANDAMENTO
         st.subheader("⏳ Operações em Andamento (Aguardando Alvo/Venda)")
         if andamento:
             df_and = pd.DataFrame(andamento)
@@ -141,6 +160,19 @@ with aba_radar:
             df_and['Proj. Máx'] = df_and['Proj. Máx'].apply(lambda x: f"{x*100:.2f}%")
             st.dataframe(df_and.style.format({'Resultado Atual': "{:.2%}"}).map(lambda val: f"color: {'#00FFCC' if val > 0 else '#FF4D4D'}; font-weight: bold" if isinstance(val, float) else '', subset=['Resultado Atual']), use_container_width=True, hide_index=True)
         else: st.info("Nenhuma operação em aberto no momento.")
+
+        # 3. BACKTEST (TOP 20)
+        st.subheader("📊 Top 20 Histórico (Melhores Ativos do Setup)")
+        if historico:
+            df_hist = pd.DataFrame(historico).sort_values(by="Lucro R$", ascending=False).head(20)
+            df_hist['Pior Queda'] = df_hist['Pior Queda'].apply(lambda x: f"{x*100:.2f}%")
+            df_hist['Investimento'] = df_hist['Investimento'].apply(lambda x: f"R$ {x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+            
+            def color_lucro(val):
+                if isinstance(val, str): return ''
+                return f"color: {'#00FFCC' if val > 0 else '#FF4D4D'}"
+
+            st.dataframe(df_hist.style.format({'Lucro R$': "R$ {:,.2f}", 'Resultado': "{:.2%}"}).map(color_lucro, subset=['Lucro R$', 'Resultado']), use_container_width=True, hide_index=True)
 
 # ==========================================
 # ABA 2: RAIO-X INDIVIDUAL (O LABORATÓRIO)
@@ -193,7 +225,6 @@ with aba_individual:
                         dd = (linha['Low'] / em_aberto['pico']) - 1
                         if dd < em_aberto['pior_queda']: em_aberto['pior_queda'] = dd
                         
-                        # Análise de Saída (Conservadora: testa o stop antes do alvo se ambos baterem no mesmo candle)
                         bateu_stop = usar_stop_rx and (linha['Low'] <= em_aberto['entrada_preco'] * (1 - stop_pct))
                         bateu_alvo = usar_alvo_rx and (linha['High'] >= em_aberto['entrada_preco'] * (1 + alvo_pct))
                         sinal_venda = linha['Cruzou_Venda']
@@ -263,11 +294,13 @@ with aba_individual:
                 else:
                     st.warning("Nenhuma operação concluída no período selecionado para este ativo.")
 
-                # 4. GRÁFICO INTERATIVO TRADINGVIEW (CORRIGIDO A ALTURA)
+                # 4. GRÁFICO INTERATIVO TRADINGVIEW
                 st.markdown("---")
                 st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
+                
+                # ALTURA AUMENTADA PARA 700PX
                 html_tv = f"""
-                <div class="tradingview-widget-container" style="height:600px;width:100%">
+                <div class="tradingview-widget-container" style="height:700px;width:100%">
                   <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%"></div>
                   <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
                   {{
@@ -287,6 +320,6 @@ with aba_individual:
                   </script>
                 </div>
                 """
-                components.html(html_tv, height=600)
+                components.html(html_tv, height=700)
             else:
                 st.error("Sem dados suficientes para gerar o backtest deste ativo.")
