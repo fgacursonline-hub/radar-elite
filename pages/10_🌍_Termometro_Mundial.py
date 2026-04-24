@@ -193,7 +193,8 @@ if btn_investigar and ativo_alvo:
     st.markdown(f"### 📊 Dossiê Institucional: {ativo_alvo}")
     
     # Cria os links dinâmicos para contornar o bloqueio de raspagem
-    url_statusinvest = f"https://statusinvest.com.br/acoes/{ativo_alvo.lower()}"
+    
+    url_statusinvest = "https://statusinvest.com.br/acoes/aluguel"
     
     col_info1, col_info2 = st.columns(2)
     
