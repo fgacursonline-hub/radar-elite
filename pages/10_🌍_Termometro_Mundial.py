@@ -2,6 +2,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import requests
 import streamlit.components.v1 as components
+import pandas as pd
 
 # ==========================================
 # 1. SEGURANÇA E CONFIGURAÇÃO
@@ -191,7 +192,7 @@ with c2:
 if btn_investigar and ativo_alvo:
     st.markdown(f"### 📊 Dossiê Institucional: {ativo_alvo}")
     
-    # Este código tenta forçar o navegador a caçar as palavras 'ALUGUEL DE AÇÕES' na página
+    # Link com fragmento de texto para tentar rolar até a seção de aluguel
     url_statusinvest = f"https://statusinvest.com.br/acoes/{ativo_alvo.lower()}#:~:text=ALUGUEL%20DE%20AÇÕES"
     
     col_info1, col_info2 = st.columns(2)
@@ -206,6 +207,21 @@ if btn_investigar and ativo_alvo:
         st.markdown("Analise a **Taxa do Tomador**. Se estiver subindo enquanto o preço rompe resistências, o 'aperto' nos vendidos começou.")
         url_tv = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{ativo_alvo}"
         st.link_button(f"📈 Ver Gráfico Real-Time", url=url_tv, use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("### 🧠 Tabela Tática de Sentimento (Short Interest)")
+    
+    # Tabela Interpretativa integrada
+    st.markdown("""
+    | Taxa do Tomador (A.A.) | Status do Aluguel | Sentimento Institucional | Ação do Caçador |
+    | :--- | :--- | :--- | :--- |
+    | **0% a 2%** | **Normal** | Mercado em equilíbrio ou desinteresse. | Operar apenas pelo gráfico. |
+    | **2% a 7%** | **Atenção** | Institucionais montando posições de venda. | Cuidado com compras de topo. |
+    | **7% a 15%** | **Alerta Urso** | Pessimismo elevado. Muitos vendidos no ativo. | Monitorar suportes relevantes. |
+    | **Acima de 15%** | **BARRIL DE PÓLVORA** | Vendidos "espremidos" e pagando muito caro. | **Foco total em Short Squeeze.** |
+    """)
+
+    st.success(f"💡 **Análise de Elite para {ativo_alvo}:** Se a taxa estiver acima de 10% e o preço romper a média de 20 ou um topo anterior no gráfico, o rali será violento devido ao stop forçado dos vendidos.")
 
     st.divider()
     
