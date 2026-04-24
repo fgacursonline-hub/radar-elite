@@ -39,17 +39,18 @@ aba_radar, aba_individual = st.tabs(["🌐 Radar Global (Scanner & Top 20)", "�
 # ==========================================
 # 3. MOTOR MATEMÁTICO E FUNÇÕES GLOBAIS
 # ==========================================
-def calcular_tpv(df):
-    if df.empty or len(df) < 60: return pd.DataFrame()
+def calcular_tpv(df, ma_period):
+    if df.empty or len(df) < ma_period: return pd.DataFrame()
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     df.index = df.index.tz_localize(None)
     
     df['Retorno'] = df['Close'].pct_change()
     df['TPV'] = (df['Volume'] * df['Retorno']).cumsum()
-    df['TPV_MA55'] = df['TPV'].rolling(window=55).mean()
-    df['Cruzou_Compra'] = (df['TPV'].shift(1) <= df['TPV_MA55'].shift(1)) & (df['TPV'] > df['TPV_MA55'])
-    df['Cruzou_Venda'] = (df['TPV'].shift(1) >= df['TPV_MA55'].shift(1)) & (df['TPV'] < df['TPV_MA55'])
+    # A média agora é dinâmica baseada na escolha do usuário
+    df['TPV_MA'] = df['TPV'].rolling(window=ma_period).mean()
+    df['Cruzou_Compra'] = (df['TPV'].shift(1) <= df['TPV_MA'].shift(1)) & (df['TPV'] > df['TPV_MA'])
+    df['Cruzou_Venda'] = (df['TPV'].shift(1) >= df['TPV_MA'].shift(1)) & (df['TPV'] < df['TPV_MA'])
     return df.dropna()
 
 def renderizar_grafico_tv(symbol):
@@ -86,18 +87,21 @@ with aba_radar:
     st.markdown("Varredura completa buscando ativos dando entrada agora e o ranking histórico do setup.")
     
     with st.container(border=True):
-        col_f1, col_f2, col_f3 = st.columns(3)
+        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
         with col_f1:
             lista_selecionada = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"])
             capital_trade_global = st.number_input("Capital por Trade (R$):", value=10000.00, step=1000.00, key="cap_global")
         with col_f2:
-            usar_alvo_g = st.toggle("🎯 Habilitar Alvo (Take Profit)", value=True, key="tg_alvo_g")
-            alvo_pct_g = st.number_input("Alvo (%):", value=5.00, step=0.50, key="val_alvo_g", disabled=not usar_alvo_g) / 100.0
-        with col_f3:
-            usar_stop_g = st.toggle("🛡️ Habilitar Stop Loss", value=False, key="tg_stop_g")
-            stop_pct_g = st.number_input("Stop (%):", value=3.00, step=0.50, key="val_stop_g", disabled=not usar_stop_g) / 100.0
             tempo_grafico_global = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="tmp_global")
             int_global = "1d" if "1d" in tempo_grafico_global else "1wk"
+            periodo_ma_g = st.number_input("Média do TPV:", value=55, step=1, key="ma_global")
+            st.caption("⚠️ Recomendado: 55 (Setup Original)")
+        with col_f3:
+            usar_alvo_g = st.toggle("🎯 Habilitar Alvo (Gain)", value=True, key="tg_alvo_g")
+            alvo_pct_g = st.number_input("Alvo (%):", value=5.00, step=0.50, key="val_alvo_g", disabled=not usar_alvo_g) / 100.0
+        with col_f4:
+            usar_stop_g = st.toggle("🛡️ Habilitar Stop Loss", value=False, key="tg_stop_g")
+            stop_pct_g = st.number_input("Stop (%):", value=3.00, step=0.50, key="val_stop_g", disabled=not usar_stop_g) / 100.0
 
     if lista_selecionada == "BDRs Elite": ativos_alvo = bdrs_elite
     elif lista_selecionada == "IBrX Seleção": ativos_alvo = ibrx_selecao
@@ -116,7 +120,7 @@ with aba_radar:
             p_bar.progress((i + 1) / len(ativos_alvo))
             try:
                 df = yf.download(f"{ativo}.SA", period="2y", interval=int_global, progress=False)
-                df = calcular_tpv(df)
+                df = calcular_tpv(df, periodo_ma_g)
                 if df.empty: continue
                 
                 trade_aberto = None
@@ -168,7 +172,7 @@ with aba_radar:
         
         p_bar.empty(); s_text.empty()
         
-        st.subheader("🚀 Oportunidades Hoje (Sinal Ativo)")
+        st.subheader(f"🚀 Oportunidades Hoje (Cruzamento da MA {periodo_ma_g})")
         if oportunidades:
             df_op = pd.DataFrame(oportunidades)
             df_op['Preço Atual'] = df_op['Preço Atual'].apply(lambda x: f"R$ {x:.2f}")
@@ -201,33 +205,36 @@ with aba_radar:
 # ==========================================
 with aba_individual:
     st.markdown("### 🔬 Raio-X Detalhado: Backtest & Status Atual")
-    st.markdown("Veja o histórico de acertos e o status completo se o ativo estiver com operação aberta agora.")
+    st.markdown("Testagem estatística do ativo para otimização de parâmetros de fluxo.")
     
     with st.container(border=True):
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             ativo_rx = st.selectbox("Ativo (Ex: TSLA34):", ativos_para_rastrear, key="rx_ativo")
-            capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
+            periodo_rx = st.selectbox("Período de Estudo:", ["1 Ano", "2 Anos", "5 Anos", "Máximo"], key="rx_per", index=1)
         with c2:
+            capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
+            tempo_rx = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="rx_tmp")
+        with c3:
             usar_alvo_rx = st.toggle("🎯 Habilitar Alvo", value=True, key="tg_alvo_rx")
             alvo_rx = st.number_input("Alvo (%):", value=5.00, step=0.50, key="rx_alvo", disabled=not usar_alvo_rx)
-        with c3:
+        with c4:
             usar_stop_rx = st.toggle("🛡️ Habilitar Stop Loss", value=False, key="tg_stop_rx")
             stop_rx = st.number_input("Stop Loss (%):", value=3.00, step=0.50, key="rx_stop", disabled=not usar_stop_rx)
             
-        col_t1, col_t2 = st.columns(2)
-        with col_t1:
-            periodo_rx = st.selectbox("Período de Estudo:", ["1 Ano", "2 Anos", "5 Anos", "Máximo"], key="rx_per")
-        with col_t2:
-            tempo_rx = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="rx_tmp")
+        st.divider()
+        col_m1, col_m2 = st.columns([1, 3], vertical_alignment="center")
+        with col_m1:
+            periodo_ma_rx = st.number_input("Média Móvel do TPV:", value=55, step=1, key="ma_rx")
+            st.caption("⚠️ Recomendado: 55 períodos. Altere para otimização.")
             
     btn_rx = st.button("🔍 Rodar Análise Completa", type="primary", use_container_width=True)
     
     if btn_rx:
-        with st.spinner(f"Dissecando o histórico de {ativo_rx}..."):
+        with st.spinner(f"Dissecando o histórico de {ativo_rx} com Média de {periodo_ma_rx}..."):
             mapa_per = {"1 Ano": "1y", "2 Anos": "2y", "5 Anos": "5y", "Máximo": "max"}
             df_ativo = yf.download(f"{ativo_rx}.SA", period=mapa_per[periodo_rx], interval="1d" if "1d" in tempo_rx else "1wk", progress=False)
-            df_ativo = calcular_tpv(df_ativo)
+            df_ativo = calcular_tpv(df_ativo, periodo_ma_rx)
             
             if not df_ativo.empty:
                 alvo_pct = alvo_rx / 100.0
@@ -282,7 +289,7 @@ with aba_individual:
                     st.info(f"⏳ **{ativo_rx}: Em Operação** (Posicionado desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
                 else:
                     if df_ativo['Cruzou_Compra'].iloc[-1]:
-                        st.success(f"🚀 **{ativo_rx}: SINAL DE COMPRA ATIVADO HOJE!**")
+                        st.success(f"🚀 **{ativo_rx}: SINAL DE COMPRA ATIVADO HOJE!** (Cruzou MA {periodo_ma_rx})")
                     else:
                         st.success(f"✅ **{ativo_rx}: Aguardando Novo Sinal de Entrada**")
 
@@ -315,10 +322,10 @@ with aba_individual:
                 else:
                     st.warning("Nenhuma operação concluída no período selecionado para este ativo.")
 
-                # --- GRÁFICO INTERATIVO INSERIDO AQUI ---
+                # --- GRÁFICO INTERATIVO TRADINGVIEW ---
                 st.divider()
                 st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
                 renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
                 
             else:
-                st.error("Sem dados suficientes para gerar o backtest deste ativo.")
+                st.error("Sem dados suficientes para gerar o backtest deste ativo com a média informada.")
