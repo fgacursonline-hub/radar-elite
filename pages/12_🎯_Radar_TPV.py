@@ -5,6 +5,7 @@ import numpy as np
 import warnings
 import sys
 import os
+from datetime import datetime
 
 warnings.filterwarnings('ignore')
 
@@ -18,9 +19,6 @@ except ImportError:
     st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
     st.stop()
 
-# Unificando a lista e removendo os sufixos para padronização no loop
-ativos_para_rastrear = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
-
 # ==========================================
 # 2. CONFIGURAÇÃO DA PÁGINA
 # ==========================================
@@ -30,117 +28,244 @@ if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, faça login na página inicial (Home).")
     st.stop()
 
-st.title("🎯 Radar de Agressão TPV (Módulo 6)")
-st.markdown("Rastreamento automático de cruzamento do TPV com a Média Móvel de 55 períodos e detecção de divergências.")
+st.title("🎯 Máquina Quantitativa: TPV (Tendência Preço/Volume)")
+st.markdown("Opere o fluxo com base matemática: Oportunidades, Gestão de Posições e Backtest Estatístico.")
 
 # ==========================================
-# 3. MOTOR DO RASTREADOR (TPV + MA55)
+# 3. PAINEL DE CONTROLE (FILTROS)
 # ==========================================
-def rastrear_sinais_tpv(lista_ativos):
-    sinais_encontrados = []
+st.markdown("""
+<style>
+    .painel-box {
+        border: 2px solid #FF4B4B; border-radius: 10px; padding: 20px; background-color: #1E1E1E;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="painel-box">', unsafe_allow_html=True)
+col_f1, col_f2, col_f3 = st.columns(3)
+
+with col_f1:
+    lista_opcoes = ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"]
+    lista_selecionada = st.selectbox("Lista de Ativos:", lista_opcoes)
+
+with col_f2:
+    capital_trade = st.number_input("Capital por Trade (R$):", value=10000.00, step=1000.00)
+
+with col_f3:
+    tempo_grafico = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"])
+    intervalo_yf = "1d" if "1d" in tempo_grafico else "1wk"
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# Definição dos ativos baseado na seleção
+if lista_selecionada == "BDRs Elite":
+    ativos_alvo = bdrs_elite
+elif lista_selecionada == "IBrX Seleção":
+    ativos_alvo = ibrx_selecao
+else:
+    ativos_alvo = bdrs_elite + ibrx_selecao
+
+ativos_alvo = sorted(list(set([a.replace('.SA', '') for a in ativos_alvo])))
+
+btn_iniciar = st.button("🚀 Iniciar Varredura e Backtest TPV", type="primary", use_container_width=True)
+
+# ==========================================
+# 4. MOTOR DE BACKTEST E RASTREAMENTO
+# ==========================================
+def processar_tpv(lista_ativos, capital, intervalo):
+    oportunidades_hoje = []
+    operacoes_andamento = []
+    historico_trades = []
     
     progress_bar = st.progress(0)
     status_text = st.empty()
     
+    hoje = datetime.now().date()
+    
     for i, ativo in enumerate(lista_ativos):
-        # Readicionando o sufixo .SA para o Yahoo Finance
         ticker = f"{ativo}.SA"
-        status_text.text(f"Analisando fluxo de: {ativo} ({i+1}/{len(lista_ativos)})")
+        status_text.text(f"Analisando histórico e posições: {ativo} ({i+1}/{len(lista_ativos)})")
         progress_bar.progress((i + 1) / len(lista_ativos))
         
         try:
-            df = yf.download(ticker, period="6mo", interval="1d", progress=False)
+            # Puxamos 2 anos para ter histórico suficiente para o Backtest e as Médias
+            df = yf.download(ticker, period="2y", interval=intervalo, progress=False)
             
-            if df.empty or len(df) < 60:
-                continue
-                
+            if df.empty or len(df) < 60: continue
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
+            
+            df.index = df.index.tz_localize(None) # Remove fuso horário para cálculos de data limpos
 
-            # --- MATEMÁTICA DO TPV ---
+            # --- CÁLCULO TPV ---
             df['Retorno'] = df['Close'].pct_change()
             df['TPV'] = (df['Volume'] * df['Retorno']).cumsum()
             df['TPV_MA55'] = df['TPV'].rolling(window=55).mean()
             
+            # --- CRUZAMENTOS (SINAIS) ---
+            df['Cruzou_Compra'] = (df['TPV'].shift(1) <= df['TPV_MA55'].shift(1)) & (df['TPV'] > df['TPV_MA55'])
+            df['Cruzou_Venda'] = (df['TPV'].shift(1) >= df['TPV_MA55'].shift(1)) & (df['TPV'] < df['TPV_MA55'])
+            
             df.dropna(inplace=True)
-            if len(df) < 2: continue
-
-            # --- GATILHO: CRUZAMENTO DE ONTEM PARA HOJE ---
-            tpv_ontem = df['TPV'].iloc[-2]
-            ma55_ontem = df['TPV_MA55'].iloc[-2]
-            tpv_hoje = df['TPV'].iloc[-1]
-            ma55_hoje = df['TPV_MA55'].iloc[-1]
             
-            cruzou_compra = (tpv_ontem <= ma55_ontem) and (tpv_hoje > ma55_hoje)
-            cruzou_venda = (tpv_ontem >= ma55_ontem) and (tpv_hoje < ma55_hoje)
+            trade_aberto = None
+            trades_fechados_ativo = []
             
-            # --- CONFIRMAÇÃO: DIVERGÊNCIA DE 5 DIAS ---
-            tendencia_preco = df['Close'].iloc[-1] - df['Close'].iloc[-5]
-            tendencia_tpv = df['TPV'].iloc[-1] - df['TPV'].iloc[-5]
+            # --- MÁQUINA DO TEMPO (SIMULADOR DE TRADES) ---
+            for j in range(len(df)):
+                linha = df.iloc[j]
+                data_atual = df.index[j]
+                
+                # Se não estamos posicionados, buscamos entrada
+                if trade_aberto is None:
+                    if linha['Cruzou_Compra']:
+                        # Se for a ÚLTIMA barra do gráfico, é Oportunidade de Hoje
+                        if j == len(df) - 1:
+                            # Calcula divergência dos últimos 5 períodos
+                            tendencia_preco = df['Close'].iloc[-1] - df['Close'].iloc[-5]
+                            tendencia_tpv = df['TPV'].iloc[-1] - df['TPV'].iloc[-5]
+                            div = "🚀 ALTA (Forte)" if (tendencia_preco < 0 and tendencia_tpv > 0) else "-"
+                            
+                            oportunidades_hoje.append({
+                                "Ativo": ativo,
+                                "Preço Atual": linha['Close'],
+                                "Divergência (5p)": div
+                            })
+                        else:
+                            # Registra a entrada no passado
+                            trade_aberto = {
+                                'entrada_data': data_atual,
+                                'entrada_preco': linha['Close'],
+                                'pico': linha['Close'],
+                                'pior_queda': 0.0
+                            }
+                # Se já estamos posicionados
+                else:
+                    # Atualiza o pico máximo para medir Drawdown
+                    if linha['High'] > trade_aberto['pico']:
+                        trade_aberto['pico'] = linha['High']
+                    
+                    # Calcula o rebaixamento máximo (Drawdown) em relação ao pico
+                    dd_atual = (linha['Low'] / trade_aberto['pico']) - 1
+                    if dd_atual < trade_aberto['pior_queda']:
+                        trade_aberto['pior_queda'] = dd_atual
+                        
+                    # Verifica condição de saída (Cruzou para Baixo)
+                    if linha['Cruzou_Venda']:
+                        lucro_pct = (linha['Close'] / trade_aberto['entrada_preco']) - 1
+                        lucro_rs = capital * lucro_pct
+                        
+                        trades_fechados_ativo.append({
+                            'lucro_pct': lucro_pct,
+                            'lucro_rs': lucro_rs,
+                            'pior_queda': trade_aberto['pior_queda']
+                        })
+                        trade_aberto = None # Zera posição
             
-            divergencia = "-"
-            if tendencia_preco < 0 and tendencia_tpv > 0:
-                divergencia = "🚀 ALTA (Preço Cai, TPV Sobe)"
-            elif tendencia_preco > 0 and tendencia_tpv < 0:
-                divergencia = "🩸 BAIXA (Preço Sobe, TPV Cai)"
-
-            if cruzou_compra:
-                sinais_encontrados.append({
+            # --- FINAL DO LOOP ---
+            # Se o loop acabou e o trade ainda está aberto, vai para "Em Andamento"
+            if trade_aberto is not None:
+                dias_posicionado = (hoje - trade_aberto['entrada_data'].date()).days
+                resultado_pct = (df['Close'].iloc[-1] / trade_aberto['entrada_preco']) - 1
+                
+                operacoes_andamento.append({
                     "Ativo": ativo,
-                    "Sinal": "🟢 COMPRA (Cruzou MA55 p/ Cima)",
-                    "Preço Atual": f"R$ {df['Close'].iloc[-1]:.2f}",
-                    "Divergência 5d": divergencia
-                })
-            elif cruzou_venda:
-                sinais_encontrados.append({
-                    "Ativo": ativo,
-                    "Sinal": "🔴 VENDA (Cruzou MA55 p/ Baixo)",
-                    "Preço Atual": f"R$ {df['Close'].iloc[-1]:.2f}",
-                    "Divergência 5d": divergencia
+                    "Entrada": trade_aberto['entrada_data'].strftime("%d/%m/%Y"),
+                    "Dias": dias_posicionado,
+                    "PM": trade_aberto['entrada_preco'],
+                    "Cotação Atual": df['Close'].iloc[-1],
+                    "Proj. Máx": trade_aberto['pior_queda'],
+                    "Resultado Atual": resultado_pct
                 })
                 
+            # Agrega estatísticas para o Backtest Histórico
+            if len(trades_fechados_ativo) > 0:
+                total_trades = len(trades_fechados_ativo)
+                pior_queda_geral = min([t['pior_queda'] for t in trades_fechados_ativo])
+                total_investido = capital * total_trades # Capital girado
+                lucro_total_rs = sum([t['lucro_rs'] for t in trades_fechados_ativo])
+                resultado_final_pct = lucro_total_rs / total_investido if total_investido > 0 else 0
+                
+                historico_trades.append({
+                    "Ativo": ativo,
+                    "Trades": total_trades,
+                    "Pior Queda": pior_queda_geral,
+                    "Investimentos": total_investido,
+                    "Lucro R$": lucro_total_rs,
+                    "Resultado": resultado_final_pct
+                })
+
         except Exception as e:
             continue
             
     progress_bar.empty()
     status_text.empty()
-    return pd.DataFrame(sinais_encontrados)
+    
+    return pd.DataFrame(oportunidades_hoje), pd.DataFrame(operacoes_andamento), pd.DataFrame(historico_trades)
 
 # ==========================================
-# 4. INTERFACE DE USUÁRIO
+# 5. RENDERIZAÇÃO DOS RESULTADOS
 # ==========================================
-st.divider()
-col1, col2 = st.columns([3, 1], vertical_alignment="bottom")
-
-with col1:
-    st.info(f"O radar irá escanear **{len(ativos_para_rastrear)} ativos** do seu arquivo de configuração buscando o cruzamento do TPV com a Média Móvel de 55 períodos.")
-
-with col2:
-    btn_rastrear = st.button("🚀 Iniciar Varredura TPV", type="primary", use_container_width=True)
-
-if btn_rastrear:
-    with st.spinner("Varrendo o mercado em busca de fluxo institucional..."):
-        df_resultados = rastrear_sinais_tpv(ativos_para_rastrear)
+if btn_iniciar:
+    with st.spinner("Processando Inteligência de Fluxo..."):
+        df_oportunidades, df_andamento, df_historico = processar_tpv(ativos_alvo, capital_trade, intervalo_yf)
         
-        if not df_resultados.empty:
-            st.success(f"🎯 Foram encontrados {len(df_resultados)} ativos dando condição de entrada/saída hoje!")
+        # --- SESSÃO 1: OPORTUNIDADES HOJE ---
+        st.subheader("🚀 Oportunidades Hoje (Sinal Ativo)")
+        if not df_oportunidades.empty:
+            df_oportunidades['Preço Atual'] = df_oportunidades['Preço Atual'].apply(lambda x: f"R$ {x:.2f}")
+            st.dataframe(df_oportunidades, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum ativo disparou sinal de entrada no pregão atual.")
+
+        # --- SESSÃO 2: OPERAÇÕES EM ANDAMENTO ---
+        st.subheader("⏳ Operações em Andamento (Aguardando Alvo/Venda)")
+        if not df_andamento.empty:
+            # Formatação
+            df_andamento['PM'] = df_andamento['PM'].apply(lambda x: f"R$ {x:.2f}")
+            df_andamento['Cotação Atual'] = df_andamento['Cotação Atual'].apply(lambda x: f"R$ {x:.2f}")
+            df_andamento['Proj. Máx'] = df_andamento['Proj. Máx'].apply(lambda x: f"{x*100:.2f}%")
             
-            def colorir_sinal(val):
-                color = '#00FFCC' if 'COMPRA' in str(val) else '#FF4D4D' if 'VENDA' in str(val) else 'white'
+            def color_resultado_andamento(val):
+                if isinstance(val, str): return ''
+                color = '#00FFCC' if val > 0 else '#FF4D4D'
                 return f'color: {color}; font-weight: bold'
-            
+
             st.dataframe(
-                df_resultados.style.map(colorir_sinal, subset=['Sinal']),
-                use_container_width=True, 
-                hide_index=True
+                df_andamento.style.format({'Resultado Atual': "{:.2%}"}).map(color_resultado_andamento, subset=['Resultado Atual']),
+                use_container_width=True, hide_index=True
+            )
+        else:
+            st.info("Nenhuma operação em aberto no momento para a lista selecionada.")
+
+        # --- SESSÃO 3: BACKTEST (TOP 20 HISTÓRICO) ---
+        st.subheader("📊 Top 20 Histórico (Estatística do TPV)")
+        if not df_historico.empty:
+            # Ordena pelos mais lucrativos e pega os 20 primeiros
+            df_historico = df_historico.sort_values(by="Lucro R$", ascending=False).head(20)
+            
+            df_historico['Pior Queda'] = df_historico['Pior Queda'].apply(lambda x: f"{x*100:.2f}%")
+            df_historico['Investimentos'] = df_historico['Investimentos'].apply(lambda x: f"R$ {x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+            
+            def color_lucro(val):
+                if isinstance(val, str): return ''
+                color = '#00FFCC' if val > 0 else '#FF4D4D'
+                return f'color: {color}'
+
+            st.dataframe(
+                df_historico.style
+                .format({
+                    'Lucro R$': "R$ {:,.2f}",
+                    'Resultado': "{:.2%}"
+                })
+                .map(color_lucro, subset=['Lucro R$', 'Resultado']),
+                use_container_width=True, hide_index=True
             )
             
             st.markdown("---")
-            st.markdown("### 🧠 Tática de Combate (Como operar a tabela)")
             st.markdown("""
-            * **Sinal de COMPRA + Divergência de ALTA:** É o setup diamante. O TPV rompeu a média e o volume já vinha acumulando enquanto o preço caía. Mão cheia.
-            * **Sinal de COMPRA + Traço (-):** Rompimento limpo (Concordância). O preço e o TPV estão subindo juntos.
-            * **Sinal de VENDA:** A agressão inverteu. É hora de proteger lucros ou buscar operações de Short.
+            **🔍 Como interpretar o Laboratório:**
+            * **Pior Queda (Drawdown):** O máximo que a operação ficou negativa antes de fechar. Isso ajuda a calibrar o seu *Stop Loss*. Se a pior queda média é -8%, não adianta colocar um stop de -3%, você será "violinado".
+            * **Resultado (%):** Representa a eficiência do capital girado (Lucro / Total Investido em todos os trades do ativo).
             """)
-        else:
-            st.warning("Nenhum ativo cruzou a Média Móvel de 55 períodos do TPV no pregão de hoje. Mantenha as posições atuais.")
