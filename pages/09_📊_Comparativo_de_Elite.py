@@ -3,13 +3,23 @@ from tvDatafeed import TvDatafeed, Interval
 import pandas as pd
 import numpy as np
 import warnings
+import sys
+import os
 
-# --- IMPORTAÇÃO CENTRALIZADA ---
-from config_ativos import bdrs_elite, ibrx_selecao, pares_elite
+# --- AJUSTE DE CAMINHO PARA ENCONTRAR O CONFIG_ATIVOS ---
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+try:
+    from config_ativos import bdrs_elite, ibrx_selecao, pares_elite
+except ImportError:
+    st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
+    st.stop()
 
 warnings.filterwarnings('ignore')
 
+# ==========================================
 # 1. SEGURANÇA E CONEXÃO
+# ==========================================
 st.set_page_config(page_title="Comparador de Elite", layout="wide")
 
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
@@ -23,48 +33,87 @@ def get_tv_connection():
 tv = get_tv_connection()
 
 tradutor_intervalo = {
-    '15m': Interval.in_15_minute, '60m': Interval.in_1_hour,
-    '1d': Interval.in_daily, '1wk': Interval.in_weekly
+    '15m': Interval.in_15_minute,
+    '60m': Interval.in_1_hour,
+    '1d': Interval.in_daily,
+    '1wk': Interval.in_weekly
 }
 
-# Lista unificada apenas para facilitar menus
 lista_b3_pura = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
 
-# 2. INTERFACE
-st.title("📊 Comparador de Performance: Prova Real")
+# ==========================================
+# 2. INTERFACE COM ABAS
+# ==========================================
+st.title("📊 Comparador de Performance Institucional")
+st.markdown("Identifique qual ativo está atraindo mais capital e força relativa no período.")
+
 tab_geral, tab_inter = st.tabs(["🌎 Comparativo B3", "🇺🇸 Duelo BDR vs Stock + DÓLAR"])
 
-# ABA 1: NACIONAL
+# ------------------------------------------
+# ABA 1: COMPARATIVO NACIONAL
+# ------------------------------------------
 with tab_geral:
-    st.subheader("⚙️ Configurações B3")
+    st.subheader("⚙️ Configurações do Duelo B3")
     c1, c2, c3 = st.columns([2, 1, 1])
-    with c1: ativos_comp = st.multiselect("Ativos:", options=lista_b3_pura, default=["PETR4", "VALE3"], max_selections=4)
-    with c2: tempo_comp = st.selectbox("Tempo:", ['1d', '60m'], key="t_geral")
-    with c3: periodo_comp = st.slider("Barras:", 20, 300, 100, key="p_geral")
-    
-    if st.button("🚀 Gerar Comparativo Nacional", type="primary", use_container_width=True):
-        df_final = pd.DataFrame()
-        for t in ativos_comp:
-            df_at = tv.get_hist(symbol=t, exchange='BMFBOVESPA', interval=tradutor_intervalo[tempo_comp], n_bars=periodo_comp)
-            if df_at is not None:
-                df_at[t] = ((df_at['close'] / df_at['close'].iloc[0]) - 1) * 100
-                if df_final.empty: df_final = df_at[[t]]
-                else: df_final = df_final.join(df_at[t], how='inner')
-        if not df_final.empty: st.line_chart(df_final)
+    with c1:
+        ativos_comp = st.multiselect("Selecione até 4 ativos:", options=lista_b3_pura, default=["PETR4", "VALE3"], max_selections=4)
+    with c2:
+        tempo_comp = st.selectbox("Tempo Gráfico:", ['1d', '60m'], index=0, key="t_geral")
+    with c3:
+        periodo_comp = st.slider("Janela de Observação (Barras):", 20, 300, 100, key="p_geral")
+        if tempo_comp == '1d':
+            st.caption(f"🕒 **Referência:** {periodo_comp} barras ≈ {int(periodo_comp/20)} meses.")
+        else:
+            st.caption(f"🕒 **Referência:** {periodo_comp} barras ≈ {int(periodo_comp/7)} dias.")
 
-# ABA 2: INTERNACIONAL COM PROVA REAL E TRADUÇÃO DE DESVIO
+    if st.button("🚀 Gerar Comparativo Nacional", type="primary", use_container_width=True):
+        with st.spinner("Analisando..."):
+            df_final = pd.DataFrame()
+            for t in ativos_comp:
+                try:
+                    df_at = tv.get_hist(symbol=t, exchange='BMFBOVESPA', interval=tradutor_intervalo[tempo_comp], n_bars=periodo_comp)
+                    if df_at is not None:
+                        inicio = df_at['close'].iloc[0]
+                        df_at[t] = ((df_at['close'] / inicio) - 1) * 100
+                        if df_final.empty: df_final = df_at[[t]]
+                        else: df_final = df_final.join(df_at[t], how='inner')
+                except: pass
+            
+            if not df_final.empty:
+                st.line_chart(df_final)
+                ult = df_final.iloc[-1].sort_values(ascending=False)
+                st.info(f"🏆 Liderança: **{ult.index[0]}** ({ult.iloc[0]:.2f}%). Diferença para o último: **{ult.max()-ult.min():.2f}%**.")
+            else: st.error("Falha ao buscar dados.")
+
+    st.markdown("---")
+    st.markdown("### 📖 Glossário do Comparador B3")
+    st.markdown("""
+    * **Ponto Zero:** A primeira barra à esquerda é a linha de largada (0%).
+    * **Variação %:** Mostra o ganho real desde o início do gráfico.
+    * **Força Relativa:** Ativos com a linha consistentemente acima dos demais são os favoritos do fluxo institucional.
+    """)
+
+# ------------------------------------------
+# ABA 2: DUELO INTERNACIONAL (PROVA REAL)
+# ------------------------------------------
 with tab_inter:
-    st.subheader("⚙️ Duelo BDR vs Stock com Prova Real")
+    st.subheader("⚙️ Duelo BDR vs Stock com Prova Real do Dólar")
     ci1, ci2, ci3 = st.columns([2, 1, 1])
     with ci1:
-        bdr_sel = st.selectbox("Selecione a BDR:", options=sorted(pares_elite.keys()), index=0)
-        stock_sel = st.selectbox("Stock correspondente:", options=sorted(set(pares_elite.values())), 
-                                index=sorted(set(pares_elite.values())).index(pares_elite[bdr_sel]))
-    with ci2: tempo_inter = st.selectbox("Tempo:", ['1d', '60m'], key="t_inter")
-    with ci3: periodo_inter = st.slider("Barras:", 20, 300, 100, key="p_inter")
+        bdr_sel = st.selectbox("Selecione a BDR (Brasil):", options=sorted(pares_elite.keys()), index=0)
+        stock_options = sorted(set(pares_elite.values()))
+        stock_sel = st.selectbox("Stock correspondente (EUA):", options=stock_options, index=stock_options.index(pares_elite[bdr_sel]))
+    with ci2:
+        tempo_inter = st.selectbox("Tempo Gráfico:", ['1d', '60m'], index=0, key="t_inter")
+    with ci3:
+        periodo_inter = st.slider("Janela de Observação (Barras):", 20, 300, 100, key="p_inter")
+        if tempo_inter == '1d':
+            st.caption(f"🕒 **Referência:** {periodo_inter} barras ≈ {int(periodo_inter/20)} meses.")
+        else:
+            st.caption(f"🕒 **Referência:** {periodo_inter} barras ≈ {int(periodo_inter/7)} dias.")
 
     if st.button("📈 Gerar Análise de Arbitragem", type="primary", use_container_width=True):
-        with st.spinner("Sincronizando ativos..."):
+        with st.spinner("Sincronizando mercados globais..."):
             df_bdr = tv.get_hist(symbol=bdr_sel, exchange='BMFBOVESPA', interval=tradutor_intervalo[tempo_inter], n_bars=periodo_inter)
             df_stock = tv.get_hist(symbol=stock_sel, exchange='NYSE', interval=tradutor_intervalo[tempo_inter], n_bars=periodo_inter)
             if df_stock is None: df_stock = tv.get_hist(symbol=stock_sel, exchange='NASDAQ', interval=tradutor_intervalo[tempo_inter], n_bars=periodo_inter)
@@ -85,23 +134,48 @@ with tab_inter:
                 if not df_prova.empty:
                     st.line_chart(df_prova, use_container_width=True)
                     st.divider()
-                    v_bdr, v_stock, v_dolar = df_prova[bdr_sel].iloc[-1], df_prova[stock_sel].iloc[-1], df_prova['DÓLAR'].iloc[-1]
                     
+                    v_bdr, v_stock, v_dolar = df_prova[bdr_sel].iloc[-1], df_prova[stock_sel].iloc[-1], df_prova['DÓLAR'].iloc[-1]
                     c1, c2, c3 = st.columns(3)
                     c1.metric(f"Retorno {bdr_sel}", f"{v_bdr:.2f}%")
                     c2.metric(f"Retorno {stock_sel}", f"{v_stock:.2f}%")
                     c3.metric("Variação Dólar", f"{v_dolar:.2f}%")
 
+                    # --- RESTAURANDO A INFORMAÇÃO ABAIXO (MÉTRICA + VEREDITO) ---
                     ret_teo = v_stock + v_dolar
                     desvio = v_bdr - ret_teo
+                    
                     st.subheader("🔬 Veredito da Arbitragem")
+                    
                     if desvio < -1.0:
-                        st.warning(f"⚠️ DESVIO DE {desvio:.2f}% DETECTADO")
-                        st.markdown(f"**ANÁLISE:** A BDR **{bdr_sel}** está **ATRASADA** em relação à Stock + Dólar.")
+                        st.warning(f"⚠️ DESVIO CRÍTICO: {desvio:.2f}%")
+                        st.write(f"**Pela soma (Stock + Dólar), sua BDR deveria estar rendendo {ret_teo:.2f}%, mas está em {v_bdr:.2f}%.**")
+                        st.markdown(f"**ANÁLISE:** A BDR **{bdr_sel}** está **ATRASADA** (Barata) em relação à paridade internacional.")
                     elif desvio > 1.0:
                         st.error(f"🚨 DESVIO DE +{desvio:.2f}% DETECTADO")
-                        st.markdown(f"**ANÁLISE:** A BDR **{bdr_sel}** está **MAIS CARA** que a paridade.")
+                        st.write(f"**Pela soma (Stock + Dólar), sua BDR deveria estar rendendo {ret_teo:.2f}%, mas está em {v_bdr:.2f}%.**")
+                        st.markdown(f"**ANÁLISE:** A BDR **{bdr_sel}** está **MAIS CARA** (Puxada) que a paridade americana.")
                     else:
                         st.success(f"✅ EFICIÊNCIA: Desvio de {desvio:.2f}%")
-                else:
-                    st.error("Erro na sincronização.")
+                        st.write("O mercado está em simetria perfeita. O preço da BDR reflete exatamente a Stock + Câmbio.")
+                else: st.error("Sincronização falhou.")
+
+    st.markdown("---")
+    st.markdown("### 📖 Glossário da Prova Real")
+    st.markdown("""
+    * **Retorno Teorico:** É a soma da variação da Stock lá fora com o Dólar aqui.
+    * **Arbitragem:** Se o desvio for muito grande, robôs institucionais entrarão para fechar esse "gap".
+    * **Atrasada:** Oportunidade de compra; a BDR ainda não reagiu à alta da Stock ou do Dólar.
+    """)
+
+# ==========================================
+# 3. MANUAL GLOBAL
+# ==========================================
+st.markdown("<br>", unsafe_allow_html=True)
+with st.expander("📖 Manual Completo: Como ler estes gráficos?", expanded=False):
+    st.markdown("""
+    * **Entendendo as Barras:** * Diário (1d): 20 barras ≈ 1 mês. 
+        * Hora (60m): 7 barras ≈ 1 dia.
+    * **Base Zero:** Todos começam no mesmo ponto para comparar performance relativa, não preço bruto.
+    * **Desvio:** Diferenças acima de 2% entre a BDR e sua Stock original costumam ser corrigidas rapidamente pelo mercado.
+    """)
