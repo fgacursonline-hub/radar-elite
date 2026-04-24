@@ -2,6 +2,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import requests
 import streamlit.components.v1 as components
+import pandas as pd # <-- Adicionado para ler o CSV da B3
 
 # ==========================================
 # 1. SEGURANÇA E CONFIGURAÇÃO
@@ -105,11 +106,34 @@ st.caption("💡 **Dica de Caçador:** Blocos verdes grandes indicam fluxo insti
 # 🐋 INTELIGÊNCIA DE FLUXO (SALDO ESTRANGEIRO)
 # ==========================================
 st.divider()
-st.subheader("🐋 Fluxo Institucional (O rastro do Gringo)")
+st.subheader("🐋 Fluxo Institucional (O rastro do Gringo B3)")
 st.markdown("Monitore se os grandes tubarões estrangeiros estão aportando ou retirando dinheiro da nossa bolsa.")
 
-st.info("### 🇧🇷 Saldo Estrangeiro Oficial (B3)\nConfira o saldo de compra e venda dos investidores não residentes no mercado à vista brasileiro.")
-st.link_button("📊 Acessar Dados de Mercado B3 (Oficial)", "https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/consultas/mercado-a-vista/dados-de-mercado/", use_container_width=True)
+# Função que vai baixar e ler a tabela da B3 silenciosamente
+@st.cache_data(ttl=3600) # Atualiza a cada 1 hora
+def puxar_fluxo_gringo_b3():
+    url_b3 = "https://sistemaswebb3-listados.b3.com.br/marketDataProxy/MarketDataCall/GetDownloadMarketData/RELATORIO_DADOS_DE_MERCADO.csv"
+    try:
+        # Lê o CSV da URL. Usa separador ';' e codificação para ler acentuação do português
+        df = pd.read_csv(url_b3, sep=';', encoding='latin-1', on_bad_lines='skip')
+        df = df.dropna(how='all') # Remove linhas completamente em branco
+        return df
+    except Exception as e:
+        return f"Erro de conexão com o servidor da B3: {e}"
+
+# Roda a extração
+with st.spinner("Interceptando dados de fluxo no servidor da B3..."):
+    dados_b3 = puxar_fluxo_gringo_b3()
+
+# Verifica se o robô conseguiu baixar e transformar em DataFrame
+if isinstance(dados_b3, pd.DataFrame):
+    st.success("✅ **Dados oficiais da B3 interceptados com sucesso!**")
+    # Mostra a tabela lindamente na tela do Streamlit
+    st.dataframe(dados_b3, use_container_width=True, hide_index=True)
+else:
+    # Se a B3 estiver fora do ar ou bloquear o robô, mostra erro e o botão de segurança
+    st.warning("Aviso: Não foi possível pré-carregar a tabela neste momento. O servidor da B3 pode estar instável.")
+    st.link_button("📥 Tentar baixar CSV Manualmente", "https://sistemaswebb3-listados.b3.com.br/marketDataProxy/MarketDataCall/GetDownloadMarketData/RELATORIO_DADOS_DE_MERCADO.csv", use_container_width=True)
 
 with st.expander("📖 Por que rastrear o Gringo?", expanded=False):
     st.markdown("""
@@ -117,5 +141,5 @@ with st.expander("📖 Por que rastrear o Gringo?", expanded=False):
     
     * **Gringo Comprando + IBOV Subindo:** Tendência saudável e forte. O "dinheiro inteligente" está apostando no país.
     * **Gringo Vendendo + IBOV Subindo:** Alerta de armadilha. A alta pode estar sendo sustentada apenas pelo varejo (pessoa física), o que costuma durar pouco.
-    * **D+2:** Lembre-se que o dado oficial da B3 tem 2 dias de atraso. O painel disponibilizado pela B3 te permite baixar a tabela de volume em Excel para rastrear todo o movimento histórico.
+    * **D+2:** Lembre-se que o dado oficial da B3 sempre carrega um atraso operacional de 2 dias úteis. Analise o saldo acumulado para confirmar tendências primárias.
     """)
