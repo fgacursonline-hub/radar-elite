@@ -148,7 +148,7 @@ with tab_eua:
       </script>
     </div>
     """
-    components.html(html_heatmap_eua, height=550)
+    components.html(html_heatmap_eua, height=250)
 
 st.caption("💡 **Dica de Caçador:** O tamanho do bloco representa o valor de mercado (Market Cap). Blocos verdes intensos indicam forte entrada de fluxo no setor.")
 
