@@ -8,6 +8,7 @@ import requests
 import xml.etree.ElementTree as ET
 import sys
 import os
+import plotly.graph_objects as go
 
 # --- IMPORTAÇÃO CENTRALIZADA DOS ATIVOS ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
