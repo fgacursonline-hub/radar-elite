@@ -7,8 +7,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# 1. SEGURANÇA E CONEXÃO
+# 1. SEGURANÇA E CONFIGURAÇÃO INICIAL
 # ==========================================
+st.set_page_config(page_title="Comparador de Elite", layout="wide")
+
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, inicie sessão na página inicial (Home).")
     st.stop()
@@ -35,14 +37,13 @@ lista_unificada = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + i
 # ==========================================
 # 2. INTERFACE COM ABAS
 # ==========================================
-st.set_page_config(page_title="Comparador de Elite", layout="wide")
 st.title("📊 Comparador de Performance Institucional")
-st.markdown("Analise a força relativa e o custo de oportunidade entre diferentes ativos.")
+st.markdown("Identifique qual ativo está atraindo mais capital e força relativa no período.")
 
 tab_geral, tab_inter = st.tabs(["🌎 Comparativo Geral (B3)", "🇺🇸 Duelo BDR vs Stock"])
 
 # ------------------------------------------
-# ABA 1: COMPARATIVO GERAL (MANTIDO)
+# ABA 1: COMPARATIVO GERAL (NACIONAL)
 # ------------------------------------------
 with tab_geral:
     st.subheader("⚙️ Configurações do Duelo B3")
@@ -62,9 +63,9 @@ with tab_geral:
 
     if btn_comp:
         if not ativos_comp:
-            st.warning("Selecione ativos.")
+            st.warning("⚠️ Selecione pelo menos um ativo.")
         else:
-            with st.spinner("Analisando..."):
+            with st.spinner("Analisando rastro do dinheiro..."):
                 df_final = pd.DataFrame()
                 for t in ativos_comp:
                     try:
@@ -79,7 +80,9 @@ with tab_geral:
                 if not df_final.empty:
                     st.line_chart(df_final)
                     ult = df_final.iloc[-1].sort_values(ascending=False)
-                    st.info(f"🏆 Liderança: **{ult.index[0]}** ({ult.iloc[0]:.2f}%). Diferença para o último: **{ult.max()-ult.min():.2f}%**.")
+                    st.info(f"🏆 Liderança: **{ult.index[0]}** com retorno de **{ult.iloc[0]:.2f}%** no período.")
+                else:
+                    st.error("Não foi possível carregar os dados para comparação.")
 
 # ------------------------------------------
 # ABA 2: DUELO INTERNACIONAL (BDR VS STOCK)
@@ -89,46 +92,73 @@ with tab_inter:
     ci1, ci2, ci3 = st.columns([2, 1, 1])
     with ci1:
         bdr_input = st.selectbox("Selecione a BDR (B3):", options=sorted([a.replace('.SA','') for a in bdrs_elite]), index=0)
-        stock_input = st.text_input("Digite o Ticker da Stock (EUA):", value="NVDA").upper()
+        stock_input = st.text_input("Digite o Ticker da Stock (EUA - Ex: NVDA, AAPL, TSLA):", value="NVDA").upper()
     with ci2:
         tempo_inter = st.selectbox("Tempo Gráfico:", ['1d', '60m'], index=0, key="t_inter")
     with ci3:
         periodo_inter = st.slider("Janela de Observação (Barras):", 20, 300, 100, key="p_inter")
+        if tempo_inter == '1d':
+            st.caption(f"🕒 **Referência:** {periodo_inter} barras ≈ {int(periodo_inter/20)} meses.")
+        else:
+            st.caption(f"🕒 **Referência:** {periodo_inter} barras ≈ {int(periodo_inter/7)} dias.")
 
     btn_inter = st.button("🚀 Gerar Duelo Internacional", type="primary", use_container_width=True)
 
     if btn_inter:
-        with st.spinner("Sincronizando mercados (B3 🇧🇷 vs EUA 🇺🇸)..."):
-            # Busca BDR na B3
+        with st.spinner(f"Sincronizando mercados (B3 🇧🇷 vs EUA 🇺🇸) para {bdr_input}..."):
+            # 1. Busca Dados BDR
             df_bdr = tv.get_hist(symbol=bdr_input, exchange='BMFBOVESPA', interval=tradutor_intervalo[tempo_inter], n_bars=periodo_inter)
             
-            # Busca Stock (Tenta NYSE, depois NASDAQ)
+            # 2. Busca Dados Stock (EUA)
             df_stock = tv.get_hist(symbol=stock_input, exchange='NYSE', interval=tradutor_intervalo[tempo_inter], n_bars=periodo_inter)
             if df_stock is None:
                 df_stock = tv.get_hist(symbol=stock_input, exchange='NASDAQ', interval=tradutor_intervalo[tempo_inter], n_bars=periodo_inter)
 
             if df_bdr is not None and df_stock is not None:
-                # Normalização
+                # --- MOTOR DE SINCRONIZAÇÃO DE ELITE ---
+                # Remove fuso horário e normaliza para evitar erro de datas não coincidentes
+                df_bdr.index = pd.to_datetime(df_bdr.index).tz_localize(None)
+                df_stock.index = pd.to_datetime(df_stock.index).tz_localize(None)
+                
+                if tempo_inter == '1d':
+                    df_bdr.index = df_bdr.index.normalize()
+                    df_stock.index = df_stock.index.normalize()
+
+                # Calcula Retorno Acumulado %
                 df_bdr[bdr_input] = ((df_bdr['close'] / df_bdr['close'].iloc[0]) - 1) * 100
                 df_stock[stock_input] = ((df_stock['close'] / df_stock['close'].iloc[0]) - 1) * 100
                 
-                # Sincronização por data para o gráfico aparecer
-                df_duelo = pd.DataFrame()
-                df_duelo[bdr_input] = df_bdr[bdr_input]
-                df_duelo = df_duelo.join(df_stock[stock_input], how='inner')
+                # Merge Interno: Só mostra datas onde AMBAS as bolsas funcionaram
+                df_duelo = pd.merge(df_bdr[[bdr_input]], df_stock[[stock_input]], left_index=True, right_index=True, how='inner')
 
                 if not df_duelo.empty:
-                    st.line_chart(df_duelo)
-                    diff = df_duelo[bdr_input].iloc[-1] - df_duelo[stock_input].iloc[-1]
-                    st.success(f"Diferença de Performance Acumulada: **{abs(diff):.2f}%**.")
-                    st.caption("Nota: Se a BDR sobe muito mais que a Stock, a valorização é puxada pelo Dólar.")
+                    st.markdown(f"### 📈 Performance: {bdr_input} vs {stock_input}")
+                    st.line_chart(df_duelo, use_container_width=True)
+                    
+                    st.divider()
+                    
+                    c_res1, c_res2 = st.columns(2)
+                    with c_res1:
+                        val_bdr = df_duelo[bdr_input].iloc[-1]
+                        val_stock = df_duelo[stock_input].iloc[-1]
+                        st.metric(f"Retorno {bdr_input}", f"{val_bdr:.2f}%")
+                        st.metric(f"Retorno {stock_input}", f"{val_stock:.2f}%")
+                    
+                    with c_res2:
+                        diff = val_bdr - val_stock
+                        st.markdown("### 💡 Insight de Arbitragem")
+                        if abs(diff) > 2:
+                            st.warning(f"Desvio de **{abs(diff):.2f}%** detectado!")
+                            st.write("Diferença significativa. Se a BDR rende muito mais, o motor é o Dólar.")
+                        else:
+                            st.success(f"Diferença de **{abs(diff):.2f}%**. Movimento em simetria.")
                 else:
-                    st.error("Não houve datas coincidentes para gerar o gráfico no período selecionado.")
+                    st.error("⚠️ Datas não coincidentes no período. Tente aumentar a 'Janela de Observação' para 200 barras.")
             else:
-                st.error("Não foi possível carregar um dos ativos. Verifique o ticker da Stock.")
+                st.error(f"❌ Erro: Não encontrei dados para '{stock_input}' nos EUA.")
 
 # ==========================================
-# 3. MANUAL (COM AS CONVERSÕES DE BARRAS)
+# 4. MANUAL COMPLETO (RESTAURADO)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 with st.expander("📖 Manual do Comparador: Como ler estes dados?", expanded=True):
@@ -137,5 +167,7 @@ with st.expander("📖 Manual do Comparador: Como ler estes dados?", expanded=Tr
         * **1d (Diário):** 20 barras ≈ 1 mês | 100 barras ≈ 5 meses | 250 barras ≈ 1 ano.
         * **60m (Hora):** 7 barras ≈ 1 dia de pregão | 140 barras ≈ 1 mês.
     * **Normalização por Base Zero:** Todos os ativos começam no 0% na primeira barra. Isso permite comparar uma ação de R$ 10 com uma de R$ 100 de forma justa.
-    * **BDR vs Stock:** Se a linha da BDR está acima da Stock, o Dólar está ajudando a valorização. Se a Stock está acima, o câmbio está "pesando" contra a BDR no Brasil.
+    * **BDR vs Stock:** * Se a **linha da BDR** está acima da Stock, o Dólar está ajudando a valorização. 
+        * Se a **Stock** está acima, o câmbio está pesando contra a BDR no Brasil.
+        * Diferenças rápidas entre as duas podem indicar **arbitragem iminente**.
     """)
