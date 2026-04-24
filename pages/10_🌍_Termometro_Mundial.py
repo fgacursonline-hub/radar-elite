@@ -68,7 +68,7 @@ def calcular_sentimento_brasil():
         return 50, "Erro B3"
 
 # ==========================================
-# 📊 EXIBIÇÃO LADO A LADO (GAUGES)
+# 📊 EXIBIÇÃO LADO A LADO (GAUGES AJUSTADOS)
 # ==========================================
 st.divider()
 score_us, status_us = buscar_fear_and_greed()
@@ -77,38 +77,46 @@ score_br, status_br = calcular_sentimento_brasil()
 col_us, col_br = st.columns(2)
 
 with col_us:
+    # Título fora do gráfico para não cortar
+    st.markdown(f"<h3 style='text-align: center; margin-bottom: -20px;'>🇺🇸 EUA (Fear & Greed)</h3>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center; color: gray;'>{status_us}</p>", unsafe_allow_html=True)
+    
     fig_us = go.Figure(go.Indicator(
         mode = "gauge+number", value = score_us,
-        title = {'text': f"🇺🇸 Wall Street (F&G)<br><span style='font-size:0.8em;color:gray'>{status_us}</span>"},
         gauge = {
-            'axis': {'range': [0, 100]},
+            'axis': {'range': [0, 100], 'tickwidth': 1},
             'steps': [
                 {'range': [0, 25], 'color': "#ff4d4d"}, {'range': [25, 45], 'color': "#ff9933"},
                 {'range': [45, 55], 'color': "#ffcc00"}, {'range': [55, 75], 'color': "#99cc33"},
                 {'range': [75, 100], 'color': "#33cc33"}
             ],
-            'bar': {'color': "white", 'thickness': 0.2}
+            'bar': {'color': "white", 'thickness': 0.25}
         }
     ))
-    fig_us.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"}, height=300, margin=dict(l=30, r=30, t=50, b=20))
-    st.plotly_chart(fig_us, use_container_width=True)
+    # Diminuímos a altura (height) para 220 e zeramos a margem superior (t=0)
+    fig_us.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"}, height=220, margin=dict(l=50, r=50, t=0, b=0))
+    st.plotly_chart(fig_us, use_container_width=True, config={'displayModeBar': False})
 
 with col_br:
+    # Título fora do gráfico para não cortar
+    st.markdown(f"<h3 style='text-align: center; margin-bottom: -20px;'>🇧🇷 Brasil (IFR B3)</h3>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align: center; color: gray;'>{status_br}</p>", unsafe_allow_html=True)
+    
     fig_br = go.Figure(go.Indicator(
         mode = "gauge+number", value = score_br,
-        title = {'text': f"🇧🇷 Ibovespa (IFR)<br><span style='font-size:0.8em;color:gray'>{status_br}</span>"},
         gauge = {
-            'axis': {'range': [0, 100]},
+            'axis': {'range': [0, 100], 'tickwidth': 1},
             'steps': [
                 {'range': [0, 30], 'color': "#ff4d4d"}, {'range': [30, 45], 'color': "#ff9933"},
                 {'range': [45, 55], 'color': "#ffcc00"}, {'range': [55, 70], 'color': "#99cc33"},
                 {'range': [70, 100], 'color': "#33cc33"}
             ],
-            'bar': {'color': "white", 'thickness': 0.2}
+            'bar': {'color': "white", 'thickness': 0.25}
         }
     ))
-    fig_br.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"}, height=300, margin=dict(l=30, r=30, t=50, b=20))
-    st.plotly_chart(fig_br, use_container_width=True)
+    # Ajuste idêntico para manter a simetria
+    fig_br.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"}, height=220, margin=dict(l=50, r=50, t=0, b=0))
+    st.plotly_chart(fig_br, use_container_width=True, config={'displayModeBar': False})
 
 # ==========================================
 # 🗺️ MAPAS DE CALOR SETORIAIS
