@@ -23,7 +23,7 @@ except ImportError:
 ativos_para_rastrear = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
 
 # ==========================================
-# 2. CONFIGURAÇÃO DA PÁGINA E AUTENTICAÇÃO
+# 2. CONFIGURAÇÃO DA PÁGINA
 # ==========================================
 st.set_page_config(page_title="Radar TPV Elite", layout="wide", page_icon="🎯")
 
@@ -62,9 +62,13 @@ with aba_radar:
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
             lista_selecionada = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"])
-        with col_f2:
             capital_trade_global = st.number_input("Capital por Trade (R$):", value=10000.00, step=1000.00, key="cap_global")
+        with col_f2:
+            usar_alvo_g = st.toggle("🎯 Habilitar Alvo (Take Profit)", value=True, key="tg_alvo_g")
+            alvo_pct_g = st.number_input("Alvo (%):", value=5.00, step=0.50, key="val_alvo_g", disabled=not usar_alvo_g) / 100.0
         with col_f3:
+            usar_stop_g = st.toggle("🛡️ Habilitar Stop Loss", value=False, key="tg_stop_g")
+            stop_pct_g = st.number_input("Stop (%):", value=3.00, step=0.50, key="val_stop_g", disabled=not usar_stop_g) / 100.0
             tempo_grafico_global = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="tmp_global")
             int_global = "1d" if "1d" in tempo_grafico_global else "1wk"
 
@@ -92,6 +96,7 @@ with aba_radar:
                 for j in range(len(df)):
                     linha = df.iloc[j]
                     data = df.index[j]
+                    
                     if trade_aberto is None:
                         if linha['Cruzou_Compra']:
                             if j == len(df) - 1:
@@ -105,7 +110,13 @@ with aba_radar:
                         if linha['High'] > trade_aberto['pico']: trade_aberto['pico'] = linha['High']
                         dd_atual = (linha['Low'] / trade_aberto['pico']) - 1
                         if dd_atual < trade_aberto['pior_queda']: trade_aberto['pior_queda'] = dd_atual
-                        if linha['Cruzou_Venda']: trade_aberto = None
+                        
+                        # Lógica de Saída (Alvo, Stop ou Indicador)
+                        bateu_stop = usar_stop_g and (linha['Low'] <= trade_aberto['entrada_preco'] * (1 - stop_pct_g))
+                        bateu_alvo = usar_alvo_g and (linha['High'] >= trade_aberto['entrada_preco'] * (1 + alvo_pct_g))
+                        
+                        if bateu_stop or bateu_alvo or linha['Cruzou_Venda']:
+                            trade_aberto = None # Operação encerrada
                 
                 if trade_aberto is not None:
                     dias = (datetime.now().date() - trade_aberto['entrada_data'].date()).days
@@ -142,11 +153,18 @@ with aba_individual:
         c1, c2, c3 = st.columns(3)
         with c1:
             ativo_rx = st.selectbox("Ativo (Ex: TSLA34):", ativos_para_rastrear, key="rx_ativo")
-            periodo_rx = st.selectbox("Período de Estudo:", ["1 Ano", "2 Anos", "5 Anos", "Máximo"], key="rx_per")
-        with c2:
-            alvo_rx = st.number_input("Alvo (%):", value=3.00, step=0.50, key="rx_alvo")
             capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
+        with c2:
+            usar_alvo_rx = st.toggle("🎯 Habilitar Alvo", value=True, key="tg_alvo_rx")
+            alvo_rx = st.number_input("Alvo (%):", value=5.00, step=0.50, key="rx_alvo", disabled=not usar_alvo_rx)
         with c3:
+            usar_stop_rx = st.toggle("🛡️ Habilitar Stop Loss", value=False, key="tg_stop_rx")
+            stop_rx = st.number_input("Stop Loss (%):", value=3.00, step=0.50, key="rx_stop", disabled=not usar_stop_rx)
+            
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            periodo_rx = st.selectbox("Período de Estudo:", ["1 Ano", "2 Anos", "5 Anos", "Máximo"], key="rx_per")
+        with col_t2:
             tempo_rx = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="rx_tmp")
             
     btn_rx = st.button("🔍 Rodar Análise Completa", type="primary", use_container_width=True)
@@ -159,6 +177,7 @@ with aba_individual:
             
             if not df_ativo.empty:
                 alvo_pct = alvo_rx / 100.0
+                stop_pct = stop_rx / 100.0
                 trades_fechados = []
                 em_aberto = None
                 
@@ -174,11 +193,22 @@ with aba_individual:
                         dd = (linha['Low'] / em_aberto['pico']) - 1
                         if dd < em_aberto['pior_queda']: em_aberto['pior_queda'] = dd
                         
-                        # Gatilho de Saída (Take Profit ou Cruzamento de Venda)
-                        alvo_atingido = (alvo_pct > 0) and (linha['High'] >= em_aberto['entrada_preco'] * (1 + alvo_pct))
+                        # Análise de Saída (Conservadora: testa o stop antes do alvo se ambos baterem no mesmo candle)
+                        bateu_stop = usar_stop_rx and (linha['Low'] <= em_aberto['entrada_preco'] * (1 - stop_pct))
+                        bateu_alvo = usar_alvo_rx and (linha['High'] >= em_aberto['entrada_preco'] * (1 + alvo_pct))
+                        sinal_venda = linha['Cruzou_Venda']
                         
-                        if alvo_atingido or linha['Cruzou_Venda']:
-                            preco_saida = em_aberto['entrada_preco'] * (1 + alvo_pct) if alvo_atingido else linha['Close']
+                        if bateu_stop or bateu_alvo or sinal_venda:
+                            if bateu_stop:
+                                preco_saida = em_aberto['entrada_preco'] * (1 - stop_pct)
+                                motivo = "Stop Loss"
+                            elif bateu_alvo:
+                                preco_saida = em_aberto['entrada_preco'] * (1 + alvo_pct)
+                                motivo = "Alvo (Gain)"
+                            else:
+                                preco_saida = linha['Close']
+                                motivo = "Indicador (Virada)"
+
                             lucro_pct = (preco_saida / em_aberto['entrada_preco']) - 1
                             lucro_rs = capital_rx * lucro_pct
                             duracao = (data - em_aberto['entrada_data']).days
@@ -187,13 +217,14 @@ with aba_individual:
                                 'Entrada': em_aberto['entrada_data'].strftime("%d/%m/%Y"),
                                 'Saída': data.strftime("%d/%m/%Y"),
                                 'Duração': duracao,
+                                'Motivo Saída': motivo,
                                 'Lucro (R$)': lucro_rs,
                                 'Queda Máx': em_aberto['pior_queda'],
                                 'Situação': "Gain ✅" if lucro_pct > 0 else "Loss ❌"
                             })
                             em_aberto = None
 
-                # 1. STATUS ATUAL (BANNER)
+                # 1. STATUS ATUAL
                 if em_aberto is not None:
                     st.info(f"⏳ **{ativo_rx}: Em Operação** (Posicionado desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
                 else:
@@ -232,11 +263,11 @@ with aba_individual:
                 else:
                     st.warning("Nenhuma operação concluída no período selecionado para este ativo.")
 
-                # 4. GRÁFICO INTERATIVO TRADINGVIEW
+                # 4. GRÁFICO INTERATIVO TRADINGVIEW (CORRIGIDO A ALTURA)
                 st.markdown("---")
                 st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
                 html_tv = f"""
-                <div class="tradingview-widget-container" style="height:500px;width:100%">
+                <div class="tradingview-widget-container" style="height:600px;width:100%">
                   <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%"></div>
                   <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
                   {{
@@ -256,6 +287,6 @@ with aba_individual:
                   </script>
                 </div>
                 """
-                components.html(html_tv, height=550)
+                components.html(html_tv, height=600)
             else:
                 st.error("Sem dados suficientes para gerar o backtest deste ativo.")
