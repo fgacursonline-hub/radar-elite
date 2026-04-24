@@ -39,7 +39,7 @@ tradutor_intervalo = {
     '1wk': Interval.in_weekly
 }
 
-lista_b3_pura = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
+lista_b3_pura = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao + benchmarks_elite)])))
 
 # ==========================================
 # 2. INTERFACE COM ABAS
