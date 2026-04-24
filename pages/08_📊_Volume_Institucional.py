@@ -6,6 +6,8 @@ import pandas_ta as ta
 import time
 import warnings
 from datetime import datetime
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 warnings.filterwarnings('ignore')
 
@@ -67,7 +69,7 @@ def aplicar_fluxo_e_divergencia(df):
 # ==========================================
 st.title("📊 Fluxo Institucional (POC + VWAP + DELTA)")
 
-aba_radar, aba_individual = st.tabs(["📡 Radar Institucional (Delta)", "🔬 Raio-X Individual"])
+aba_radar, aba_individual, aba_volume = st.tabs(["📡 Radar Institucional (Delta)", "🔬 Raio-X Individual", "🕵️ Acumulação (OBV vs PVT)"])
 
 # ==========================================
 # ABA 1: RADAR INSTITUCIONAL (SCANNER)
@@ -225,3 +227,36 @@ with aba_individual:
                     * **Absorção (Alta):** Preço cai, mas Delta subiu. Institucionais segurando a queda limpando o book. 
                     * **Exaustão (Baixa):** Preço subiu, mas Delta caiu. O movimento está ficando sem combustível.
                 """)
+
+# ==========================================
+# ABA 3: COMPARATIVO OBV VS PVT
+# ==========================================
+with aba_volume:
+    st.subheader("🕵️ Rastreador de Acumulação e Distribuição")
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        v_ativo = st.selectbox("Selecione o Ativo:", options=lista_unificada, key="v_sel_ativo")
+        v_tempo = st.selectbox("Tempo Gráfico:", ['1d', '60m'], key="v_inst_t")
+        v_indicador = st.radio("Lupa de Volume:", ["OBV (On Balance Volume)", "PVT (Price Volume Trend)"])
+        v_btn = st.button("📊 Gerar Gráfico de Volume", use_container_width=True)
+
+    if v_btn:
+        with st.spinner("Sincronizando rastro de volume..."):
+            df_v = tv.get_hist(symbol=v_ativo, exchange='BMFBOVESPA', interval=tradutor_intervalo[v_tempo], n_bars=120)
+            if df_v is not None:
+                df_v.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
+                
+                # Cálculos de Volume
+                df_v['OBV'] = (df_v['Volume'] * np.where(df_v['Close'] > df_v['Close'].shift(1), 1, np.where(df_v['Close'] < df_v['Close'].shift(1), -1, 0))).cumsum()
+                df_v['PVT'] = (df_v['Volume'] * (df_v['Close'] - df_v['Close'].shift(1)) / df_v['Close'].shift(1)).cumsum()
+                
+                label = "OBV" if "OBV" in v_indicador else "PVT"
+                cor = "#00FFCC" if label == "OBV" else "#FFCC00"
+
+                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.6, 0.4])
+                fig.add_trace(go.Candlestick(x=df_v.index, open=df_v['Open'], high=df_v['High'], low=df_v['Low'], close=df_v['Close'], name="Preço"), row=1, col=1)
+                fig.add_trace(go.Scatter(x=df_v.index, y=df_v[label], name=label, line=dict(color=cor, width=2.5)), row=2, col=1)
+                fig.update_layout(height=500, template="plotly_dark", showlegend=False, xaxis_rangeslider_visible=False, margin=dict(t=10, b=10, l=10, r=10))
+                st.plotly_chart(fig, use_container_width=True)
+
+                st.info(f"💡 **Dica de Caçador:** Se o preço faz topos maiores mas o **{label}** faz topos menores, o tubarão está vendendo escondido (**Divergência de Baixa**).")
