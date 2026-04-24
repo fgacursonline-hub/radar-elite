@@ -4,3 +4,4 @@ pandas-ta
 tradingview-datafeed
 yfinance
 requests
+plotly
