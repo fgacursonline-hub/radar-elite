@@ -181,10 +181,25 @@ st.divider()
 st.subheader("🩸 Radar de Aluguel e Short Squeeze")
 st.markdown("Rastreie onde os institucionais estão apostando na queda e cace explosões de preço.")
 
+# 1. LISTA DE ATIVOS CADASTRADOS (Adicione ou remova tickers aqui conforme seu radar)
+ativos_cadastrados = [
+    "MGLU3", "PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", "ABEV3", 
+    "ITSA4", "WEGE3", "EMBR3", "CSNA3", "GGBR4", "LREN3", "RENT3", 
+    "SUZB3", "JBSS3", "BEEF3", "MRFG3", "BRFS3", "ASAI3", "CRFB3", 
+    "AZUL4", "COGN3", "BHIA3", "AMER3", "CVCB3", "PRIO3", "ELET3", "GOAU4"
+]
+ativos_cadastrados = sorted(ativos_cadastrados) # Organiza por ordem alfabética
+
 c1, c2 = st.columns([2, 1], vertical_alignment="bottom")
 
 with c1:
-    ativo_alvo = st.text_input("Digite o Ticker da B3 (Ex: PETR4, MGLU3):", value="MGLU3", max_chars=6, key="aluguel_ticker").strip().upper()
+    # Trocamos o campo de escrita pelo MENU de seleção
+    ativo_alvo = st.selectbox(
+        "Selecione o Ativo para Investigação:", 
+        options=ativos_cadastrados, 
+        index=ativos_cadastrados.index("MGLU3") if "MGLU3" in ativos_cadastrados else 0,
+        key="aluguel_ticker"
+    )
 
 with c2:
     btn_investigar = st.button("🔍 Investigar Posição Vendida", use_container_width=True, type="primary")
@@ -192,47 +207,40 @@ with c2:
 if btn_investigar and ativo_alvo:
     st.markdown(f"### 📊 Dossiê Institucional: {ativo_alvo}")
     
-    # Link com fragmento de texto para tentar rolar até a seção de aluguel
+    # Link com fragmento de texto (O tobogã que você testou e funcionou!)
     url_statusinvest = f"https://statusinvest.com.br/acoes/{ativo_alvo.lower()}#:~:text=ALUGUEL%20DE%20AÇÕES"
     
     col_info1, col_info2 = st.columns(2)
     
     with col_info1:
         st.info("#### 📉 Dados de Empréstimo B3")
-        st.markdown(f"Clique no botão abaixo e **role a página até o final** para encontrar o quadro verde de 'Aluguel de Ações'.")
+        st.markdown(f"Clique no botão abaixo e **role a página** para encontrar o quadro verde de 'Aluguel'.")
         st.link_button(f"🚀 Abrir Painel de {ativo_alvo}", url=url_statusinvest, use_container_width=True)
         
     with col_info2:
         st.error("#### 💣 Risco de Short Squeeze")
-        st.markdown("Analise a **Taxa do Tomador**. Se estiver subindo enquanto o preço rompe resistências, o 'aperto' nos vendidos começou.")
+        st.markdown("Foco na **Taxa do Tomador**. Se ela estiver subindo, o prejuízo dos vendidos está aumentando.")
         url_tv = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{ativo_alvo}"
         st.link_button(f"📈 Ver Gráfico Real-Time", url=url_tv, use_container_width=True)
 
     st.markdown("---")
-    st.markdown("### 🧠 Tabela Tática de Sentimento (Short Interest)")
+    st.markdown("### 🧠 Tabela Tática de Sentimento (O Rastro do Dinheiro)")
     
+    # Tabela Interpretativa
     st.markdown("""
     | Taxa do Tomador (A.A.) | Status do Aluguel | Sentimento Institucional | Ação do Caçador |
     | :--- | :--- | :--- | :--- |
-    | **0% a 2%** | **Normal** | Mercado em equilíbrio ou desinteresse. | Operar apenas pelo gráfico. |
-    | **2% a 7%** | **Atenção** | Institucionais montando posições de venda. | Cuidado com compras de topo. |
-    | **7% a 15%** | **Alerta Urso** | Pessimismo elevado. Muitos vendidos no ativo. | Monitorar suportes relevantes. |
-    | **Acima de 15%** | **BARRIL DE PÓLVORA** | Vendidos "espremidos" e pagando muito caro. | **Foco total em Short Squeeze (ALTA).** |
+    | **0% a 2%** | **Normal** | Mercado em equilíbrio. | Operar apenas pelo gráfico. |
+    | **2% a 7%** | **Atenção** | Grandes fundos montando venda. | Cuidado com compras de topo. |
+    | **7% a 15%** | **Alerta Urso** | Pessimismo elevado (Muitos vendidos). | Monitorar suportes para reversão. |
+    | **Acima de 15%** | **BARRIL DE PÓLVORA** | Vendidos desesperados (Pânico). | **FOCO EM COMPRA (Short Squeeze).** |
     """)
 
     st.warning("""
-    🚀 **O que é o Barril de Pólvora?** Não significa que a ação vai cair, mas sim que ela está **acumulando energia para uma subida violenta**. 
-    Os vendidos (quem aposta na queda) estão em uma situação de altíssimo risco. Se o preço subir um pouco, eles serão forçados a comprar tudo de volta, gerando um efeito dominó de alta chamado **Short Squeeze**.
+    🚀 **O que é o BARRIL DE PÓLVORA?**
+    Diferente do que muitos pensam, isso é **MUITO BOM para quem quer comprar**. 
+    
+    Significa que a ação está "carregada" de apostas na queda. Se o preço subir apenas um pouco, esses grandes fundos serão obrigados a **COMPRAR TUDO DE VOLTA** desesperadamente para não quebrarem. Essa compra forçada gera um "efeito manada" que faz a ação **SUBIR com violência extrema** (o Short Squeeze).
     """)
 
-    st.success(f"🎯 **Gatilho de Elite:** Se {ativo_alvo} estiver em 'Barril de Pólvora', não venda! Espere o preço romper uma resistência no gráfico e entre **comprando** para surfar o desespero dos grandes fundos.")
-    
-    with st.expander("📖 GUIA RÁPIDO: Como localizar o Aluguel?", expanded=True):
-        st.markdown(f"""
-        Para visualizar os dados de **{ativo_alvo}**, siga estes passos na página que abrirá:
-        
-        1. **Role a página** até quase o fim (após a seção de Dividendos e Comunicados).
-        2. Localize o quadro verde intitulado **'ALUGUEL DE AÇÕES DO {ativo_alvo}'**.
-        3. **Taxa do Tomador (Média):** Acima de 10% indica alto custo para os vendidos.
-        4. **Nº de Ações Alugadas:** Se este número estiver subindo, o 'exército' de ursos está crescendo.
-        """)
+    st.success(f"🎯 **Direção Provável:** Em caso de 'Barril de Pólvora', a mola está esticada. O rompimento de qualquer topo no gráfico de {ativo_alvo} pode gerar uma alta explosiva de 10% ou 20% em poucos dias.")
