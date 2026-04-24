@@ -69,7 +69,7 @@ def aplicar_fluxo_e_divergencia(df):
 # ==========================================
 st.title("📊 Fluxo Institucional (POC + VWAP + DELTA)")
 
-aba_radar, aba_individual, aba_volume = st.tabs(["📡 Radar Institucional (Delta)", "🔬 Raio-X Individual", "🕵️ Acumulação (OBV vs PVT)"])
+aba_radar, aba_individual, aba_volume = st.tabs(["📡 Radar Institucional (Delta)", "🔬 Raio-X Individual", "🕵️ Acumulação (OBV vs TPV)"])
 
 # ==========================================
 # ABA 1: RADAR INSTITUCIONAL (SCANNER)
@@ -229,7 +229,7 @@ with aba_individual:
                 """)
 
 # ==========================================
-# ABA 3: COMPARATIVO OBV VS PVT (COM DETECÇÃO)
+# ABA 3: COMPARATIVO OBV VS TPV (COM DETECÇÃO)
 # ==========================================
 with aba_volume:
     st.subheader("🕵️ Rastreador de Acumulação e Distribuição")
@@ -237,7 +237,7 @@ with aba_volume:
     with c1:
         v_ativo = st.selectbox("Selecione o Ativo:", options=lista_unificada, key="v_sel_ativo")
         v_tempo = st.selectbox("Tempo Gráfico:", ['1d', '60m'], key="v_inst_t")
-        v_indicador = st.radio("Lupa de Volume:", ["OBV (On Balance Volume)", "PVT (Price Volume Trend)"])
+        v_indicador = st.radio("Lupa de Volume:", ["OBV (On Balance Volume)", "TPV (Typical Price Volume)"])
         v_btn = st.button("📊 Gerar Gráfico de Volume", use_container_width=True)
 
     if v_btn:
@@ -246,11 +246,11 @@ with aba_volume:
             if df_v is not None:
                 df_v.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
                 
-                # Cálculos de Volume
+                # Cálculos de Volume (TPV padronizado)
                 df_v['OBV'] = (df_v['Volume'] * np.where(df_v['Close'] > df_v['Close'].shift(1), 1, np.where(df_v['Close'] < df_v['Close'].shift(1), -1, 0))).cumsum()
-                df_v['PVT'] = (df_v['Volume'] * (df_v['Close'] - df_v['Close'].shift(1)) / df_v['Close'].shift(1)).cumsum()
+                df_v['TPV'] = (df_v['Volume'] * (df_v['Close'] - df_v['Close'].shift(1)) / df_v['Close'].shift(1)).cumsum()
                 
-                label = "OBV" if "OBV" in v_indicador else "PVT"
+                label = "OBV" if "OBV" in v_indicador else "TPV"
                 cor = "#00FFCC" if label == "OBV" else "#FFCC00"
 
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.6, 0.4])
@@ -259,10 +259,9 @@ with aba_volume:
                 fig.update_layout(height=500, template="plotly_dark", showlegend=False, xaxis_rangeslider_visible=False, margin=dict(t=10, b=10, l=10, r=10))
                 st.plotly_chart(fig, use_container_width=True)
 
-                # --- DETECÇÃO AUTOMÁTICA DE DIVERGÊNCIA ---
+                # --- DETECÇÃO AUTOMÁTICA ---
                 st.subheader("🤖 Diagnóstico do Rastreador")
                 
-                # Comparação dos 2 últimos períodos
                 p_atual, p_anterior = df_v['Close'].iloc[-1], df_v['Close'].iloc[-2]
                 v_atual, v_anterior = df_v[label].iloc[-1], df_v[label].iloc[-2]
 
@@ -273,9 +272,9 @@ with aba_volume:
                 else:
                     st.success(f"✅ **Fluxo em Convergência:** O preço e o {label} estão se movendo na mesma direção. Movimento saudável e confirmado pelo volume.")
 
-                with st.expander("📝 Manual do Caçador: OBV vs PVT"):
+                with st.expander("📝 Manual do Caçador: OBV vs TPV"):
                     st.markdown(f"""
                     * **{label} Subindo + Preço de Lado:** Acumulação silenciosa. O estouro para cima está próximo.
                     * **{label} Caindo + Preço de Lado:** Distribuição institucional. Prepare-se para uma queda brusca.
-                    * **Dica:** Divergências no gráfico diário (1d) são muito mais poderosas do que no intraday (60m).
+                    * **Dica:** O **TPV** é mais proporcional que o **OBV**, filtrando falsos rompimentos com maior precisão matemática.
                     """)
