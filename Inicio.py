@@ -484,6 +484,22 @@ fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"}, height
 col_vazio1, col_gauge, col_vazio2 = st.columns([1, 2, 1])
 with col_gauge:
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    # ==========================================
+    # Cole isto logo ABAIXO da linha do st.plotly_chart
+    # ==========================================
+    
+st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
+with st.expander("📖 Como interpretar o Termômetro?", expanded=True):
+    st.markdown("""
+    O índice mede a emoção predominante em Wall Street. O dinheiro inteligente usa esses extremos para operar contra a manada:
+    
+    * 🩸 **0 a 25 (Pânico Extremo):** O mercado está em liquidação e o varejo está vendendo por desespero. Historicamente, é a zona de suporte máxima, onde os institucionais acumulam. **Foco em gatilhos de COMPRA.**
+    * 🔴 **25 a 45 (Medo):** A incerteza domina e os preços sofrem pressão vendedora. Tubarões começam a montar posições silenciosamente.
+    * 🟡 **45 a 55 (Neutro):** Mercado sem convicção clara, lateralizado. Momento de cautela e aguardo de novos diretores (notícias/balanços).
+    * 🟢 **55 a 75 (Ganância):** Otimismo e fluxo constante de capital entrando. Excelente momento para surfar rompimentos e tendências de alta.
+    * 🚀 **75 a 100 (Euforia Extrema):** O mercado descolou da realidade e o varejo está comprando topo agressivamente com medo de ficar de fora (FOMO). Zona de altíssimo risco de correção. **Foco em proteção de lucros ou gatilhos de VENDA.**
+    """)
 # ==========================================
 # 5. ARSENAL, INTELIGÊNCIA E LINKS ÚTEIS
 # ==========================================
