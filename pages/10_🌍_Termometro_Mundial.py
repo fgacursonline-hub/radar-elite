@@ -172,3 +172,51 @@ with col_gringo2:
         * **Gringo Vendendo + IBOV Subindo:** Armadilha (Varejo puxando sozinho).
         * *Atenção:* Os dados da B3 possuem um atraso estrutural de **D+2**.
         """)
+
+# ==========================================
+# 🩸 RADAR DE ALUGUEL E SHORT SQUEEZE
+# ==========================================
+st.divider()
+st.subheader("🩸 Radar de Aluguel e Short Squeeze")
+st.markdown("Rastreie onde os institucionais estão apostando na queda e cace explosões de preço.")
+
+c1, c2 = st.columns([2, 1], vertical_alignment="bottom")
+
+with c1:
+    # Adicionei um 'key' para o Streamlit não confundir com outros campos de texto
+    ativo_alvo = st.text_input("Digite o Ticker da B3 (Ex: PETR4, MGLU3, VALE3):", value="MGLU3", max_chars=6, key="aluguel_ticker").strip().upper()
+
+with c2:
+    btn_investigar = st.button("🔍 Investigar Posição Vendida", use_container_width=True, type="primary")
+
+if btn_investigar and ativo_alvo:
+    st.markdown(f"### 📊 Dossiê Institucional: {ativo_alvo}")
+    
+    # Cria os links dinâmicos para contornar o bloqueio de raspagem
+    url_statusinvest = f"https://statusinvest.com.br/acoes/{ativo_alvo.lower()}"
+    
+    col_info1, col_info2 = st.columns(2)
+    
+    with col_info1:
+        st.info("#### 📉 Dados de Empréstimo B3")
+        st.markdown("Verifique a taxa cobrada para alugar a ação e o total de contratos abertos. Uma taxa explodindo indica que está faltando ação no mercado (sinal de alerta para Short Squeeze).")
+        # O botão leva o caçador direto para a seção de aluguel daquela ação específica
+        st.link_button(f"📊 Ver Taxas de Aluguel de {ativo_alvo}", url=url_statusinvest, use_container_width=True)
+        
+    with col_info2:
+        st.error("#### 💣 Risco de Short Squeeze")
+        st.markdown("Se a ação estiver subindo forte no gráfico e a Taxa de Aluguel (Tomador) estiver acima de **10% ao ano**, os institucionais estão perdendo dinheiro e serão forçados a comprar.")
+        # Link para o gráfico limpo no TradingView para checar o movimento de preço
+        url_tv = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{ativo_alvo}"
+        st.link_button(f"📈 Checar Gráfico de {ativo_alvo}", url=url_tv, use_container_width=True)
+
+    st.divider()
+    
+    with st.expander("📖 Manual do Caçador: Como ler os dados de Aluguel?", expanded=True):
+        st.markdown("""
+        Ao clicar no botão de dados, role até a sessão **"Empréstimo de ativos"** e analise 3 fatores:
+        
+        1. **Taxa do Tomador (A.A.):** É o "juro" que o fundo está pagando para apostar na queda. Taxas normais ficam entre 0,1% e 2%. Se você vir taxas de **10%, 20% ou 50%**, significa que "acabou o estoque" de ações. É um barril de pólvora pronto para explodir.
+        2. **Volume de Contratos:** Se a quantidade de ações alugadas aumentou 30% em uma semana, uma forte pressão vendedora institucional acabou de entrar. Cuidado ao comprar.
+        3. **O Descolamento:** O momento perfeito do *Short Squeeze* ocorre quando o Volume de Contratos está nas máximas, a Taxa do Tomador está altíssima, e o preço no gráfico rompe uma resistência para **CIMA**. É a senha para entrar comprando e surfar o desespero dos fundos.
+        """)
