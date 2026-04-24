@@ -194,7 +194,8 @@ if btn_investigar and ativo_alvo:
     
     # Cria os links dinâmicos para contornar o bloqueio de raspagem
     
-    url_statusinvest = "https://statusinvest.com.br/acoes/aluguel"
+    # O '#rentals-section' força o navegador a abrir a página já lá embaixo, na tabela de aluguel
+    url_statusinvest = f"https://statusinvest.com.br/acoes/{ativo_alvo.lower()}#rentals-section"
     
     col_info1, col_info2 = st.columns(2)
     
