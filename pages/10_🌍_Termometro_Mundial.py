@@ -183,8 +183,7 @@ st.markdown("Rastreie onde os institucionais estão apostando na queda e cace ex
 c1, c2 = st.columns([2, 1], vertical_alignment="bottom")
 
 with c1:
-    # Adicionei um 'key' para o Streamlit não confundir com outros campos de texto
-    ativo_alvo = st.text_input("Digite o Ticker da B3 (Ex: PETR4, MGLU3, VALE3):", value="MGLU3", max_chars=6, key="aluguel_ticker").strip().upper()
+    ativo_alvo = st.text_input("Digite o Ticker da B3 (Ex: PETR4, MGLU3):", value="MGLU3", max_chars=6, key="aluguel_ticker").strip().upper()
 
 with c2:
     btn_investigar = st.button("🔍 Investigar Posição Vendida", use_container_width=True, type="primary")
@@ -192,33 +191,29 @@ with c2:
 if btn_investigar and ativo_alvo:
     st.markdown(f"### 📊 Dossiê Institucional: {ativo_alvo}")
     
-    # Cria os links dinâmicos para contornar o bloqueio de raspagem
-    
-    # O '#rentals-section' força o navegador a abrir a página já lá embaixo, na tabela de aluguel
-    url_statusinvest = f"https://statusinvest.com.br/acoes/{ativo_alvo.lower()}#rentals-section"
+    url_statusinvest = f"https://statusinvest.com.br/acoes/{ativo_alvo.lower()}"
     
     col_info1, col_info2 = st.columns(2)
     
     with col_info1:
         st.info("#### 📉 Dados de Empréstimo B3")
-        st.markdown("Verifique a taxa cobrada para alugar a ação e o total de contratos abertos. Uma taxa explodindo indica que está faltando ação no mercado (sinal de alerta para Short Squeeze).")
-        # O botão leva o caçador direto para a seção de aluguel daquela ação específica
-        st.link_button(f"📊 Ver Taxas de Aluguel de {ativo_alvo}", url=url_statusinvest, use_container_width=True)
+        st.markdown(f"Clique no botão abaixo e **role a página até o final** para encontrar o quadro verde de 'Aluguel de Ações'.")
+        st.link_button(f"🚀 Abrir Painel de {ativo_alvo}", url=url_statusinvest, use_container_width=True)
         
     with col_info2:
         st.error("#### 💣 Risco de Short Squeeze")
-        st.markdown("Se a ação estiver subindo forte no gráfico e a Taxa de Aluguel (Tomador) estiver acima de **10% ao ano**, os institucionais estão perdendo dinheiro e serão forçados a comprar.")
-        # Link para o gráfico limpo no TradingView para checar o movimento de preço
+        st.markdown("Analise a **Taxa do Tomador**. Se estiver subindo enquanto o preço rompe resistências, o 'aperto' nos vendidos começou.")
         url_tv = f"https://br.tradingview.com/chart/?symbol=BMFBOVESPA%3A{ativo_alvo}"
-        st.link_button(f"📈 Checar Gráfico de {ativo_alvo}", url=url_tv, use_container_width=True)
+        st.link_button(f"📈 Ver Gráfico Real-Time", url=url_tv, use_container_width=True)
 
     st.divider()
     
-    with st.expander("📖 Manual do Caçador: Como ler os dados de Aluguel?", expanded=True):
-        st.markdown("""
-        Ao clicar no botão de dados, role até a sessão **"Empréstimo de ativos"** e analise 3 fatores:
+    with st.expander("📖 GUIA RÁPIDO: Como localizar o Aluguel?", expanded=True):
+        st.markdown(f"""
+        Para visualizar os dados de **{ativo_alvo}**, siga estes passos na página que abrirá:
         
-        1. **Taxa do Tomador (A.A.):** É o "juro" que o fundo está pagando para apostar na queda. Taxas normais ficam entre 0,1% e 2%. Se você vir taxas de **10%, 20% ou 50%**, significa que "acabou o estoque" de ações. É um barril de pólvora pronto para explodir.
-        2. **Volume de Contratos:** Se a quantidade de ações alugadas aumentou 30% em uma semana, uma forte pressão vendedora institucional acabou de entrar. Cuidado ao comprar.
-        3. **O Descolamento:** O momento perfeito do *Short Squeeze* ocorre quando o Volume de Contratos está nas máximas, a Taxa do Tomador está altíssima, e o preço no gráfico rompe uma resistência para **CIMA**. É a senha para entrar comprando e surfar o desespero dos fundos.
+        1. **Role a página** até quase o fim (após a seção de Dividendos e Comunicados).
+        2. Localize o quadro verde intitulado **'ALUGUEL DE AÇÕES DO {ativo_alvo}'**.
+        3. **Taxa do Tomador (Média):** Acima de 10% indica alto custo para os vendidos.
+        4. **Nº de Ações Alugadas:** Se este número estiver subindo, o 'exército' de ursos está crescendo.
         """)
