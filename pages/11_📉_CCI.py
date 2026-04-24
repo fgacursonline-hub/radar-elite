@@ -2,7 +2,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
 import numpy as np
 import warnings
 import sys
@@ -38,34 +37,49 @@ st.markdown("Identifique força direcional, reversões e momentum explosivo com 
 aba_radar, aba_individual = st.tabs(["🌐 Radar Global (Scanner & Top 20)", "🔬 Raio-X Individual (Backtest)"])
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO (CCI E ESTRATÉGIAS)
+# 3. MOTOR MATEMÁTICO BLINDADO (CCI)
 # ==========================================
 def calcular_cci(df, periodo=14, limite=100, estrategia="Cruzamento da Linha Zero"):
     if df.empty or len(df) < periodo: return pd.DataFrame()
+    
+    # Limpeza de cabeçalhos duplos do Yahoo Finance
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
+    df = df.loc[:, ~df.columns.duplicated()].copy()
     df.index = df.index.tz_localize(None)
     
-    # Cálculo do CCI via pandas_ta
-    cci_series = df.ta.cci(length=periodo)
-    if cci_series is None: return pd.DataFrame()
-    df['CCI'] = cci_series
+    # Matemática Pura do CCI (Blindada contra falhas de bibliotecas)
+    tp = (df['High'] + df['Low'] + df['Close']) / 3.0
+    sma = tp.rolling(window=periodo).mean()
+    
+    def mad(x):
+        return np.mean(np.abs(x - np.mean(x)))
+        
+    mad_roll = tp.rolling(window=periodo).apply(mad, raw=True)
+    mad_roll = mad_roll.replace(0, np.nan) # Evita divisão por zero
+    
+    df['CCI'] = (tp - sma) / (0.015 * mad_roll)
+    
+    # O Segredo: Dropa os NaNs APENAS do indicador, salvando o histórico da ação
+    df.dropna(subset=['CCI'], inplace=True)
+    
+    df['Cruzou_Compra'] = False
+    df['Cruzou_Venda'] = False
     
     # Roteamento de Estratégias
-    if "Cruzamento da Linha Zero" in estrategia:
+    if "Linha Zero" in estrategia or "2" in estrategia:
         df['Cruzou_Compra'] = (df['CCI'].shift(1) <= 0) & (df['CCI'] > 0)
         df['Cruzou_Venda'] = (df['CCI'].shift(1) >= 0) & (df['CCI'] < 0)
         
-    elif "Saindo dos Extremos" in estrategia:
+    elif "Saindo" in estrategia or "1" in estrategia:
         df['Cruzou_Compra'] = (df['CCI'].shift(1) <= -limite) & (df['CCI'] > -limite)
         df['Cruzou_Venda'] = (df['CCI'].shift(1) >= limite) & (df['CCI'] < limite)
         
-    elif "Entrando nos Extremos" in estrategia:
+    elif "Entrando" in estrategia or "3" in estrategia:
         df['Cruzou_Compra'] = (df['CCI'].shift(1) <= limite) & (df['CCI'] > limite)
-        # O pulo do gato: Sai da operação se perder a força direcional (voltar para dentro do canal)
         df['Cruzou_Venda'] = (df['CCI'].shift(1) >= limite) & (df['CCI'] < limite)
         
-    return df.dropna()
+    return df
 
 def renderizar_grafico_tv(symbol):
     html_code = f"""
@@ -95,11 +109,11 @@ def renderizar_grafico_tv(symbol):
     components.html(html_code, height=600)
 
 def exibir_explicacao_estrategia(estrategia):
-    if "Cruzamento da Linha Zero" in estrategia:
+    if "Linha Zero" in estrategia:
         st.info("🧭 **Direcional:** Compra quando o CCI cruza a Linha Zero para CIMA. Sai da operação se perder a Linha Zero ou bater no Alvo.")
-    elif "Saindo dos Extremos" in estrategia:
+    elif "Saindo" in estrategia:
         st.info("🎣 **Reversão Clássica:** Compra quando o CCI foge da sobrevenda (fura os -100 para CIMA). Sai da operação se bater lá no teto (+100 e cair) ou bater no Alvo.")
-    elif "Entrando nos Extremos" in estrategia:
+    elif "Entrando" in estrategia:
         st.info("🚀 **Momentum Explosivo:** Compra na explosão de força (quando rompe os +100 para CIMA). Sai rápido se perder os +100 para baixo (fim do combustível) ou bater no Alvo.")
 
 # ==========================================
@@ -121,7 +135,6 @@ with aba_radar:
             tempo_grafico_global = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="tmp_global")
             int_global = "1d" if "1d" in tempo_grafico_global else "1wk"
         with col_f4:
-            # NOVO CAMPO: O usuário agora domina o horizonte temporal da estatística Global
             periodo_busca_g = st.selectbox("Período de Busca:", ["1 Ano", "2 Anos", "5 Anos", "Máximo"], index=2, key="per_busca_g")
             
         exibir_explicacao_estrategia(estrategia_g)
@@ -159,10 +172,9 @@ with aba_radar:
             s_text.text(f"Mapeando Canais: {ativo} ({i+1}/{len(ativos_alvo)})")
             p_bar.progress((i + 1) / len(ativos_alvo))
             try:
-                # Agora puxa o histórico dinâmico baseado na escolha do usuário
                 df = yf.download(f"{ativo}.SA", period=mapa_per_g[periodo_busca_g], interval=int_global, progress=False)
                 df = calcular_cci(df, periodo=periodo_g, limite=limite_g, estrategia=estrategia_g)
-                if df.empty: continue
+                if df is None or df.empty: continue
                 
                 trade_aberto = None
                 trades_fechados = []
@@ -203,7 +215,8 @@ with aba_radar:
                     pior_dd = min(t['pior_queda'] for t in trades_fechados)
                     investimento = capital_trade_global * total_trades
                     historico.append({"Ativo": ativo, "Trades": total_trades, "Pior Queda": pior_dd, "Investimento": investimento, "Lucro R$": lucro_total, "Resultado": lucro_total / investimento if investimento > 0 else 0})
-            except: pass
+            except Exception as e: 
+                pass
         
         p_bar.empty(); s_text.empty()
         
@@ -230,6 +243,8 @@ with aba_radar:
             df_hist['Pior Queda'] = df_hist['Pior Queda'].apply(lambda x: f"{x*100:.2f}%")
             df_hist['Investimento'] = df_hist['Investimento'].apply(lambda x: f"R$ {x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
             st.dataframe(df_hist.style.format({'Lucro R$': "R$ {:,.2f}", 'Resultado': "{:.2%}"}).map(lambda val: f"color: {'#00FFCC' if val > 0 else '#FF4D4D'}" if isinstance(val, str) else '', subset=['Lucro R$', 'Resultado']), use_container_width=True, hide_index=True)
+        else:
+            st.warning("⚠️ Nenhum trade encontrado nos últimos 5 anos. Tente relaxar os filtros de alvo/stop ou mude a estratégia.")
 
 # ==========================================
 # ABA 2: RAIO-X INDIVIDUAL (O LABORATÓRIO)
@@ -237,20 +252,19 @@ with aba_radar:
 with aba_individual:
     with st.container(border=True):
         st.markdown("**1. Setup e Capital**")
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3 = st.columns(3)
         with c1:
             ativo_rx = st.selectbox("Ativo (Ex: TSLA34):", ativos_para_rastrear, key="rx_ativo")
-        with c2:
             estrategia_rx = st.selectbox("Estratégia Operacional CCI:", [
                 "1 - Saindo dos Extremos (Reversão Clássica)", 
                 "2 - Cruzamento da Linha Zero (Direcional)", 
                 "3 - Entrando nos Extremos (Momentum/Força)"
             ], key="est_rx")
-        with c3:
+        with c2:
             periodo_rx = st.selectbox("Período de Estudo:", ["1 Ano", "2 Anos", "5 Anos", "Máximo"], key="rx_per", index=2)
-            tempo_rx = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="rx_tmp")
-        with c4:
             capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
+        with c3:
+            tempo_rx = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="rx_tmp")
             
         exibir_explicacao_estrategia(estrategia_rx)
             
@@ -273,7 +287,7 @@ with aba_individual:
             df_ativo = yf.download(f"{ativo_rx}.SA", period=mapa_per[periodo_rx], interval="1d" if "1d" in tempo_rx else "1wk", progress=False)
             df_ativo = calcular_cci(df_ativo, periodo=periodo_cci_rx, limite=limite_rx, estrategia=estrategia_rx)
             
-            if not df_ativo.empty:
+            if df_ativo is not None and not df_ativo.empty:
                 alvo_pct = alvo_rx / 100.0
                 stop_pct = stop_rx / 100.0
                 trades_fechados = []
@@ -348,4 +362,4 @@ with aba_individual:
                 renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
                 st.info("💡 **Dica:** No gráfico acima, clique em 'Indicadores' e adicione o 'Commodity Channel Index' para visualizar as linhas zero e os limites 100/-100.")
             else:
-                st.error("Sem dados suficientes para calcular o CCI.")
+                st.error("Falha na coleta de dados ou histórico insuficiente para calcular o CCI.")
