@@ -37,7 +37,7 @@ st.title("🎯 Máquina Quantitativa: TPV (Tendência Preço/Volume)")
 aba_radar, aba_individual = st.tabs(["🌐 Radar Global (Scanner & Top 20)", "🔬 Raio-X Individual (Backtest)"])
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO (FUNÇÕES)
+# 3. MOTOR MATEMÁTICO E FUNÇÕES GLOBAIS
 # ==========================================
 def calcular_tpv(df):
     if df.empty or len(df) < 60: return pd.DataFrame()
@@ -51,6 +51,33 @@ def calcular_tpv(df):
     df['Cruzou_Compra'] = (df['TPV'].shift(1) <= df['TPV_MA55'].shift(1)) & (df['TPV'] > df['TPV_MA55'])
     df['Cruzou_Venda'] = (df['TPV'].shift(1) >= df['TPV_MA55'].shift(1)) & (df['TPV'] < df['TPV_MA55'])
     return df.dropna()
+
+def renderizar_grafico_tv(symbol):
+    html_code = f"""
+    <div class="tradingview-widget-container">
+      <div id="tv_chart_{symbol.replace(':', '')}" style="height: 600px; width: 100%;"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+      <script type="text/javascript">
+      new TradingView.widget(
+      {{
+      "autosize": true,
+      "symbol": "{symbol}",
+      "interval": "D",
+      "timezone": "America/Sao_Paulo",
+      "theme": "dark",
+      "style": "1",
+      "locale": "br",
+      "enable_publishing": false,
+      "hide_top_toolbar": false,
+      "hide_legend": false,
+      "save_image": false,
+      "container_id": "tv_chart_{symbol.replace(':', '')}"
+    }}
+      );
+      </script>
+    </div>
+    """
+    components.html(html_code, height=600)
 
 # ==========================================
 # ABA 1: RADAR GLOBAL (SCANNER + TOP 20)
@@ -123,13 +150,11 @@ with aba_radar:
                             trades_fechados.append({'lucro_rs': lucro_rs, 'pior_queda': trade_aberto['pior_queda']})
                             trade_aberto = None
                 
-                # Trata operação em andamento
                 if trade_aberto is not None:
                     dias = (datetime.now().date() - trade_aberto['entrada_data'].date()).days
                     resultado = (df['Close'].iloc[-1] / trade_aberto['entrada_preco']) - 1
                     andamento.append({"Ativo": ativo, "Entrada": trade_aberto['entrada_data'].strftime("%d/%m/%Y"), "Dias": dias, "PM": trade_aberto['entrada_preco'], "Cotação Atual": df['Close'].iloc[-1], "Proj. Máx": trade_aberto['pior_queda'], "Resultado Atual": resultado})
                 
-                # Agrega para o Top 20
                 if trades_fechados:
                     total_trades = len(trades_fechados)
                     lucro_total = sum(t['lucro_rs'] for t in trades_fechados)
@@ -143,7 +168,6 @@ with aba_radar:
         
         p_bar.empty(); s_text.empty()
         
-        # 1. OPORTUNIDADES
         st.subheader("🚀 Oportunidades Hoje (Sinal Ativo)")
         if oportunidades:
             df_op = pd.DataFrame(oportunidades)
@@ -151,7 +175,6 @@ with aba_radar:
             st.dataframe(df_op, use_container_width=True, hide_index=True)
         else: st.info("Nenhum ativo disparou sinal de entrada no pregão atual.")
 
-        # 2. EM ANDAMENTO
         st.subheader("⏳ Operações em Andamento (Aguardando Alvo/Venda)")
         if andamento:
             df_and = pd.DataFrame(andamento)
@@ -161,7 +184,6 @@ with aba_radar:
             st.dataframe(df_and.style.format({'Resultado Atual': "{:.2%}"}).map(lambda val: f"color: {'#00FFCC' if val > 0 else '#FF4D4D'}; font-weight: bold" if isinstance(val, float) else '', subset=['Resultado Atual']), use_container_width=True, hide_index=True)
         else: st.info("Nenhuma operação em aberto no momento.")
 
-        # 3. BACKTEST (TOP 20)
         st.subheader("📊 Top 20 Histórico (Melhores Ativos do Setup)")
         if historico:
             df_hist = pd.DataFrame(historico).sort_values(by="Lucro R$", ascending=False).head(20)
@@ -255,7 +277,7 @@ with aba_individual:
                             })
                             em_aberto = None
 
-                # 1. STATUS ATUAL
+                # STATUS ATUAL
                 if em_aberto is not None:
                     st.info(f"⏳ **{ativo_rx}: Em Operação** (Posicionado desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
                 else:
@@ -266,7 +288,7 @@ with aba_individual:
 
                 st.markdown(f"### 📊 Resultado Consolidado: {ativo_rx}")
                 
-                # 2. MÉTRICAS ESTATÍSTICAS
+                # MÉTRICAS ESTATÍSTICAS
                 if trades_fechados:
                     df_trades = pd.DataFrame(trades_fechados)
                     lucro_total = df_trades['Lucro (R$)'].sum()
@@ -279,7 +301,6 @@ with aba_individual:
                     m3.metric("Operações Fechadas", len(df_trades))
                     m4.metric("Pior Queda", f"{pior_queda_hist*100:.2f}%")
                     
-                    # 3. TABELA DE HISTÓRICO
                     st.markdown("<br>", unsafe_allow_html=True)
                     df_show = df_trades.copy()
                     df_show['Lucro (R$)'] = df_show['Lucro (R$)'].apply(lambda x: f"R$ {x:.2f}")
@@ -294,32 +315,10 @@ with aba_individual:
                 else:
                     st.warning("Nenhuma operação concluída no período selecionado para este ativo.")
 
-                # 4. GRÁFICO INTERATIVO TRADINGVIEW
-                st.markdown("---")
+                # --- GRÁFICO INTERATIVO INSERIDO AQUI ---
+                st.divider()
                 st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
+                renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
                 
-                # ALTURA AUMENTADA PARA 700PX
-                html_tv = f"""
-                <div class="tradingview-widget-container" style="height:700px;width:100%">
-                  <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%"></div>
-                  <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
-                  {{
-                  "autosize": true,
-                  "symbol": "BMFBOVESPA:{ativo_rx}",
-                  "interval": "D",
-                  "timezone": "America/Sao_Paulo",
-                  "theme": "dark",
-                  "style": "1",
-                  "locale": "br",
-                  "enable_publishing": false,
-                  "hide_top_toolbar": false,
-                  "hide_legend": false,
-                  "save_image": false,
-                  "container_id": "tradingview_rx"
-                }}
-                  </script>
-                </div>
-                """
-                components.html(html_tv, height=700)
             else:
                 st.error("Sem dados suficientes para gerar o backtest deste ativo.")
