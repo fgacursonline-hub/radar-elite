@@ -1,8 +1,9 @@
 import streamlit as st
+from tvDatafeed import TvDatafeed, Interval
 import streamlit.components.v1 as components
-import yfinance as yf
 import pandas as pd
 import numpy as np
+import time
 import warnings
 import sys
 import os
@@ -23,13 +24,33 @@ except ImportError:
 ativos_para_rastrear = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
 
 # ==========================================
-# 2. CONFIGURAÇÃO DA PÁGINA
+# 2. CONFIGURAÇÃO DA PÁGINA & TVDATAFEED
 # ==========================================
 st.set_page_config(page_title="Radar TPV Elite", layout="wide", page_icon="🎯")
 
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, faça login na página inicial (Home).")
     st.stop()
+
+# Conexão com o TradingView
+@st.cache_resource
+def get_tv_connection():
+    return TvDatafeed()
+
+tv = get_tv_connection()
+
+tradutor_periodo_nome = {
+    '1mo': '1 Mês', '3mo': '3 Meses', '6mo': '6 Meses',
+    '1y': '1 Ano', '2y': '2 Anos', '5y': '5 Anos',
+    'max': 'Máximo', '60d': '60 Dias'
+}
+
+tradutor_intervalo = {
+    '15m': Interval.in_15_minute,
+    '60m': Interval.in_1_hour,
+    '1d': Interval.in_daily,
+    '1wk': Interval.in_weekly
+}
 
 st.title("🎯 Máquina Quantitativa: TPV (Tendência Preço/Volume)")
 
@@ -41,9 +62,6 @@ aba_radar, aba_individual = st.tabs(["🌐 Radar Global (Scanner & Top 20)", "�
 # ==========================================
 def calcular_tpv(df, ma_period):
     if df.empty or len(df) < ma_period: return pd.DataFrame()
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    df.index = df.index.tz_localize(None)
     
     df['Retorno'] = df['Close'].pct_change()
     df['TPV'] = (df['Volume'] * df['Retorno']).cumsum()
@@ -80,6 +98,9 @@ def renderizar_grafico_tv(symbol):
     """
     components.html(html_code, height=600)
 
+def exibir_explicacao_estrategia():
+    st.info("📊 **A Estratégia TPV (Tendência Preço/Volume):** Este indicador acumula o volume financeiro multiplicado pelo retorno percentual, medindo o verdadeiro fluxo de dinheiro. \n\n🟢 **Gatilho de Compra:** Ocorre quando a linha do TPV cruza sua Média Móvel para CIMA (fluxo comprador forte). \n\n🔴 **Gatilho de Venda/Saída:** Ocorre quando atinge o Alvo/Stop definido ou quando o TPV cruza a Média para BAIXO.")
+
 # ==========================================
 # ABA 1: RADAR GLOBAL (SCANNER + TOP 20)
 # ==========================================
@@ -87,19 +108,28 @@ with aba_radar:
     st.markdown("Varredura completa buscando ativos dando entrada agora e o ranking histórico do setup.")
     
     with st.container(border=True):
-        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+        st.markdown("**1. Parâmetros Operacionais**")
+        col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
             lista_selecionada = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"])
-            capital_trade_global = st.number_input("Capital por Trade (R$):", value=10000.00, step=1000.00, key="cap_global")
         with col_f2:
-            tempo_grafico_global = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="tmp_global")
-            int_global = "1d" if "1d" in tempo_grafico_global else "1wk"
+            tempo_grafico_global = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="tmp_global")
+        with col_f3:
+            periodo_busca_g = st.selectbox("Período de Busca:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=4, key="per_busca_g")
+
+        exibir_explicacao_estrategia()
+        
+        st.markdown("**2. Calibração e Gestão de Risco**")
+        col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+        with col_p1:
             periodo_ma_g = st.number_input("Média do TPV:", value=55, step=1, key="ma_global")
             st.caption("⚠️ Recomendado: 55 (Setup Original)")
-        with col_f3:
+        with col_p2:
+            capital_trade_global = st.number_input("Capital por Trade (R$):", value=10000.00, step=1000.00, key="cap_global")
+        with col_p3:
             usar_alvo_g = st.toggle("🎯 Habilitar Alvo (Gain)", value=True, key="tg_alvo_g")
             alvo_pct_g = st.number_input("Alvo (%):", value=5.00, step=0.50, key="val_alvo_g", disabled=not usar_alvo_g) / 100.0
-        with col_f4:
+        with col_p4:
             usar_stop_g = st.toggle("🛡️ Habilitar Stop Loss", value=False, key="tg_stop_g")
             stop_pct_g = st.number_input("Stop (%):", value=3.00, step=0.50, key="val_stop_g", disabled=not usar_stop_g) / 100.0
 
@@ -108,20 +138,40 @@ with aba_radar:
     else: ativos_alvo = bdrs_elite + ibrx_selecao
     ativos_alvo = sorted(list(set([a.replace('.SA', '') for a in ativos_alvo])))
 
-    btn_iniciar_global = st.button("🚀 Iniciar Varredura Global", type="primary", use_container_width=True)
+    btn_iniciar_global = st.button("🚀 Iniciar Varredura Global (tvDatafeed)", type="primary", use_container_width=True)
 
     if btn_iniciar_global:
+        intervalo_tv = tradutor_intervalo.get(tempo_grafico_global, Interval.in_daily)
+        
         oportunidades, andamento, historico = [], [], []
         p_bar = st.progress(0)
         s_text = st.empty()
         
         for i, ativo in enumerate(ativos_alvo):
-            s_text.text(f"Varrendo: {ativo} ({i+1}/{len(ativos_alvo)})")
+            s_text.text(f"Varrendo via TV: {ativo} ({i+1}/{len(ativos_alvo)})")
             p_bar.progress((i + 1) / len(ativos_alvo))
             try:
-                df = yf.download(f"{ativo}.SA", period="2y", interval=int_global, progress=False)
-                df = calcular_tpv(df, periodo_ma_g)
-                if df.empty: continue
+                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                if df_full is None or len(df_full) < 50: continue
+
+                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
+                df_full = df_full.dropna()
+                
+                df_full = calcular_tpv(df_full, periodo_ma_g)
+                if df_full.empty: continue
+                
+                # Corte de datas
+                data_atual = df_full.index[-1]
+                if periodo_busca_g == '1mo': data_corte = data_atual - pd.DateOffset(months=1)
+                elif periodo_busca_g == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
+                elif periodo_busca_g == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
+                elif periodo_busca_g == '1y': data_corte = data_atual - pd.DateOffset(years=1)
+                elif periodo_busca_g == '2y': data_corte = data_atual - pd.DateOffset(years=2)
+                elif periodo_busca_g == '5y': data_corte = data_atual - pd.DateOffset(years=5)
+                else: data_corte = df_full.index[0]
+                
+                df = df_full[df_full.index >= data_corte].copy()
+                if len(df) == 0: continue
                 
                 trade_aberto = None
                 trades_fechados = []
@@ -168,7 +218,9 @@ with aba_radar:
                         "Ativo": ativo, "Trades": total_trades, "Pior Queda": pior_dd,
                         "Investimento": investimento, "Lucro R$": lucro_total, "Resultado": lucro_total / investimento if investimento > 0 else 0
                     })
-            except: pass
+            except Exception as e: 
+                pass
+            time.sleep(0.05)
         
         p_bar.empty(); s_text.empty()
         
@@ -199,6 +251,8 @@ with aba_radar:
                 return f"color: {'#00FFCC' if val > 0 else '#FF4D4D'}"
 
             st.dataframe(df_hist.style.format({'Lucro R$': "R$ {:,.2f}", 'Resultado': "{:.2%}"}).map(color_lucro, subset=['Lucro R$', 'Resultado']), use_container_width=True, hide_index=True)
+        else:
+            st.warning("Nenhum histórico encontrado com a calibração selecionada.")
 
 # ==========================================
 # ABA 2: RAIO-X INDIVIDUAL (O LABORATÓRIO)
@@ -211,10 +265,10 @@ with aba_individual:
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             ativo_rx = st.selectbox("Ativo (Ex: TSLA34):", ativos_para_rastrear, key="rx_ativo")
-            periodo_rx = st.selectbox("Período de Estudo:", ["1 Ano", "2 Anos", "5 Anos", "Máximo"], key="rx_per", index=1)
+            periodo_rx = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=4, key="rx_per")
         with c2:
             capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
-            tempo_rx = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="rx_tmp")
+            tempo_rx = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="rx_tmp")
         with c3:
             usar_alvo_rx = st.toggle("🎯 Habilitar Alvo", value=True, key="tg_alvo_rx")
             alvo_rx = st.number_input("Alvo (%):", value=5.00, step=0.50, key="rx_alvo", disabled=not usar_alvo_rx)
@@ -222,6 +276,8 @@ with aba_individual:
             usar_stop_rx = st.toggle("🛡️ Habilitar Stop Loss", value=False, key="tg_stop_rx")
             stop_rx = st.number_input("Stop Loss (%):", value=3.00, step=0.50, key="rx_stop", disabled=not usar_stop_rx)
             
+        exibir_explicacao_estrategia()
+        
         st.divider()
         col_m1, col_m2 = st.columns([1, 3], vertical_alignment="center")
         with col_m1:
@@ -231,101 +287,122 @@ with aba_individual:
     btn_rx = st.button("🔍 Rodar Análise Completa", type="primary", use_container_width=True)
     
     if btn_rx:
-        with st.spinner(f"Dissecando o histórico de {ativo_rx} com Média de {periodo_ma_rx}..."):
-            mapa_per = {"1 Ano": "1y", "2 Anos": "2y", "5 Anos": "5y", "Máximo": "max"}
-            df_ativo = yf.download(f"{ativo_rx}.SA", period=mapa_per[periodo_rx], interval="1d" if "1d" in tempo_rx else "1wk", progress=False)
-            df_ativo = calcular_tpv(df_ativo, periodo_ma_rx)
-            
-            if not df_ativo.empty:
-                alvo_pct = alvo_rx / 100.0
-                stop_pct = stop_rx / 100.0
-                trades_fechados = []
-                em_aberto = None
+        intervalo_tv_rx = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
+        with st.spinner(f"Dissecando o histórico de {ativo_rx} com Média de {periodo_ma_rx} via tvDatafeed..."):
+            try:
+                df_full = tv.get_hist(symbol=ativo_rx.replace('.SA', ''), exchange='BMFBOVESPA', interval=intervalo_tv_rx, n_bars=5000)
                 
-                for i in range(len(df_ativo)):
-                    linha = df_ativo.iloc[i]
-                    data = df_ativo.index[i]
+                if df_full is not None and len(df_full) > 50:
+                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
+                    df_full = df_full.dropna()
                     
-                    if em_aberto is None:
-                        if linha['Cruzou_Compra']:
-                            em_aberto = {'entrada_data': data, 'entrada_preco': linha['Close'], 'pico': linha['Close'], 'pior_queda': 0.0}
-                    else:
-                        if linha['High'] > em_aberto['pico']: em_aberto['pico'] = linha['High']
-                        dd = (linha['Low'] / em_aberto['pico']) - 1
-                        if dd < em_aberto['pior_queda']: em_aberto['pior_queda'] = dd
+                    df_full = calcular_tpv(df_full, periodo_ma_rx)
+                    
+                    data_atual = df_full.index[-1]
+                    if periodo_rx == '1mo': data_corte = data_atual - pd.DateOffset(months=1)
+                    elif periodo_rx == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
+                    elif periodo_rx == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
+                    elif periodo_rx == '1y': data_corte = data_atual - pd.DateOffset(years=1)
+                    elif periodo_rx == '2y': data_corte = data_atual - pd.DateOffset(years=2)
+                    elif periodo_rx == '5y': data_corte = data_atual - pd.DateOffset(years=5)
+                    else: data_corte = df_full.index[0]
+                    
+                    df_ativo = df_full[df_full.index >= data_corte].copy()
+                    
+                    if not df_ativo.empty:
+                        alvo_pct = alvo_rx / 100.0
+                        stop_pct = stop_rx / 100.0
+                        trades_fechados = []
+                        em_aberto = None
                         
-                        bateu_stop = usar_stop_rx and (linha['Low'] <= em_aberto['entrada_preco'] * (1 - stop_pct))
-                        bateu_alvo = usar_alvo_rx and (linha['High'] >= em_aberto['entrada_preco'] * (1 + alvo_pct))
-                        sinal_venda = linha['Cruzou_Venda']
-                        
-                        if bateu_stop or bateu_alvo or sinal_venda:
-                            if bateu_stop:
-                                preco_saida = em_aberto['entrada_preco'] * (1 - stop_pct)
-                                motivo = "Stop Loss"
-                            elif bateu_alvo:
-                                preco_saida = em_aberto['entrada_preco'] * (1 + alvo_pct)
-                                motivo = "Alvo (Gain)"
-                            else:
-                                preco_saida = linha['Close']
-                                motivo = "Indicador (Virada)"
-
-                            lucro_pct = (preco_saida / em_aberto['entrada_preco']) - 1
-                            lucro_rs = capital_rx * lucro_pct
-                            duracao = (data - em_aberto['entrada_data']).days
+                        for i in range(len(df_ativo)):
+                            linha = df_ativo.iloc[i]
+                            data = df_ativo.index[i]
                             
-                            trades_fechados.append({
-                                'Entrada': em_aberto['entrada_data'].strftime("%d/%m/%Y"),
-                                'Saída': data.strftime("%d/%m/%Y"),
-                                'Duração': duracao,
-                                'Motivo Saída': motivo,
-                                'Lucro (R$)': lucro_rs,
-                                'Queda Máx': em_aberto['pior_queda'],
-                                'Situação': "Gain ✅" if lucro_pct > 0 else "Loss ❌"
-                            })
-                            em_aberto = None
+                            if em_aberto is None:
+                                if linha['Cruzou_Compra']:
+                                    em_aberto = {'entrada_data': data, 'entrada_preco': linha['Close'], 'pico': linha['Close'], 'pior_queda': 0.0}
+                            else:
+                                if linha['High'] > em_aberto['pico']: em_aberto['pico'] = linha['High']
+                                dd = (linha['Low'] / em_aberto['pico']) - 1
+                                if dd < em_aberto['pior_queda']: em_aberto['pior_queda'] = dd
+                                
+                                bateu_stop = usar_stop_rx and (linha['Low'] <= em_aberto['entrada_preco'] * (1 - stop_pct))
+                                bateu_alvo = usar_alvo_rx and (linha['High'] >= em_aberto['entrada_preco'] * (1 + alvo_pct))
+                                sinal_venda = linha['Cruzou_Venda']
+                                
+                                if bateu_stop or bateu_alvo or sinal_venda:
+                                    if bateu_stop:
+                                        preco_saida = em_aberto['entrada_preco'] * (1 - stop_pct)
+                                        motivo = "Stop Loss"
+                                    elif bateu_alvo:
+                                        preco_saida = em_aberto['entrada_preco'] * (1 + alvo_pct)
+                                        motivo = "Alvo (Gain)"
+                                    else:
+                                        preco_saida = linha['Close']
+                                        motivo = "Indicador (Virada)"
 
-                # STATUS ATUAL
-                if em_aberto is not None:
-                    st.info(f"⏳ **{ativo_rx}: Em Operação** (Posicionado desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
-                else:
-                    if df_ativo['Cruzou_Compra'].iloc[-1]:
-                        st.success(f"🚀 **{ativo_rx}: SINAL DE COMPRA ATIVADO HOJE!** (Cruzou MA {periodo_ma_rx})")
-                    else:
-                        st.success(f"✅ **{ativo_rx}: Aguardando Novo Sinal de Entrada**")
+                                    lucro_pct = (preco_saida / em_aberto['entrada_preco']) - 1
+                                    lucro_rs = capital_rx * lucro_pct
+                                    duracao = (data - em_aberto['entrada_data']).days
+                                    
+                                    trades_fechados.append({
+                                        'Entrada': em_aberto['entrada_data'].strftime("%d/%m/%Y"),
+                                        'Saída': data.strftime("%d/%m/%Y"),
+                                        'Duração': duracao,
+                                        'Motivo Saída': motivo,
+                                        'Lucro (R$)': lucro_rs,
+                                        'Queda Máx': em_aberto['pior_queda'],
+                                        'Situação': "Gain ✅" if lucro_pct > 0 else "Loss ❌"
+                                    })
+                                    em_aberto = None
 
-                st.markdown(f"### 📊 Resultado Consolidado: {ativo_rx}")
-                
-                # MÉTRICAS ESTATÍSTICAS
-                if trades_fechados:
-                    df_trades = pd.DataFrame(trades_fechados)
-                    lucro_total = df_trades['Lucro (R$)'].sum()
-                    duracao_media = df_trades['Duração'].mean()
-                    pior_queda_hist = df_trades['Queda Máx'].min()
-                    
-                    m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("Lucro Total", f"R$ {lucro_total:.2f}")
-                    m2.metric("Duração Média", f"{duracao_media:.1f} dias")
-                    m3.metric("Operações Fechadas", len(df_trades))
-                    m4.metric("Pior Queda", f"{pior_queda_hist*100:.2f}%")
-                    
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    df_show = df_trades.copy()
-                    df_show['Lucro (R$)'] = df_show['Lucro (R$)'].apply(lambda x: f"R$ {x:.2f}")
-                    df_show['Queda Máx'] = df_show['Queda Máx'].apply(lambda x: f"{x*100:.2f}%")
-                    
-                    def colorir_tabela(val):
-                        if 'Gain' in str(val) or ('R$' in str(val) and '-' not in str(val) and val != 'R$ 0.00'): return 'color: #00FFCC; font-weight: bold'
-                        if 'Loss' in str(val) or ('R$' in str(val) and '-' in str(val)): return 'color: #FF4D4D; font-weight: bold'
-                        return ''
+                        # STATUS ATUAL
+                        if em_aberto is not None:
+                            st.info(f"⏳ **{ativo_rx}: Em Operação** (Posicionado desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
+                        else:
+                            if df_ativo['Cruzou_Compra'].iloc[-1]:
+                                st.success(f"🚀 **{ativo_rx}: SINAL DE COMPRA ATIVADO HOJE!** (Cruzou MA {periodo_ma_rx})")
+                            else:
+                                st.success(f"✅ **{ativo_rx}: Aguardando Novo Sinal de Entrada**")
+
+                        st.markdown(f"### 📊 Resultado Consolidado: {ativo_rx}")
                         
-                    st.dataframe(df_show.style.map(colorir_tabela), use_container_width=True, hide_index=True)
-                else:
-                    st.warning("Nenhuma operação concluída no período selecionado para este ativo.")
+                        # MÉTRICAS ESTATÍSTICAS
+                        if trades_fechados:
+                            df_trades = pd.DataFrame(trades_fechados)
+                            lucro_total = df_trades['Lucro (R$)'].sum()
+                            duracao_media = df_trades['Duração'].mean()
+                            pior_queda_hist = df_trades['Queda Máx'].min()
+                            
+                            m1, m2, m3, m4 = st.columns(4)
+                            m1.metric("Lucro Total", f"R$ {lucro_total:.2f}")
+                            m2.metric("Duração Média", f"{duracao_media:.1f} dias")
+                            m3.metric("Operações Fechadas", len(df_trades))
+                            m4.metric("Pior Queda", f"{pior_queda_hist*100:.2f}%")
+                            
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            df_show = df_trades.copy()
+                            df_show['Lucro (R$)'] = df_show['Lucro (R$)'].apply(lambda x: f"R$ {x:.2f}")
+                            df_show['Queda Máx'] = df_show['Queda Máx'].apply(lambda x: f"{x*100:.2f}%")
+                            
+                            def colorir_tabela(val):
+                                if 'Gain' in str(val) or ('R$' in str(val) and '-' not in str(val) and val != 'R$ 0.00'): return 'color: #00FFCC; font-weight: bold'
+                                if 'Loss' in str(val) or ('R$' in str(val) and '-' in str(val)): return 'color: #FF4D4D; font-weight: bold'
+                                return ''
+                                
+                            st.dataframe(df_show.style.map(colorir_tabela), use_container_width=True, hide_index=True)
+                        else:
+                            st.warning("Nenhuma operação concluída no período selecionado para este ativo.")
 
-                # --- GRÁFICO INTERATIVO TRADINGVIEW ---
-                st.divider()
-                st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
-                renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
-                
-            else:
-                st.error("Sem dados suficientes para gerar o backtest deste ativo com a média informada.")
+                        # --- GRÁFICO INTERATIVO TRADINGVIEW ---
+                        st.divider()
+                        st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
+                        renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
+                        
+                    else:
+                        st.error("Sem dados suficientes no período de corte.")
+                else:
+                    st.error("Não foi possível coletar dados do TradingView para este ativo.")
+            except Exception as e:
+                st.error(f"Erro no processamento via tvDatafeed: {e}")
