@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -19,8 +20,10 @@ except ImportError:
     st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
     st.stop()
 
+ativos_para_rastrear = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
+
 # ==========================================
-# 2. CONFIGURAÇÃO DA PÁGINA
+# 2. CONFIGURAÇÃO DA PÁGINA E AUTENTICAÇÃO
 # ==========================================
 st.set_page_config(page_title="Radar TPV Elite", layout="wide", page_icon="🎯")
 
@@ -29,232 +32,230 @@ if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.stop()
 
 st.title("🎯 Máquina Quantitativa: TPV (Tendência Preço/Volume)")
-st.markdown("Opere o fluxo com base matemática: Oportunidades, Gestão de Posições e Backtest Estatístico.")
+
+# Criação das Abas Principais
+aba_radar, aba_individual = st.tabs(["🌐 Radar Global (Scanner)", "🔬 Raio-X Individual (Backtest)"])
 
 # ==========================================
-# 3. PAINEL DE CONTROLE (FILTROS)
+# 3. MOTOR MATEMÁTICO (FUNÇÕES)
 # ==========================================
-with st.container(border=True):
-    col_f1, col_f2, col_f3 = st.columns(3)
-
-    with col_f1:
-        lista_opcoes = ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"]
-        lista_selecionada = st.selectbox("Lista de Ativos:", lista_opcoes)
-
-    with col_f2:
-        capital_trade = st.number_input("Capital por Trade (R$):", value=10000.00, step=1000.00)
-
-    with col_f3:
-        tempo_grafico = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"])
-        intervalo_yf = "1d" if "1d" in tempo_grafico else "1wk"
-
-# Definição dos ativos baseado na seleção
-if lista_selecionada == "BDRs Elite":
-    ativos_alvo = bdrs_elite
-elif lista_selecionada == "IBrX Seleção":
-    ativos_alvo = ibrx_selecao
-else:
-    ativos_alvo = bdrs_elite + ibrx_selecao
-
-ativos_alvo = sorted(list(set([a.replace('.SA', '') for a in ativos_alvo])))
-
-btn_iniciar = st.button("🚀 Iniciar Varredura e Backtest TPV", type="primary", use_container_width=True)
-# ==========================================
-# 4. MOTOR DE BACKTEST E RASTREAMENTO
-# ==========================================
-def processar_tpv(lista_ativos, capital, intervalo):
-    oportunidades_hoje = []
-    operacoes_andamento = []
-    historico_trades = []
+def calcular_tpv(df):
+    if df.empty or len(df) < 60: return pd.DataFrame()
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    df.index = df.index.tz_localize(None)
     
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+    df['Retorno'] = df['Close'].pct_change()
+    df['TPV'] = (df['Volume'] * df['Retorno']).cumsum()
+    df['TPV_MA55'] = df['TPV'].rolling(window=55).mean()
+    df['Cruzou_Compra'] = (df['TPV'].shift(1) <= df['TPV_MA55'].shift(1)) & (df['TPV'] > df['TPV_MA55'])
+    df['Cruzou_Venda'] = (df['TPV'].shift(1) >= df['TPV_MA55'].shift(1)) & (df['TPV'] < df['TPV_MA55'])
+    return df.dropna()
+
+# ==========================================
+# ABA 1: RADAR GLOBAL (O SCANNER)
+# ==========================================
+with aba_radar:
+    st.markdown("Varredura completa buscando ativos que estão dando entrada agora.")
     
-    hoje = datetime.now().date()
-    
-    for i, ativo in enumerate(lista_ativos):
-        ticker = f"{ativo}.SA"
-        status_text.text(f"Analisando histórico e posições: {ativo} ({i+1}/{len(lista_ativos)})")
-        progress_bar.progress((i + 1) / len(lista_ativos))
+    with st.container(border=True):
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            lista_selecionada = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"])
+        with col_f2:
+            capital_trade_global = st.number_input("Capital por Trade (R$):", value=10000.00, step=1000.00, key="cap_global")
+        with col_f3:
+            tempo_grafico_global = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="tmp_global")
+            int_global = "1d" if "1d" in tempo_grafico_global else "1wk"
+
+    if lista_selecionada == "BDRs Elite": ativos_alvo = bdrs_elite
+    elif lista_selecionada == "IBrX Seleção": ativos_alvo = ibrx_selecao
+    else: ativos_alvo = bdrs_elite + ibrx_selecao
+    ativos_alvo = sorted(list(set([a.replace('.SA', '') for a in ativos_alvo])))
+
+    btn_iniciar_global = st.button("🚀 Iniciar Varredura Global", type="primary", use_container_width=True)
+
+    if btn_iniciar_global:
+        oportunidades, andamento = [], []
+        p_bar = st.progress(0)
+        s_text = st.empty()
         
-        try:
-            # Puxamos 2 anos para ter histórico suficiente para o Backtest e as Médias
-            df = yf.download(ticker, period="2y", interval=intervalo, progress=False)
-            
-            if df.empty or len(df) < 60: continue
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-            
-            df.index = df.index.tz_localize(None) # Remove fuso horário para cálculos de data limpos
-
-            # --- CÁLCULO TPV ---
-            df['Retorno'] = df['Close'].pct_change()
-            df['TPV'] = (df['Volume'] * df['Retorno']).cumsum()
-            df['TPV_MA55'] = df['TPV'].rolling(window=55).mean()
-            
-            # --- CRUZAMENTOS (SINAIS) ---
-            df['Cruzou_Compra'] = (df['TPV'].shift(1) <= df['TPV_MA55'].shift(1)) & (df['TPV'] > df['TPV_MA55'])
-            df['Cruzou_Venda'] = (df['TPV'].shift(1) >= df['TPV_MA55'].shift(1)) & (df['TPV'] < df['TPV_MA55'])
-            
-            df.dropna(inplace=True)
-            
-            trade_aberto = None
-            trades_fechados_ativo = []
-            
-            # --- MÁQUINA DO TEMPO (SIMULADOR DE TRADES) ---
-            for j in range(len(df)):
-                linha = df.iloc[j]
-                data_atual = df.index[j]
+        for i, ativo in enumerate(ativos_alvo):
+            s_text.text(f"Varrendo: {ativo} ({i+1}/{len(ativos_alvo)})")
+            p_bar.progress((i + 1) / len(ativos_alvo))
+            try:
+                df = yf.download(f"{ativo}.SA", period="2y", interval=int_global, progress=False)
+                df = calcular_tpv(df)
+                if df.empty: continue
                 
-                # Se não estamos posicionados, buscamos entrada
-                if trade_aberto is None:
-                    if linha['Cruzou_Compra']:
-                        # Se for a ÚLTIMA barra do gráfico, é Oportunidade de Hoje
-                        if j == len(df) - 1:
-                            # Calcula divergência dos últimos 5 períodos
-                            tendencia_preco = df['Close'].iloc[-1] - df['Close'].iloc[-5]
-                            tendencia_tpv = df['TPV'].iloc[-1] - df['TPV'].iloc[-5]
-                            div = "🚀 ALTA (Forte)" if (tendencia_preco < 0 and tendencia_tpv > 0) else "-"
-                            
-                            oportunidades_hoje.append({
-                                "Ativo": ativo,
-                                "Preço Atual": linha['Close'],
-                                "Divergência (5p)": div
-                            })
-                        else:
-                            # Registra a entrada no passado
-                            trade_aberto = {
-                                'entrada_data': data_atual,
-                                'entrada_preco': linha['Close'],
-                                'pico': linha['Close'],
-                                'pior_queda': 0.0
-                            }
-                # Se já estamos posicionados
-                else:
-                    # Atualiza o pico máximo para medir Drawdown
-                    if linha['High'] > trade_aberto['pico']:
-                        trade_aberto['pico'] = linha['High']
-                    
-                    # Calcula o rebaixamento máximo (Drawdown) em relação ao pico
-                    dd_atual = (linha['Low'] / trade_aberto['pico']) - 1
-                    if dd_atual < trade_aberto['pior_queda']:
-                        trade_aberto['pior_queda'] = dd_atual
-                        
-                    # Verifica condição de saída (Cruzou para Baixo)
-                    if linha['Cruzou_Venda']:
-                        lucro_pct = (linha['Close'] / trade_aberto['entrada_preco']) - 1
-                        lucro_rs = capital * lucro_pct
-                        
-                        trades_fechados_ativo.append({
-                            'lucro_pct': lucro_pct,
-                            'lucro_rs': lucro_rs,
-                            'pior_queda': trade_aberto['pior_queda']
-                        })
-                        trade_aberto = None # Zera posição
-            
-            # --- FINAL DO LOOP ---
-            # Se o loop acabou e o trade ainda está aberto, vai para "Em Andamento"
-            if trade_aberto is not None:
-                dias_posicionado = (hoje - trade_aberto['entrada_data'].date()).days
-                resultado_pct = (df['Close'].iloc[-1] / trade_aberto['entrada_preco']) - 1
+                trade_aberto = None
+                for j in range(len(df)):
+                    linha = df.iloc[j]
+                    data = df.index[j]
+                    if trade_aberto is None:
+                        if linha['Cruzou_Compra']:
+                            if j == len(df) - 1:
+                                t_preco = df['Close'].iloc[-1] - df['Close'].iloc[-5]
+                                t_tpv = df['TPV'].iloc[-1] - df['TPV'].iloc[-5]
+                                div = "🚀 ALTA (Forte)" if (t_preco < 0 and t_tpv > 0) else "-"
+                                oportunidades.append({"Ativo": ativo, "Preço Atual": linha['Close'], "Divergência (5p)": div})
+                            else:
+                                trade_aberto = {'entrada_data': data, 'entrada_preco': linha['Close'], 'pico': linha['Close'], 'pior_queda': 0.0}
+                    else:
+                        if linha['High'] > trade_aberto['pico']: trade_aberto['pico'] = linha['High']
+                        dd_atual = (linha['Low'] / trade_aberto['pico']) - 1
+                        if dd_atual < trade_aberto['pior_queda']: trade_aberto['pior_queda'] = dd_atual
+                        if linha['Cruzou_Venda']: trade_aberto = None
                 
-                operacoes_andamento.append({
-                    "Ativo": ativo,
-                    "Entrada": trade_aberto['entrada_data'].strftime("%d/%m/%Y"),
-                    "Dias": dias_posicionado,
-                    "PM": trade_aberto['entrada_preco'],
-                    "Cotação Atual": df['Close'].iloc[-1],
-                    "Proj. Máx": trade_aberto['pior_queda'],
-                    "Resultado Atual": resultado_pct
-                })
-                
-            # Agrega estatísticas para o Backtest Histórico
-            if len(trades_fechados_ativo) > 0:
-                total_trades = len(trades_fechados_ativo)
-                pior_queda_geral = min([t['pior_queda'] for t in trades_fechados_ativo])
-                total_investido = capital * total_trades # Capital girado
-                lucro_total_rs = sum([t['lucro_rs'] for t in trades_fechados_ativo])
-                resultado_final_pct = lucro_total_rs / total_investido if total_investido > 0 else 0
-                
-                historico_trades.append({
-                    "Ativo": ativo,
-                    "Trades": total_trades,
-                    "Pior Queda": pior_queda_geral,
-                    "Investimentos": total_investido,
-                    "Lucro R$": lucro_total_rs,
-                    "Resultado": resultado_final_pct
-                })
-
-        except Exception as e:
-            continue
-            
-    progress_bar.empty()
-    status_text.empty()
-    
-    return pd.DataFrame(oportunidades_hoje), pd.DataFrame(operacoes_andamento), pd.DataFrame(historico_trades)
-
-# ==========================================
-# 5. RENDERIZAÇÃO DOS RESULTADOS
-# ==========================================
-if btn_iniciar:
-    with st.spinner("Processando Inteligência de Fluxo..."):
-        df_oportunidades, df_andamento, df_historico = processar_tpv(ativos_alvo, capital_trade, intervalo_yf)
+                if trade_aberto is not None:
+                    dias = (datetime.now().date() - trade_aberto['entrada_data'].date()).days
+                    resultado = (df['Close'].iloc[-1] / trade_aberto['entrada_preco']) - 1
+                    andamento.append({"Ativo": ativo, "Entrada": trade_aberto['entrada_data'].strftime("%d/%m/%Y"), "Dias": dias, "PM": trade_aberto['entrada_preco'], "Cotação Atual": df['Close'].iloc[-1], "Proj. Máx": trade_aberto['pior_queda'], "Resultado Atual": resultado})
+            except: pass
         
-        # --- SESSÃO 1: OPORTUNIDADES HOJE ---
+        p_bar.empty(); s_text.empty()
+        
         st.subheader("🚀 Oportunidades Hoje (Sinal Ativo)")
-        if not df_oportunidades.empty:
-            df_oportunidades['Preço Atual'] = df_oportunidades['Preço Atual'].apply(lambda x: f"R$ {x:.2f}")
-            st.dataframe(df_oportunidades, use_container_width=True, hide_index=True)
-        else:
-            st.info("Nenhum ativo disparou sinal de entrada no pregão atual.")
+        if oportunidades:
+            df_op = pd.DataFrame(oportunidades)
+            df_op['Preço Atual'] = df_op['Preço Atual'].apply(lambda x: f"R$ {x:.2f}")
+            st.dataframe(df_op, use_container_width=True, hide_index=True)
+        else: st.info("Nenhum ativo disparou sinal de entrada no pregão atual.")
 
-        # --- SESSÃO 2: OPERAÇÕES EM ANDAMENTO ---
         st.subheader("⏳ Operações em Andamento (Aguardando Alvo/Venda)")
-        if not df_andamento.empty:
-            # Formatação
-            df_andamento['PM'] = df_andamento['PM'].apply(lambda x: f"R$ {x:.2f}")
-            df_andamento['Cotação Atual'] = df_andamento['Cotação Atual'].apply(lambda x: f"R$ {x:.2f}")
-            df_andamento['Proj. Máx'] = df_andamento['Proj. Máx'].apply(lambda x: f"{x*100:.2f}%")
-            
-            def color_resultado_andamento(val):
-                if isinstance(val, str): return ''
-                color = '#00FFCC' if val > 0 else '#FF4D4D'
-                return f'color: {color}; font-weight: bold'
+        if andamento:
+            df_and = pd.DataFrame(andamento)
+            df_and['PM'] = df_and['PM'].apply(lambda x: f"R$ {x:.2f}")
+            df_and['Cotação Atual'] = df_and['Cotação Atual'].apply(lambda x: f"R$ {x:.2f}")
+            df_and['Proj. Máx'] = df_and['Proj. Máx'].apply(lambda x: f"{x*100:.2f}%")
+            st.dataframe(df_and.style.format({'Resultado Atual': "{:.2%}"}).map(lambda val: f"color: {'#00FFCC' if val > 0 else '#FF4D4D'}; font-weight: bold" if isinstance(val, float) else '', subset=['Resultado Atual']), use_container_width=True, hide_index=True)
+        else: st.info("Nenhuma operação em aberto no momento.")
 
-            st.dataframe(
-                df_andamento.style.format({'Resultado Atual': "{:.2%}"}).map(color_resultado_andamento, subset=['Resultado Atual']),
-                use_container_width=True, hide_index=True
-            )
-        else:
-            st.info("Nenhuma operação em aberto no momento para a lista selecionada.")
+# ==========================================
+# ABA 2: RAIO-X INDIVIDUAL (O LABORATÓRIO)
+# ==========================================
+with aba_individual:
+    st.markdown("### 🔬 Raio-X Detalhado: Backtest & Status Atual")
+    st.markdown("Veja o histórico de acertos e o status completo se o ativo estiver com operação aberta agora.")
+    
+    with st.container(border=True):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            ativo_rx = st.selectbox("Ativo (Ex: TSLA34):", ativos_para_rastrear, key="rx_ativo")
+            periodo_rx = st.selectbox("Período de Estudo:", ["1 Ano", "2 Anos", "5 Anos", "Máximo"], key="rx_per")
+        with c2:
+            alvo_rx = st.number_input("Alvo (%):", value=3.00, step=0.50, key="rx_alvo")
+            capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
+        with c3:
+            tempo_rx = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="rx_tmp")
+            
+    btn_rx = st.button("🔍 Rodar Análise Completa", type="primary", use_container_width=True)
+    
+    if btn_rx:
+        with st.spinner(f"Dissecando o histórico de {ativo_rx}..."):
+            mapa_per = {"1 Ano": "1y", "2 Anos": "2y", "5 Anos": "5y", "Máximo": "max"}
+            df_ativo = yf.download(f"{ativo_rx}.SA", period=mapa_per[periodo_rx], interval="1d" if "1d" in tempo_rx else "1wk", progress=False)
+            df_ativo = calcular_tpv(df_ativo)
+            
+            if not df_ativo.empty:
+                alvo_pct = alvo_rx / 100.0
+                trades_fechados = []
+                em_aberto = None
+                
+                for i in range(len(df_ativo)):
+                    linha = df_ativo.iloc[i]
+                    data = df_ativo.index[i]
+                    
+                    if em_aberto is None:
+                        if linha['Cruzou_Compra']:
+                            em_aberto = {'entrada_data': data, 'entrada_preco': linha['Close'], 'pico': linha['Close'], 'pior_queda': 0.0}
+                    else:
+                        if linha['High'] > em_aberto['pico']: em_aberto['pico'] = linha['High']
+                        dd = (linha['Low'] / em_aberto['pico']) - 1
+                        if dd < em_aberto['pior_queda']: em_aberto['pior_queda'] = dd
+                        
+                        # Gatilho de Saída (Take Profit ou Cruzamento de Venda)
+                        alvo_atingido = (alvo_pct > 0) and (linha['High'] >= em_aberto['entrada_preco'] * (1 + alvo_pct))
+                        
+                        if alvo_atingido or linha['Cruzou_Venda']:
+                            preco_saida = em_aberto['entrada_preco'] * (1 + alvo_pct) if alvo_atingido else linha['Close']
+                            lucro_pct = (preco_saida / em_aberto['entrada_preco']) - 1
+                            lucro_rs = capital_rx * lucro_pct
+                            duracao = (data - em_aberto['entrada_data']).days
+                            
+                            trades_fechados.append({
+                                'Entrada': em_aberto['entrada_data'].strftime("%d/%m/%Y"),
+                                'Saída': data.strftime("%d/%m/%Y"),
+                                'Duração': duracao,
+                                'Lucro (R$)': lucro_rs,
+                                'Queda Máx': em_aberto['pior_queda'],
+                                'Situação': "Gain ✅" if lucro_pct > 0 else "Loss ❌"
+                            })
+                            em_aberto = None
 
-        # --- SESSÃO 3: BACKTEST (TOP 20 HISTÓRICO) ---
-        st.subheader("📊 Top 20 Histórico (Estatística do TPV)")
-        if not df_historico.empty:
-            # Ordena pelos mais lucrativos e pega os 20 primeiros
-            df_historico = df_historico.sort_values(by="Lucro R$", ascending=False).head(20)
-            
-            df_historico['Pior Queda'] = df_historico['Pior Queda'].apply(lambda x: f"{x*100:.2f}%")
-            df_historico['Investimentos'] = df_historico['Investimentos'].apply(lambda x: f"R$ {x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
-            
-            def color_lucro(val):
-                if isinstance(val, str): return ''
-                color = '#00FFCC' if val > 0 else '#FF4D4D'
-                return f'color: {color}'
+                # 1. STATUS ATUAL (BANNER)
+                if em_aberto is not None:
+                    st.info(f"⏳ **{ativo_rx}: Em Operação** (Posicionado desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
+                else:
+                    if df_ativo['Cruzou_Compra'].iloc[-1]:
+                        st.success(f"🚀 **{ativo_rx}: SINAL DE COMPRA ATIVADO HOJE!**")
+                    else:
+                        st.success(f"✅ **{ativo_rx}: Aguardando Novo Sinal de Entrada**")
 
-            st.dataframe(
-                df_historico.style
-                .format({
-                    'Lucro R$': "R$ {:,.2f}",
-                    'Resultado': "{:.2%}"
-                })
-                .map(color_lucro, subset=['Lucro R$', 'Resultado']),
-                use_container_width=True, hide_index=True
-            )
-            
-            st.markdown("---")
-            st.markdown("""
-            **🔍 Como interpretar o Laboratório:**
-            * **Pior Queda (Drawdown):** O máximo que a operação ficou negativa antes de fechar. Isso ajuda a calibrar o seu *Stop Loss*. Se a pior queda média é -8%, não adianta colocar um stop de -3%, você será "violinado".
-            * **Resultado (%):** Representa a eficiência do capital girado (Lucro / Total Investido em todos os trades do ativo).
-            """)
+                st.markdown(f"### 📊 Resultado Consolidado: {ativo_rx}")
+                
+                # 2. MÉTRICAS ESTATÍSTICAS
+                if trades_fechados:
+                    df_trades = pd.DataFrame(trades_fechados)
+                    lucro_total = df_trades['Lucro (R$)'].sum()
+                    duracao_media = df_trades['Duração'].mean()
+                    pior_queda_hist = df_trades['Queda Máx'].min()
+                    
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("Lucro Total", f"R$ {lucro_total:.2f}")
+                    m2.metric("Duração Média", f"{duracao_media:.1f} dias")
+                    m3.metric("Operações Fechadas", len(df_trades))
+                    m4.metric("Pior Queda", f"{pior_queda_hist*100:.2f}%")
+                    
+                    # 3. TABELA DE HISTÓRICO
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    df_show = df_trades.copy()
+                    df_show['Lucro (R$)'] = df_show['Lucro (R$)'].apply(lambda x: f"R$ {x:.2f}")
+                    df_show['Queda Máx'] = df_show['Queda Máx'].apply(lambda x: f"{x*100:.2f}%")
+                    
+                    def colorir_tabela(val):
+                        if 'Gain' in str(val) or ('R$' in str(val) and '-' not in str(val) and val != 'R$ 0.00'): return 'color: #00FFCC; font-weight: bold'
+                        if 'Loss' in str(val) or ('R$' in str(val) and '-' in str(val)): return 'color: #FF4D4D; font-weight: bold'
+                        return ''
+                        
+                    st.dataframe(df_show.style.map(colorir_tabela), use_container_width=True, hide_index=True)
+                else:
+                    st.warning("Nenhuma operação concluída no período selecionado para este ativo.")
+
+                # 4. GRÁFICO INTERATIVO TRADINGVIEW
+                st.markdown("---")
+                st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
+                html_tv = f"""
+                <div class="tradingview-widget-container" style="height:500px;width:100%">
+                  <div class="tradingview-widget-container__widget" style="height:calc(100% - 32px);width:100%"></div>
+                  <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+                  {{
+                  "autosize": true,
+                  "symbol": "BMFBOVESPA:{ativo_rx}",
+                  "interval": "D",
+                  "timezone": "America/Sao_Paulo",
+                  "theme": "dark",
+                  "style": "1",
+                  "locale": "br",
+                  "enable_publishing": false,
+                  "hide_top_toolbar": false,
+                  "hide_legend": false,
+                  "save_image": false,
+                  "container_id": "tradingview_rx"
+                }}
+                  </script>
+                </div>
+                """
+                components.html(html_tv, height=550)
+            else:
+                st.error("Sem dados suficientes para gerar o backtest deste ativo.")
