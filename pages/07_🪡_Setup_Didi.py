@@ -33,14 +33,14 @@ if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.stop()
 
 st.title("🪡 Máquina Quantitativa: Agulhada do Didi")
-st.markdown("Setup direcional explosivo baseado no cruzamento simultâneo das médias de 3, 8 e 20, com filtro ADX opcional.")
+st.markdown("Setup direcional explosivo baseado no cruzamento simultâneo das médias de 3, 8 e 20, com filtro ADX dinâmico.")
 
 aba_radar, aba_individual = st.tabs(["🌐 Radar Global (Scanner & Top 20)", "🔬 Raio-X Individual (Backtest)"])
 
 # ==========================================
 # 3. MOTOR MATEMÁTICO (DIDI INDEX)
 # ==========================================
-def calcular_didi(df, usar_adx=True):
+def calcular_didi(df, usar_adx=True, limite_adx=20):
     if df.empty or len(df) < 60: return pd.DataFrame()
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
@@ -69,9 +69,9 @@ def calcular_didi(df, usar_adx=True):
     
     condicao_agulhada = (df['D3'] > 1.0) & (df['D20'] < 1.0) & (cruzou_d3_alta | cruzou_d20_baixa)
     
-    # Aplica o filtro ADX apenas se o usuário habilitar
+    # Aplica o filtro ADX dinâmico
     if usar_adx:
-        df['Cruzou_Compra'] = condicao_agulhada & (df['ADX'] >= 20)
+        df['Cruzou_Compra'] = condicao_agulhada & (df['ADX'] >= limite_adx)
     else:
         df['Cruzou_Compra'] = condicao_agulhada
     
@@ -119,7 +119,8 @@ with aba_radar:
         with col_f2:
             tempo_grafico_global = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="tmp_global")
             int_global = "1d" if "1d" in tempo_grafico_global else "1wk"
-            usar_adx_g = st.toggle("📈 Filtro ADX (>20)", value=True, key="tg_adx_g")
+            usar_adx_g = st.toggle("📈 Filtro ADX Ativo", value=True, key="tg_adx_g")
+            limite_adx_g = st.number_input("Nível ADX (>):", value=20, step=1, key="val_adx_g", disabled=not usar_adx_g)
         with col_f3:
             usar_alvo_g = st.toggle("🎯 Habilitar Alvo", value=True, key="tg_alvo_g")
             alvo_pct_g = st.number_input("Alvo (%):", value=8.00, step=0.50, key="val_alvo_g", disabled=not usar_alvo_g) / 100.0
@@ -144,7 +145,7 @@ with aba_radar:
             p_bar.progress((i + 1) / len(ativos_alvo))
             try:
                 df = yf.download(f"{ativo}.SA", period="2y", interval=int_global, progress=False)
-                df = calcular_didi(df, usar_adx=usar_adx_g)
+                df = calcular_didi(df, usar_adx=usar_adx_g, limite_adx=limite_adx_g)
                 if df.empty: continue
                 
                 trade_aberto = None
@@ -193,9 +194,10 @@ with aba_radar:
         if oportunidades:
             df_op = pd.DataFrame(oportunidades)
             df_op['Preço Atual'] = df_op['Preço Atual'].apply(lambda x: f"R$ {x:.2f}")
-            df_op['ADX'] = df_op['ADX'].apply(lambda x: f"{x:.1f} (Forte)" if x >= 25 else f"{x:.1f} (Médio/Fraco)")
+            df_op['ADX'] = df_op['ADX'].apply(lambda x: f"{x:.1f} (Válido)" if x >= limite_adx_g else f"{x:.1f} (Abaixo)")
             st.dataframe(df_op, use_container_width=True, hide_index=True)
-        else: st.info(f"Nenhum ativo disparou Agulhada de Alta {'com ADX > 20' if usar_adx_g else ''} no pregão atual.")
+        else: 
+            st.info(f"Nenhum ativo disparou Agulhada de Alta {'com ADX > ' + str(limite_adx_g) if usar_adx_g else ''} no pregão atual.")
 
         st.subheader("⏳ Operações em Andamento (Aguardando Alvo/Venda)")
         if andamento:
@@ -225,8 +227,9 @@ with aba_individual:
         with c2:
             capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
             tempo_rx = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="rx_tmp")
-            usar_adx_rx = st.toggle("📈 Filtro ADX (>20)", value=True, key="tg_adx_rx")
         with c3:
+            usar_adx_rx = st.toggle("📈 Filtro ADX Ativo", value=True, key="tg_adx_rx")
+            limite_adx_rx = st.number_input("Nível ADX (>):", value=20, step=1, key="val_adx_rx", disabled=not usar_adx_rx)
             usar_alvo_rx = st.toggle("🎯 Habilitar Alvo", value=True, key="tg_alvo_rx")
             alvo_rx = st.number_input("Alvo (%):", value=8.00, step=0.50, key="rx_alvo", disabled=not usar_alvo_rx)
         with c4:
@@ -239,7 +242,7 @@ with aba_individual:
         with st.spinner(f"Processando Didi Index para {ativo_rx}..."):
             mapa_per = {"1 Ano": "1y", "2 Anos": "2y", "5 Anos": "5y", "Máximo": "max"}
             df_ativo = yf.download(f"{ativo_rx}.SA", period=mapa_per[periodo_rx], interval="1d" if "1d" in tempo_rx else "1wk", progress=False)
-            df_ativo = calcular_didi(df_ativo, usar_adx=usar_adx_rx)
+            df_ativo = calcular_didi(df_ativo, usar_adx=usar_adx_rx, limite_adx=limite_adx_rx)
             
             if not df_ativo.empty:
                 alvo_pct = alvo_rx / 100.0
@@ -284,7 +287,7 @@ with aba_individual:
                     st.info(f"⏳ **{ativo_rx}: Em Operação** (Posicionado desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
                 else:
                     if df_ativo['Cruzou_Compra'].iloc[-1]:
-                        st.success(f"🪡 **{ativo_rx}: AGULHADA DE COMPRA ATIVADA HOJE!**")
+                        st.success(f"🪡 **{ativo_rx}: AGULHADA DE COMPRA ATIVADA HOJE!** (ADX >= {limite_adx_rx if usar_adx_rx else 'Desativado'})")
                     else:
                         st.success(f"✅ **{ativo_rx}: Aguardando Formação da Agulhada**")
 
@@ -307,7 +310,7 @@ with aba_individual:
                         return ''
                     st.dataframe(df_show.style.map(colorir_tabela), use_container_width=True, hide_index=True)
                 else:
-                    st.warning("Nenhuma Agulhada concluída no período.")
+                    st.warning("Nenhuma Agulhada concluída no período com os parâmetros selecionados.")
 
                 st.divider()
                 st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
