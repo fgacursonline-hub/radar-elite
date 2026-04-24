@@ -62,6 +62,7 @@ def calcular_cci(df, periodo=14, limite=100, estrategia="Cruzamento da Linha Zer
         
     elif "Entrando nos Extremos" in estrategia:
         df['Cruzou_Compra'] = (df['CCI'].shift(1) <= limite) & (df['CCI'] > limite)
+        # O pulo do gato: Sai da operação se perder a força direcional (voltar para dentro do canal)
         df['Cruzou_Venda'] = (df['CCI'].shift(1) >= limite) & (df['CCI'] < limite)
         
     return df.dropna()
@@ -93,7 +94,6 @@ def renderizar_grafico_tv(symbol):
     """
     components.html(html_code, height=600)
 
-# Função para exibir a explicação da estratégia de forma dinâmica
 def exibir_explicacao_estrategia(estrategia):
     if "Cruzamento da Linha Zero" in estrategia:
         st.info("🧭 **Direcional:** Compra quando o CCI cruza a Linha Zero para CIMA. Sai da operação se perder a Linha Zero ou bater no Alvo.")
@@ -108,7 +108,7 @@ def exibir_explicacao_estrategia(estrategia):
 with aba_radar:
     with st.container(border=True):
         st.markdown("**1. Parâmetros Operacionais**")
-        col_f1, col_f2, col_f3 = st.columns(3)
+        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
         with col_f1:
             lista_selecionada = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"])
         with col_f2:
@@ -120,6 +120,9 @@ with aba_radar:
         with col_f3:
             tempo_grafico_global = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="tmp_global")
             int_global = "1d" if "1d" in tempo_grafico_global else "1wk"
+        with col_f4:
+            # NOVO CAMPO: O usuário agora domina o horizonte temporal da estatística Global
+            periodo_busca_g = st.selectbox("Período de Busca:", ["1 Ano", "2 Anos", "5 Anos", "Máximo"], index=2, key="per_busca_g")
             
         exibir_explicacao_estrategia(estrategia_g)
 
@@ -150,11 +153,14 @@ with aba_radar:
         p_bar = st.progress(0)
         s_text = st.empty()
         
+        mapa_per_g = {"1 Ano": "1y", "2 Anos": "2y", "5 Anos": "5y", "Máximo": "max"}
+        
         for i, ativo in enumerate(ativos_alvo):
             s_text.text(f"Mapeando Canais: {ativo} ({i+1}/{len(ativos_alvo)})")
             p_bar.progress((i + 1) / len(ativos_alvo))
             try:
-                df = yf.download(f"{ativo}.SA", period="2y", interval=int_global, progress=False)
+                # Agora puxa o histórico dinâmico baseado na escolha do usuário
+                df = yf.download(f"{ativo}.SA", period=mapa_per_g[periodo_busca_g], interval=int_global, progress=False)
                 df = calcular_cci(df, periodo=periodo_g, limite=limite_g, estrategia=estrategia_g)
                 if df.empty: continue
                 
@@ -201,7 +207,7 @@ with aba_radar:
         
         p_bar.empty(); s_text.empty()
         
-        st.subheader(f"📉 Oportunidades Hoje (CCI Gatilho)")
+        st.subheader(f"📉 Oportunidades Hoje ({estrategia_g.split('-')[1].strip()})")
         if oportunidades:
             df_op = pd.DataFrame(oportunidades)
             df_op['Preço Atual'] = df_op['Preço Atual'].apply(lambda x: f"R$ {x:.2f}")
@@ -231,19 +237,20 @@ with aba_radar:
 with aba_individual:
     with st.container(border=True):
         st.markdown("**1. Setup e Capital**")
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             ativo_rx = st.selectbox("Ativo (Ex: TSLA34):", ativos_para_rastrear, key="rx_ativo")
+        with c2:
             estrategia_rx = st.selectbox("Estratégia Operacional CCI:", [
                 "1 - Saindo dos Extremos (Reversão Clássica)", 
                 "2 - Cruzamento da Linha Zero (Direcional)", 
                 "3 - Entrando nos Extremos (Momentum/Força)"
             ], key="est_rx")
-        with c2:
-            periodo_rx = st.selectbox("Período de Estudo:", ["1 Ano", "2 Anos", "5 Anos", "Máximo"], key="rx_per", index=1)
-            capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
         with c3:
+            periodo_rx = st.selectbox("Período de Estudo:", ["1 Ano", "2 Anos", "5 Anos", "Máximo"], key="rx_per", index=2)
             tempo_rx = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="rx_tmp")
+        with c4:
+            capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
             
         exibir_explicacao_estrategia(estrategia_rx)
             
