@@ -6,6 +6,16 @@ import pandas as pd
 import time
 import requests
 import xml.etree.ElementTree as ET
+import sys
+import os
+
+# --- IMPORTAÇÃO CENTRALIZADA DOS ATIVOS ---
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+try:
+    from config_ativos import bdrs_elite, ibrx_selecao
+except ImportError:
+    st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
+    st.stop()
 
 # ==========================================
 # 1. CONFIGURAÇÃO DA PÁGINA E CSS
@@ -78,28 +88,8 @@ if 'tv' not in st.session_state:
     except Exception:
         pass
 
-bdrs_elite = [
-    'NVDC34', 'P2LT34', 'ROXO34', 'INBR32', 'M1TA34', 'TSLA34', 'LILY34', 'AMZO34', 
-    'AURA33', 'GOGL34', 'MSFT34', 'MUTC34', 'MELI34', 'C2OI34', 'ORCL34', 'M2ST34', 
-    'A1MD34', 'NFLX34', 'ITLC34', 'AVGO34', 'COCA34', 'JBSS32', 'AAPL34', 'XPBR31', 'STOC34'
-]
-
-ibrx_selecao = [
-    'PETR4', 'VALE3', 'ITUB4', 'BBDC4', 'BBAS3', 'B3SA3', 'ABEV3', 'WEGE3', 'AXIA3', 
-    'SUZB3', 'RENT3', 'RADL3', 'EQTL3', 'LREN3', 'PRIO3', 'HAPV3', 'GGBR4', 'VBBR3', 
-    'SBSP3', 'CMIG4', 'CPLE3', 'ENEV3', 'TIMS3', 'TOTS3', 'EGIE3', 'CSAN3', 'ALOS3', 
-    'DIRR3', 'VIVT3', 'KLBN11', 'UGPA3', 'PSSA3', 'CYRE3', 'ASAI3', 'RAIL3', 'ISAE3', 
-    'CSNA3', 'MGLU3', 'EMBJ3', 'TAEE11', 'BBSE3', 'FLRY3', 'MULT3', 'TFCO4', 'LEVE3', 
-    'CPFE3', 'GOAU4', 'MRVE3', 'YDUQ3', 'SMTO3', 'SLCE3', 'CVCB3', 'USIM5', 'BRAP4', 
-    'BRAV3', 'EZTC3', 'PCAR3', 'AUAU3', 'DXCO3', 'CASH3', 'VAMO3', 'AZZA3', 'AURE3', 
-    'BEEF3', 'ECOR3', 'FESA4', 'POMO4', 'CURY3', 'INTB3', 'JHSF3', 'LIGT3', 'LOGG3', 
-    'MDIA3', 'MBRF3', 'NEOE3', 'QUAL3', 'RAPT4', 'ROMI3', 'SANB11', 'SIMH3', 'TEND3', 
-    'VULC3', 'PLPL3', 'CEAB3', 'UNIP6', 'LWSA3', 'BPAC11', 'GMAT3', 'CXSE3', 'ABCB4', 
-    'CSMG3', 'SAPR11', 'GRND3', 'BRAP3', 'LAVV3', 'RANI3', 'ITSA3', 'ALUP11', 'FIQE3', 
-    'COGN3', 'IRBR3', 'SEER3', 'ANIM3', 'JSLG3', 'POSI3', 'MYPK3', 'SOJA3', 'BLAU3', 
-    'PGMN3', 'TUPY3', 'VVEO3', 'MELK3', 'SHUL4', 'BRSR6'
-]
-todos_ativos = list(set(bdrs_elite + ibrx_selecao))
+# Tratando os ativos para remover o '.SA' e unificar a lista
+todos_ativos = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
 
 @st.cache_data(ttl=300) 
 def buscar_dados_macro():
@@ -331,7 +321,7 @@ if st.button("🔍 Escanear TUDO no After-Market Agora", type="primary", use_con
             except: return [''] * len(row)
         st.dataframe(df_after.style.apply(colorir_after, axis=1), use_container_width=True, hide_index=True)
 
-        st.markdown("#### 🎯 Alguma Stock específica?")
+st.markdown("#### 🎯 Alguma Stock específica?")
 
 col_sel, col_btn = st.columns([3, 1], vertical_alignment="bottom")
 
@@ -401,30 +391,28 @@ if btn_indiv:
     else: 
         st.error("Desatualizado. Não foi possível puxar os dados do servidor americano.")
 
-        # ==========================================
-        # Cole isso ABAIXO do seu bloco azul da "Zona Morta"
-        # ==========================================
+# ==========================================
+# 🕵️‍♂️ TERMÔMETRO DO VAREJO (ROBINHOOD)
+# ==========================================
 
-        st.divider() # Cria uma linha para separar os assuntos
+st.divider() # Cria uma linha para separar os assuntos
+st.markdown("### 🕵️‍♂️ Termômetro do Varejo (Robinhood)")
+st.caption("Verifique se o movimento está sendo puxado pela euforia da pessoa física americana.")
 
-        st.markdown("### 🕵️‍♂️ Termômetro do Varejo (Robinhood)")
-        st.caption("Verifique se o movimento está sendo puxado pela euforia da pessoa física americana.")
+# Aviso de Sentimento (Fundo Amarelo para destacar que não é oficial)
+st.warning("⚠️ **Nota de Rastreio:** Este link não representa dados oficiais de volume institucional da SEC ou B3. Ele reflete estritamente o 'sentimento' e a especulação de investidores de varejo no aplicativo Robinhood.")
 
-        # Aviso de Sentimento (Fundo Amarelo para destacar que não é oficial)
-        st.warning("⚠️ **Nota de Rastreio:** Este link não representa dados oficiais de volume institucional da SEC ou B3. Ele reflete estritamente o 'sentimento' e a especulação de investidores de varejo no aplicativo Robinhood.")
+# Puxando a lista dinamicamente direto do seu dicionário bdr_setup_home que já existe nesta página
+lista_stocks_eua = sorted(list(set([info['us'] for info in bdr_setup_home.values()])))
 
-        # O menu puxando as Stocks
-        from config_ativos import pares_elite # Caso ainda não esteja importado no topo deste arquivo
-        lista_stocks_eua = sorted(list(set(pares_elite.values())))
+stock_selecionada = st.selectbox(
+    "Selecione a ação americana para espionar:", 
+    options=lista_stocks_eua,
+    index=lista_stocks_eua.index("TSLA") if "TSLA" in lista_stocks_eua else 0
+)
 
-        stock_selecionada = st.selectbox(
-        "Selecione a ação americana para espionar:", 
-        options=lista_stocks_eua,
-        index=lista_stocks_eua.index("TSLA") if "TSLA" in lista_stocks_eua else 0
-        )
-
-        # O Botão Dinâmico
-        url_robinhood = f"https://robinhood.com/us/en/stocks/{stock_selecionada}/"
+# O Botão Dinâmico
+url_robinhood = f"https://robinhood.com/us/en/stocks/{stock_selecionada}/"
 
 st.link_button(
     f"👀 Investigar fluxo de {stock_selecionada} na Robinhood", 
