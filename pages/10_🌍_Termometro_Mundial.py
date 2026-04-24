@@ -143,3 +143,58 @@ with st.expander("📖 Por que rastrear o Gringo?", expanded=False):
     * **Gringo Vendendo + IBOV Subindo:** Alerta de armadilha. A alta pode estar sendo sustentada apenas pelo varejo (pessoa física), o que costuma durar pouco.
     * **D+2:** Lembre-se que o dado oficial da B3 sempre carrega um atraso operacional de 2 dias úteis. Analise o saldo acumulado para confirmar tendências primárias.
     """)
+    # ==========================================
+# 🗺️ MAPA DE CALOR GLOBAL (TRADINGVIEW)
+# ==========================================
+st.divider()
+st.subheader("🗺️ Mapa de Calor: Wall Street (S&P 500)")
+st.markdown("Identifique instantaneamente onde o dinheiro está entrando e de onde está fugindo hoje.")
+
+# Usando o motor nativo do TradingView que permite incorporação e tema escuro
+html_heatmap = """
+<div class="tradingview-widget-container">
+  <div class="tradingview-widget-container__widget"></div>
+  <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>
+  {
+  "exchanges": [],
+  "dataSource": "SPX500",
+  "grouping": "sector",
+  "blockSize": "market_cap_basic",
+  "blockColor": "change",
+  "locale": "br",
+  "symbolUrl": "",
+  "colorTheme": "dark",
+  "hasTopBar": false,
+  "isDataSetEnabled": false,
+  "isZoomEnabled": true,
+  "hasSymbolTooltip": true,
+  "width": "100%",
+  "height": "100%"
+}
+  </script>
+</div>
+"""
+components.html(html_heatmap, height=550)
+
+st.caption("💡 **Dica de Caçador:** O tamanho do bloco representa o valor de mercado (Market Cap). Blocos verdes intensos indicam forte entrada de fluxo.")
+
+# ==========================================
+# 🐋 INTELIGÊNCIA DE FLUXO (SALDO ESTRANGEIRO)
+# ==========================================
+st.divider()
+st.subheader("🐋 Fluxo Institucional (O rastro do Gringo B3)")
+st.markdown("Monitore se os grandes tubarões estrangeiros estão aportando ou retirando dinheiro da nossa bolsa.")
+
+col_gringo1, col_gringo2 = st.columns([2, 1])
+
+with col_gringo1:
+    st.info("### 🇧🇷 Relatório Oficial (B3)\nO arquivo original da B3 é um relatório formatado com múltiplas tabelas. Baixe o CSV oficial para extrair o saldo mensal do investidor estrangeiro.")
+    st.link_button("📥 Fazer Download Rápido do Relatório B3 (.csv)", "https://sistemaswebb3-listados.b3.com.br/marketDataProxy/MarketDataCall/GetDownloadMarketData/RELATORIO_DADOS_DE_MERCADO.csv", use_container_width=True)
+
+with col_gringo2:
+    with st.expander("📖 Rastreio Tático", expanded=True):
+        st.markdown("""
+        * **Gringo Comprando + IBOV Subindo:** Alta verdadeira e sustentável.
+        * **Gringo Vendendo + IBOV Subindo:** Armadilha (Varejo puxando sozinho).
+        * *Atenção:* Os dados da B3 possuem um atraso estrutural de **D+2**.
+        """)
