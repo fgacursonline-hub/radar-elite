@@ -211,19 +211,21 @@ if btn_investigar and ativo_alvo:
     st.markdown("---")
     st.markdown("### 🧠 Tabela Tática de Sentimento (Short Interest)")
     
-    # Tabela Interpretativa integrada
     st.markdown("""
     | Taxa do Tomador (A.A.) | Status do Aluguel | Sentimento Institucional | Ação do Caçador |
     | :--- | :--- | :--- | :--- |
     | **0% a 2%** | **Normal** | Mercado em equilíbrio ou desinteresse. | Operar apenas pelo gráfico. |
     | **2% a 7%** | **Atenção** | Institucionais montando posições de venda. | Cuidado com compras de topo. |
     | **7% a 15%** | **Alerta Urso** | Pessimismo elevado. Muitos vendidos no ativo. | Monitorar suportes relevantes. |
-    | **Acima de 15%** | **BARRIL DE PÓLVORA** | Vendidos "espremidos" e pagando muito caro. | **Foco total em Short Squeeze.** |
+    | **Acima de 15%** | **BARRIL DE PÓLVORA** | Vendidos "espremidos" e pagando muito caro. | **Foco total em Short Squeeze (ALTA).** |
     """)
 
-    st.success(f"💡 **Análise de Elite para {ativo_alvo}:** Se a taxa estiver acima de 10% e o preço romper a média de 20 ou um topo anterior no gráfico, o rali será violento devido ao stop forçado dos vendidos.")
+    st.warning("""
+    🚀 **O que é o Barril de Pólvora?** Não significa que a ação vai cair, mas sim que ela está **acumulando energia para uma subida violenta**. 
+    Os vendidos (quem aposta na queda) estão em uma situação de altíssimo risco. Se o preço subir um pouco, eles serão forçados a comprar tudo de volta, gerando um efeito dominó de alta chamado **Short Squeeze**.
+    """)
 
-    st.divider()
+    st.success(f"🎯 **Gatilho de Elite:** Se {ativo_alvo} estiver em 'Barril de Pólvora', não venda! Espere o preço romper uma resistência no gráfico e entre **comprando** para surfar o desespero dos grandes fundos.")
     
     with st.expander("📖 GUIA RÁPIDO: Como localizar o Aluguel?", expanded=True):
         st.markdown(f"""
