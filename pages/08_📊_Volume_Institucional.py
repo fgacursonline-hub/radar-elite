@@ -229,7 +229,7 @@ with aba_individual:
                 """)
 
 # ==========================================
-# ABA 3: COMPARATIVO OBV VS PVT
+# ABA 3: COMPARATIVO OBV VS PVT (COM DETECÇÃO)
 # ==========================================
 with aba_volume:
     st.subheader("🕵️ Rastreador de Acumulação e Distribuição")
@@ -259,4 +259,23 @@ with aba_volume:
                 fig.update_layout(height=500, template="plotly_dark", showlegend=False, xaxis_rangeslider_visible=False, margin=dict(t=10, b=10, l=10, r=10))
                 st.plotly_chart(fig, use_container_width=True)
 
-                st.info(f"💡 **Dica de Caçador:** Se o preço faz topos maiores mas o **{label}** faz topos menores, o tubarão está vendendo escondido (**Divergência de Baixa**).")
+                # --- DETECÇÃO AUTOMÁTICA DE DIVERGÊNCIA ---
+                st.subheader("🤖 Diagnóstico do Rastreador")
+                
+                # Comparação dos 2 últimos períodos
+                p_atual, p_anterior = df_v['Close'].iloc[-1], df_v['Close'].iloc[-2]
+                v_atual, v_anterior = df_v[label].iloc[-1], df_v[label].iloc[-2]
+
+                if p_atual < p_anterior and v_atual > v_anterior:
+                    st.info(f"🔥 **ABSORÇÃO DE ALTA DETECTADA:** O preço de {v_ativo} caiu, mas o {label} subiu! Tubarões estão segurando a queda e acumulando posições passivamente.")
+                elif p_atual > p_anterior and v_atual < v_anterior:
+                    st.warning(f"⚠️ **EXAUSTÃO DE COMPRA DETECTADA:** O preço subiu, mas o {label} caiu. A alta está sem combustível institucional e pode falhar em breve.")
+                else:
+                    st.success(f"✅ **Fluxo em Convergência:** O preço e o {label} estão se movendo na mesma direção. Movimento saudável e confirmado pelo volume.")
+
+                with st.expander("📝 Manual do Caçador: OBV vs PVT"):
+                    st.markdown(f"""
+                    * **{label} Subindo + Preço de Lado:** Acumulação silenciosa. O estouro para cima está próximo.
+                    * **{label} Caindo + Preço de Lado:** Distribuição institucional. Prepare-se para uma queda brusca.
+                    * **Dica:** Divergências no gráfico diário (1d) são muito mais poderosas do que no intraday (60m).
+                    """)
