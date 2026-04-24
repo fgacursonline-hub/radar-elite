@@ -116,43 +116,51 @@ tab_br, tab_eua = st.tabs(["🇧🇷 Ibovespa (B3)", "🇺🇸 S&P 500 (Wall Str
 
 with tab_br:
     html_heatmap_br = """
-    <div class="tradingview-widget-container" style="height: 600px; width: 100%;">
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>
       {
-        "exchanges":["BMFBOVESPA"],
-        "dataSource":"IBOV",
-        "grouping":"sector",
-        "blockSize":"market_cap_basic",
-        "blockColor":"change",
-        "locale":"br",
-        "colorTheme":"dark",
-        "width":"100%",
-        "height":"100%"
+        "exchanges": ["BMFBOVESPA"],
+        "dataSource": "IBOV",
+        "grouping": "sector",
+        "blockSize": "market_cap_basic",
+        "blockColor": "change",
+        "locale": "br",
+        "colorTheme": "dark",
+        "hasTopBar": false,
+        "isDataSetEnabled": false,
+        "isZoomEnabled": true,
+        "hasSymbolTooltip": true,
+        "width": "100%",
+        "height": 550
       }
       </script>
     </div>"""
-    # Aumentamos a altura do container do Streamlit para combinar com o HTML
-    components.html(html_heatmap_br, height=600)
+    components.html(html_heatmap_br, height=550)
 
 with tab_eua:
     html_heatmap_eua = """
-    <div class="tradingview-widget-container" style="height: 600px; width: 100%;">
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>
       {
-        "exchanges":[],
-        "dataSource":"SPX500",
-        "grouping":"sector",
-        "blockSize":"market_cap_basic",
-        "blockColor":"change",
-        "locale":"br",
-        "colorTheme":"dark",
-        "width":"100%",
-        "height":"100%"
+        "exchanges": [],
+        "dataSource": "SPX500",
+        "grouping": "sector",
+        "blockSize": "market_cap_basic",
+        "blockColor": "change",
+        "locale": "br",
+        "colorTheme": "dark",
+        "hasTopBar": false,
+        "isDataSetEnabled": false,
+        "isZoomEnabled": true,
+        "hasSymbolTooltip": true,
+        "width": "100%",
+        "height": 550
       }
       </script>
     </div>"""
-    # Aumentamos a altura do container do Streamlit para combinar com o HTML
-    components.html(html_heatmap_eua, height=600)
+    components.html(html_heatmap_eua, height=550)
 
 # ==========================================
 # 🐋 FLUXO INSTITUCIONAL (DOWNLOAD B3)
