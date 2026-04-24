@@ -42,3 +42,15 @@ pares_elite = {
     'COCA34': 'KO',   'JBSS32': 'JBS',  'AAPL34': 'AAPL', 'XPBR31': 'XP',
     'STOC34': 'STNE'
 }
+# 4. Índices e Benchmarks (Termômetros do Mercado)
+benchmarks_elite = [
+    'IBOV',    # Índice Bovespa Principal
+    'SMLL',    # Índice de Small Caps
+    'IFNC',    # Índice Financeiro (Bancos)
+    'IFIX',    # Índice de Fundos Imobiliários
+    'BOVA11',  # ETF do Ibovespa
+    'SMAL11',  # ETF de Small Caps
+    'FIND11',  # ETF do Setor Financeiro
+    'IVVB11',  # ETF do S&P 500 (EUA) negociado no Brasil
+    'HASH11'   # ETF de Criptomoedas (Bitcoin/Ethereum)
+]
