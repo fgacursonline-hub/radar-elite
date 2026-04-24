@@ -108,15 +108,8 @@ st.divider()
 st.subheader("🐋 Fluxo Institucional (O rastro do Gringo)")
 st.markdown("Monitore se os grandes tubarões estrangeiros estão aportando ou retirando dinheiro da nossa bolsa.")
 
-col_gringo1, col_gringo2 = st.columns(2)
-
-with col_gringo1:
-    st.info("### 🇧🇷 Saldo Estrangeiro (B3)\nConfira o saldo de compra e venda dos investidores não residentes no Brasil.")
-    st.link_button("📊 Ver Saldo Oficial B3 (D+2)", "https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/consultas/mercado-a-vista/participacao-dos-investidores/volume-financeiro/", use_container_width=True)
-
-with col_gringo2:
-    st.success("### 🇺🇸 EWZ (ETF Brasil em NY)\nO principal veículo de investimento do gringo no Brasil. Se o EWZ sobe com volume, o gringo está comprando.")
-    st.link_button("📈 Ver EWZ em Tempo Real", "https://br.tradingview.com/symbols/AMEX-EWZ/", use_container_width=True)
+st.info("### 🇧🇷 Saldo Estrangeiro Oficial (B3)\nConfira o saldo de compra e venda dos investidores não residentes no mercado à vista brasileiro.")
+st.link_button("📊 Acessar Dados de Mercado B3 (Oficial)", "https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/consultas/mercado-a-vista/dados-de-mercado/", use_container_width=True)
 
 with st.expander("📖 Por que rastrear o Gringo?", expanded=False):
     st.markdown("""
@@ -124,5 +117,5 @@ with st.expander("📖 Por que rastrear o Gringo?", expanded=False):
     
     * **Gringo Comprando + IBOV Subindo:** Tendência saudável e forte. O "dinheiro inteligente" está apostando no país.
     * **Gringo Vendendo + IBOV Subindo:** Alerta de armadilha. A alta pode estar sendo sustentada apenas pelo varejo (pessoa física), o que costuma durar pouco.
-    * **D+2:** Lembre-se que o dado oficial da B3 tem 2 dias de atraso. Por isso, use o **EWZ** (link ao lado) como um termômetro em tempo real do humor estrangeiro.
+    * **D+2:** Lembre-se que o dado oficial da B3 tem 2 dias de atraso. O painel disponibilizado pela B3 te permite baixar a tabela de volume em Excel para rastrear todo o movimento histórico.
     """)
