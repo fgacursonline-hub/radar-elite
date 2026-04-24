@@ -89,6 +89,63 @@ with st.expander("📖 Como interpretar o Termômetro?", expanded=False):
     * 🟢 **55 a 75 (Ganância):** Otimismo e fluxo constante de capital entrando. Excelente momento para surfar tendências.
     * 🚀 **75 a 100 (Euforia Extrema):** O varejo está comprando topo agressivamente com medo de ficar de fora (FOMO). **Foco em proteção de lucros ou gatilhos de VENDA.**
     """)
+import yfinance as yf
+
+# ==========================================
+# 🇧🇷 TERMÔMETRO BRASIL (PROXIED)
+# ==========================================
+st.divider()
+st.subheader("🇧🇷 Termômetro Brasil (Sentimento B3)")
+st.markdown("Cálculo baseado na força relativa do Ibovespa e Volatilidade.")
+
+@st.cache_data(ttl=3600)
+def calcular_sentimento_brasil():
+    try:
+        # Puxamos os dados do Ibovespa
+        ibov = yf.download("^BVSP", period="60d", interval="1d", progress=False)
+        
+        # Cálculo simples de IFR (RSI) para medir Euforia/Medo
+        delta = ibov['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        
+        # O valor atual do IFR (último dia)
+        score_br = int(rsi.iloc[-1])
+        
+        if score_br >= 70: status = "Euforia Extrema 🚀"
+        elif score_br >= 60: status = "Ganância 🟢"
+        elif score_br >= 40: status = "Neutro 🟡"
+        elif score_br >= 30: status = "Medo 🔴"
+        else: status = "Pânico Extremo 🩸"
+        
+        return score_br, status
+    except:
+        return 50, "Erro ao processar dados B3"
+
+score_br, status_br = calcular_sentimento_brasil()
+
+# Velocímetro Brasil
+fig_br = go.Figure(go.Indicator(
+    mode = "gauge+number",
+    value = score_br,
+    title = {'text': f"<b>Status B3:</b><br><span style='font-size:0.8em;color:gray'>{status_br}</span>"},
+    gauge = {
+        'axis': {'range': [0, 100]},
+        'bar': {'color': "white"},
+        'steps': [
+            {'range': [0, 30], 'color': "#ff4d4d"},   
+            {'range': [30, 45], 'color': "#ff9933"},  
+            {'range': [45, 55], 'color': "#ffcc00"},  
+            {'range': [55, 70], 'color': "#99cc33"},  
+            {'range': [70, 100], 'color': "#33cc33"}  
+        ]
+    }
+))
+
+fig_br.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"}, height=350)
+st.plotly_chart(fig_br, use_container_width=True)
 
 # ==========================================
 # 🗺️ MAPAS DE CALOR GLOBAIS (TRADINGVIEW)
