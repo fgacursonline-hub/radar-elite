@@ -2,7 +2,6 @@ import streamlit as st
 import plotly.graph_objects as go
 import requests
 import streamlit.components.v1 as components
-import pandas as pd # <-- Adicionado para ler o CSV da B3
 
 # ==========================================
 # 1. SEGURANÇA E CONFIGURAÇÃO
@@ -91,66 +90,12 @@ with st.expander("📖 Como interpretar o Termômetro?", expanded=False):
     """)
 
 # ==========================================
-# 🗺️ MAPA DE CALOR GLOBAL (HEATMAP)
-# ==========================================
-st.divider()
-st.subheader("🗺️ Mapa de Calor: Wall Street (S&P 500)")
-st.markdown("Identifique instantaneamente onde o dinheiro está entrando e de onde está fugindo hoje.")
-
-heatmap_url = "https://finviz.com/map.ashx?t=sec"
-components.iframe(heatmap_url, height=500, scrolling=True)
-
-st.caption("💡 **Dica de Caçador:** Blocos verdes grandes indicam fluxo institucional em Big Techs. Blocos vermelhos em setores específicos podem indicar rotação de carteira.")
-
-# ==========================================
-# 🐋 INTELIGÊNCIA DE FLUXO (SALDO ESTRANGEIRO)
-# ==========================================
-st.divider()
-st.subheader("🐋 Fluxo Institucional (O rastro do Gringo B3)")
-st.markdown("Monitore se os grandes tubarões estrangeiros estão aportando ou retirando dinheiro da nossa bolsa.")
-
-# Função que vai baixar e ler a tabela da B3 silenciosamente
-@st.cache_data(ttl=3600) # Atualiza a cada 1 hora
-def puxar_fluxo_gringo_b3():
-    url_b3 = "https://sistemaswebb3-listados.b3.com.br/marketDataProxy/MarketDataCall/GetDownloadMarketData/RELATORIO_DADOS_DE_MERCADO.csv"
-    try:
-        # Lê o CSV da URL. Usa separador ';' e codificação para ler acentuação do português
-        df = pd.read_csv(url_b3, sep=';', encoding='latin-1', on_bad_lines='skip')
-        df = df.dropna(how='all') # Remove linhas completamente em branco
-        return df
-    except Exception as e:
-        return f"Erro de conexão com o servidor da B3: {e}"
-
-# Roda a extração
-with st.spinner("Interceptando dados de fluxo no servidor da B3..."):
-    dados_b3 = puxar_fluxo_gringo_b3()
-
-# Verifica se o robô conseguiu baixar e transformar em DataFrame
-if isinstance(dados_b3, pd.DataFrame):
-    st.success("✅ **Dados oficiais da B3 interceptados com sucesso!**")
-    # Mostra a tabela lindamente na tela do Streamlit
-    st.dataframe(dados_b3, use_container_width=True, hide_index=True)
-else:
-    # Se a B3 estiver fora do ar ou bloquear o robô, mostra erro e o botão de segurança
-    st.warning("Aviso: Não foi possível pré-carregar a tabela neste momento. O servidor da B3 pode estar instável.")
-    st.link_button("📥 Tentar baixar CSV Manualmente", "https://sistemaswebb3-listados.b3.com.br/marketDataProxy/MarketDataCall/GetDownloadMarketData/RELATORIO_DADOS_DE_MERCADO.csv", use_container_width=True)
-
-with st.expander("📖 Por que rastrear o Gringo?", expanded=False):
-    st.markdown("""
-    O investidor estrangeiro é responsável por mais de **50% do volume da B3**. 
-    
-    * **Gringo Comprando + IBOV Subindo:** Tendência saudável e forte. O "dinheiro inteligente" está apostando no país.
-    * **Gringo Vendendo + IBOV Subindo:** Alerta de armadilha. A alta pode estar sendo sustentada apenas pelo varejo (pessoa física), o que costuma durar pouco.
-    * **D+2:** Lembre-se que o dado oficial da B3 sempre carrega um atraso operacional de 2 dias úteis. Analise o saldo acumulado para confirmar tendências primárias.
-    """)
-    # ==========================================
 # 🗺️ MAPA DE CALOR GLOBAL (TRADINGVIEW)
 # ==========================================
 st.divider()
 st.subheader("🗺️ Mapa de Calor: Wall Street (S&P 500)")
 st.markdown("Identifique instantaneamente onde o dinheiro está entrando e de onde está fugindo hoje.")
 
-# Usando o motor nativo do TradingView que permite incorporação e tema escuro
 html_heatmap = """
 <div class="tradingview-widget-container">
   <div class="tradingview-widget-container__widget"></div>
