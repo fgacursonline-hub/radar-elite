@@ -134,6 +134,7 @@ aba_padrao, aba_pm, aba_stop, aba_individual, aba_futuros, aba_connors = st.tabs
 # ==========================================
 with aba_padrao:
     st.subheader("📡 Radar Padrão (Entrada Única & Alvo Fixo)")
+    st.info("📊 **A Estratégia Clássica (Rastreador IFR):** Busca exaustão da força vendedora. \n\n🟢 **Gatilho de Compra:** Ocorre quando a linha do IFR mergulha na região de pânico (abaixo de 25) e, em seguida, **cruza de volta para cima da linha de 25**, confirmando que a venda exauriu e o repique começou. \n\n🔴 **Condução (Padrão):** O robô faz apenas uma entrada por sinal e sai estritamente no alvo de lucro fixo percentual.")
     
     cp1, cp2, cp3 = st.columns(3)
     with cp1:
@@ -281,6 +282,7 @@ with aba_padrao:
 with aba_pm:
     st.subheader("📡 Radar PM Dinâmico")
     st.markdown("O robô defende a posição fazendo novos aportes a cada novo sinal de entrada, reduzindo o preço médio.")
+    st.info("📊 **Condução por Preço Médio (PM Dinâmico):** Usa o mesmo gatilho clássico do IFR (cruzou 25 para cima). A grande diferença é a gestão financeira. Se o trade for contra você e o IFR der um **novo sinal de compra**, o robô faz um novo aporte (compra novamente), baixando o seu Preço Médio e recalibrando o Alvo Final mais para baixo. Ideal para quem tem margem e opera ativos sólidos.")
     
     st.markdown("##### ⚙️ Configurações da Varredura")
     cr1, cr2, cr3 = st.columns(3)
@@ -429,6 +431,7 @@ with aba_pm:
 with aba_stop:
     st.subheader("🛡️ Radar de Risco Definido (Alvo & Stop Loss)")
     st.markdown("Nesta estratégia, o robô faz apenas **uma** entrada por sinal (sem preço médio) e aguarda o atingimento do Alvo ou do Stop de proteção.")
+    st.info("📊 **Condução com Stop de Risco Definido:** Usa o mesmo gatilho do IFR Clássico, mas com blindagem contra cisnes negros. Ele não faz preço médio nem carrega posições eternas. Tocou no alvo (gain) ou no limite de perda (stop loss), a operação é encerrada na mesma hora, protegendo seu patrimônio.")
     
     st.markdown("##### ⚙️ Configurações da Varredura")
     cs1, cs2, cs3 = st.columns(3)
@@ -574,6 +577,7 @@ with aba_stop:
 with aba_individual:
     st.subheader("🔬 Raio-X Detalhado: Backtest & Status Atual")
     st.markdown("Veja o histórico de acertos e o status completo se o ativo estiver com operação aberta agora.")
+    st.info("📊 **Laboratório do Rastreador de IFR:** Avalie a performance matemática crua da tática de exaustão de venda. Basta inserir o Ticker do ativo e testar as três metodologias de manejo de risco (Sem PM, com PM Dinâmico, ou Stop Fixo) para descobrir o que rende mais lucro para esse ativo em específico.")
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -730,6 +734,7 @@ with aba_individual:
 with aba_futuros:
     st.subheader("📈 Raio-X Mercado Futuro (WIN, WDO, etc)")
     st.markdown("Focado em **15 minutos** para garantir a estabilidade do backtest.")
+    st.info("📊 **Laboratório de Futuros (Day Trade/Swing):** Ajuste a agressividade do Índice (WIN) e do Dólar (WDO) no Intraday de 15 minutos, focando nas exaustões pontuais de movimento para scalping ou carregamento.")
     
     cf1, cf2, cf3 = st.columns(3)
     with cf1:
@@ -871,6 +876,7 @@ with aba_futuros:
 with aba_connors:
     st.subheader("🩸 Máquina de Pânico: IFR2 (Larry Connors)")
     st.markdown("O sistema puro de Reversão à Média. Compra o pânico extremo (faca caindo) e sai no repique.")
+    st.info("🩸 **A Estratégia (IFR2 Clássico):** Sistema estatístico de alta precisão desenhado por Larry Connors focado em reversão curta. \n\n🟢 **Gatilho de Compra:** O ativo deve estar em tendência primária de alta (Fechamento acima da Média de 200) para garantir que a queda é apenas um pânico temporário. A entrada ocorre apenas no fechamento do dia se o IFR calibrado em 2 períodos afundar abaixo do gatilho configurado (ex: IFR2 < 25).\n\n🔴 **Alvo / Saída:** O trade é puramente reativo e rápido. A posição é zerada na superação da Máxima dos últimos 2 dias ou no fechamento acima de uma média curta. Não há alvo longo, você só pega o 'repique' de alívio do mercado.")
     
     modo_connors = st.radio("Escolha o Modo Operacional:", ["📡 Radar de Sobrevenda (Varredura B3)", "🔬 Raio-X Individual (Backtest)"], horizontal=True)
     
