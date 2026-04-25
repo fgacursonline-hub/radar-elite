@@ -72,7 +72,7 @@ def renderizar_grafico_tv(symbol):
     components.html(html_code, height=500)
 
 def exibir_explicacao_estrategia():
-    st.markdown("<small><b>Fura-Teto:</b> Compra no rompimento da máxima anterior. <b>Fura-Chão:</b> Venda/Stop na perda da mínima anterior.</small>", unsafe_allow_html=True)
+    st.info("⬆️ **O Setup (Fura-Teto / Fura-Chão):** Compra no exato momento em que o preço ultrapassa a máxima do candle anterior (Teto). O Stop e a Condução acompanham a mínima do candle anterior (Chão).")
 
 # ==========================================
 # ABA 1: RADAR GLOBAL
@@ -92,6 +92,8 @@ with aba_radar:
         with col_f4:
             usar_alvo_g = st.toggle("Alvo Fixo (%)", value=False, key="f_alvo_tg_g")
             alvo_g = st.number_input("Alvo %:", value=10.0, disabled=not usar_alvo_g, key="f_alvo_val_g")
+
+    exibir_explicacao_estrategia()
 
     if st.button("🚀 Iniciar Varredura Global", type="primary", use_container_width=True):
         ativos = bdrs_elite if lista_sel == "BDRs Elite" else ibrx_selecao if lista_sel == "IBrX Seleção" else bdrs_elite + ibrx_selecao
@@ -142,6 +144,8 @@ with aba_individual:
             usar_alvo_rx = st.toggle("🎯 Alvo Fixo", value=False, key="rx_alvo_tg_i")
             alvo_rx_val = st.number_input("Alvo %:", value=10.0, disabled=not usar_alvo_rx, key="rx_alvo_val_i")
 
+    exibir_explicacao_estrategia()
+
     if st.button("🔍 Rodar Laboratório", type="primary", use_container_width=True, key="rx_btn_i"):
         intervalo_i = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
         with st.spinner("Analisando..."):
@@ -163,8 +167,11 @@ with aba_individual:
                         if em_pos is None:
                             if row['High'] > row['Fura_Teto'] and (not usar_mm_rx or row_ant['Close'] > row_ant['MM21']):
                                 p_ent = max(row['Open'], row['Fura_Teto'])
-                                em_pos = {'data': row['datetime'], 'preco': p_ent}
+                                em_pos = {'data': row['datetime'], 'preco': p_ent, 'pior_dd': 0}
                         else:
+                            dd = ((row['Low'] / em_pos['preco']) - 1) * 100
+                            if dd < em_pos['pior_dd']: em_pos['pior_dd'] = dd
+
                             bateu_st = usar_chao_rx and (row['Low'] < row['Fura_Chao'])
                             bateu_al = usar_alvo_rx and (row['High'] >= em_pos['preco'] * (1 + (alvo_rx_val/100)))
                             if bateu_st or bateu_al:
@@ -175,7 +182,8 @@ with aba_individual:
                                     'Preço Ent.': f"R$ {em_pos['preco']:.2f}",
                                     'Saída': row['datetime'].strftime('%d/%m/%y'), 
                                     'Preço Saída': f"R$ {p_sai:.2f}",
-                                    'Lucro R$': lucro
+                                    'Lucro R$': lucro,
+                                    'Drawdown': f"{em_pos['pior_dd']:.2f}%"
                                 })
                                 em_pos = None
 
@@ -185,10 +193,21 @@ with aba_individual:
                         derrs = df_t[df_t['Lucro R$'] <= 0]
                         tx = (len(vits)/len(df_t))*100
                         pf = vits['Lucro R$'].mean() / abs(derrs['Lucro R$'].mean()) if not derrs.empty else 0
+                        lucro_total = df_t['Lucro R$'].sum()
                         
                         st.markdown(f"### 📊 Resumo: {ativo_rx}")
-                        st.markdown(f"#### 💰 **Lucro:** R$ {df_t['Lucro R$'].sum():.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 🎯 **Acerto:** {tx:.1f}% &nbsp;&nbsp;|&nbsp;&nbsp; ⚖️ **Payoff:** {pf:.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 🔄 **Trades:** {len(df_t)}")
                         
+                        # Painel de Resultados Elegante
+                        c_res1, c_res2, c_res3, c_res4 = st.columns(4)
+                        cor_lucro = '#2eeb5c' if lucro_total > 0 else '#ff4d4d'
+                        
+                        c_res1.markdown(f"**Lucro Total:**<br><span style='font-size:18px; color:{cor_lucro}'>R$ {lucro_total:.2f}</span>", unsafe_allow_html=True)
+                        c_res2.markdown(f"**Taxa de Acerto:**<br><span style='font-size:18px'>{tx:.1f}%</span>", unsafe_allow_html=True)
+                        c_res3.markdown(f"**Payoff:**<br><span style='font-size:18px'>{pf:.2f}</span>", unsafe_allow_html=True)
+                        c_res4.markdown(f"**Operações Fechadas:**<br><span style='font-size:18px'>{len(df_t)}</span>", unsafe_allow_html=True)
+                        
+                        st.markdown("<br>", unsafe_allow_html=True)
+
                         # Formatando o DataFrame para exibir cores
                         df_show = df_t.copy()
                         df_show['Lucro R$'] = df_show['Lucro R$'].apply(lambda x: f"R$ {x:.2f}")
