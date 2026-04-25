@@ -75,6 +75,16 @@ def renderizar_grafico_tv(simbolo_tv, altura=600):
     """
     components.html(html_tv, height=altura)
 
+def exibir_explicacao_estrategia(estrategia):
+    if "9.1" in estrategia:
+        st.info("🔄 **Setup 9.1 (Reversão):** Captura a virada de tendência. Ocorre quando a MME9 para de cair e *vira para cima*. A compra é armada no rompimento da máxima do candle que virou a média.")
+    elif "9.2" in estrategia:
+        st.info("📉 **Setup 9.2 (Pullback Curto):** Foco em tendência. A MME9 está subindo, e a armadilha é montada quando um candle *fecha abaixo da mínima do candle anterior*. Compra na superação da máxima dele.")
+    elif "9.3" in estrategia:
+        st.info("📉📉 **Setup 9.3 (Pullback Duplo):** Foco em tendência. A MME9 está subindo, e a armadilha é montada quando temos *dois fechamentos seguidos para baixo*. Compra na máxima do último candle de queda.")
+    elif "9.4" in estrategia:
+        st.info("🪤 **Setup 9.4 (Shakeout/Violino):** Caça a armadilha. A MME9 está subindo, dá uma leve 'viradinha' para baixo por um candle e logo no seguinte já *vira para cima novamente*. Compra no rompimento falso.")
+
 # 3. INTERFACE DE ABAS
 col_titulo, col_botao = st.columns([4, 1])
 
@@ -106,6 +116,8 @@ with aba_padrao:
     with c3:
         tempo_91 = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="p91_tmp")
 
+    exibir_explicacao_estrategia(setup_escolhido)
+    
     btn_iniciar_91 = st.button(f"🚀 Iniciar Varredura {setup_escolhido.split()[1]}", type="primary", use_container_width=True, key="p91_btn")
 
     if btn_iniciar_91:
@@ -336,6 +348,8 @@ with aba_avancado:
     with ca3:
         capital_91a = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="a91_cap")
         tempo_91a = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="a91_tmp")
+
+    exibir_explicacao_estrategia(setup_escolhido_a)
 
     btn_iniciar_91a = st.button(f"🚀 Iniciar Varredura {setup_escolhido_a.split()[1]} Avançada", type="primary", use_container_width=True, key="a91_btn")
 
@@ -582,6 +596,8 @@ with aba_individual:
         lupa_capital = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="i91_cap")
     with col3:
         lupa_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="i91_tmp")
+
+    exibir_explicacao_estrategia(setup_escolhido_i)
         
     btn_raiox = st.button(f"🔍 Gerar Raio-X {setup_escolhido_i.split()[1]}", type="primary", use_container_width=True, key="i91_btn")
 
@@ -710,10 +726,7 @@ with aba_individual:
                                         elif "9.2" in setup_escolhido_i or "9.3" in setup_escolhido_i:
                                             if mme9_subindo:
                                                 gatilho_entrada = df_back['High'].iloc[i]
-                                                if lupa_stop == "Fundo Anterior (5 candles)":
-                                                    stop_loss = df_back['Fundo_5'].iloc[i] - 0.01
-                                                else:
-                                                    stop_loss = df_back['Low'].iloc[i] - 0.01
+                                                stop_loss = df_back['Fundo_5'].iloc[i] - 0.01 if lupa_stop == "Fundo Anterior (5 candles)" else df_back['Low'].iloc[i] - 0.01
                                             else:
                                                 setup_armado = False
 
@@ -787,6 +800,8 @@ with aba_futuros:
         st.markdown("<div style='height: 2px;'></div>", unsafe_allow_html=True)
         
         btn_raiox_futuros = st.button(f"🚀 Gerar Raio-X Futuros {setup_escolhido_f.split()[1]}", type="primary", use_container_width=True, key="f91_btn")
+
+    exibir_explicacao_estrategia(setup_escolhido_f)
 
     if btn_raiox_futuros:
         intervalo_tv = tradutor_intervalo.get(fut_tempo, Interval.in_15_minute)
@@ -1022,18 +1037,13 @@ with aba_futuros:
                         
                         if l_total > 0:
                             if p_off > 1:
-                                st.success(f"🎯 **Expectativa Real Positiva:** O Payoff é o rei da família 9.x! Você arrisca 1 para ganhar {p_off:.2f}. Margem de gordura: {margem:.1f}% acima da taxa crítica.")
+                                st.success(f"🎯 **Expectativa Real Positiva:** Você está vencendo o mercado! Para cada R$ 1,00 arriscado, ganha R$ {p_off:.2f}. Margem de gordura: {margem:.1f}% acima do crítico.")
                             else:
-                                st.info(f"⚖️ **Alerta de Risco:** Saldo positivo, mas payoff de {p_off:.2f} é perigoso para seguidores de tendência. A alta taxa de acerto é que está sustentando o sistema.")
+                                st.info(f"⚖️ **Alerta de Equilíbrio:** Saldo positivo, mas payoff baixo ({p_off:.2f}). Sua alta taxa de acerto é que está salvando a estratégia. Cuidado!")
                         else:
-                            st.error(f"🚨 **Expectativa Negativa:** Saldo de R$ {l_total:,.2f}. O 'Efeito Serrote' ou falsos rompimentos machucaram o robô. Se o Payoff não cobrir a taxa de erro natural, a conta não fecha.")
+                            st.error(f"🚨 **Expectativa Negativa:** O saldo de R$ {l_total:,.2f} mostra que a conta não fecha. Você precisa acertar mais de {t_critica:.1f}% para este Payoff, ou aumentar seu alvo.")
 
-                        st.dataframe(df_t, use_container_width=True, hide_index=True)
-                        
-                        st.divider()
-                        st.markdown(f"### 📈 Gráfico Interativo: {fut_selecionado}")
-                        renderizar_grafico_tv(f"BMFBOVESPA:{fut_ativo.replace('!', '')}")
-                        
+                        st.dataframe(df_t.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
                     else:
-                        st.warning("Nenhuma operação concluída usando essa configuração neste período.")
+                        st.warning("Nenhuma operação encontrada.")
             except Exception as e: st.error(f"Erro: {e}")
