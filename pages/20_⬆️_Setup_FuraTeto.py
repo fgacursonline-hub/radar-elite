@@ -71,6 +71,9 @@ def renderizar_grafico_tv(symbol):
     """
     components.html(html_code, height=500)
 
+def exibir_explicacao_estrategia():
+    st.markdown("<small><b>Fura-Teto:</b> Compra no rompimento da máxima anterior. <b>Fura-Chão:</b> Venda/Stop na perda da mínima anterior.</small>", unsafe_allow_html=True)
+
 # ==========================================
 # ABA 1: RADAR GLOBAL
 # ==========================================
@@ -81,8 +84,8 @@ with aba_radar:
             lista_sel = st.selectbox("Lista:", ["BDRs Elite", "IBrX Seleção", "Todos"], key="f_lst_g")
             cap_g = st.number_input("Capital/Trade:", value=10000.0, key="f_cap_g")
         with col_f2:
-            tempo_g = st.selectbox("Tempo Gráfico:", ['1d', '1wk'], index=0, key="f_tmp_g")
-            periodo_busca_g = st.selectbox("Histórico:", ['1y', '2y', '5y', 'max'], index=1, key="f_per_g")
+            tempo_g = st.selectbox("Tempo Gráfico:", ['1d', '1wk'], index=0, format_func=lambda x: {'1d': 'Diário', '1wk': 'Semanal'}[x], key="f_tmp_g")
+            periodo_busca_g = st.selectbox("Histórico:", ['1y', '2y', '5y', 'max'], index=1, format_func=lambda x: tradutor_periodo_nome[x], key="f_per_g")
         with col_f3:
             usar_mm_g = st.toggle("Filtro MM21", value=True, key="f_mm_g")
             usar_chao_g = st.toggle("Stop Fura-Chão", value=True, key="f_chao_g")
@@ -102,10 +105,11 @@ with aba_radar:
             s_text.text(f"Varrendo: {ativo}")
             p_bar.progress((i+1)/len(ativos))
             try:
-                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo, n_bars=1000)
+                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo, n_bars=3000)
                 if df is None: continue
                 df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 df['Fura_Teto'] = df['High'].shift(1)
+                df['Fura_Chao'] = df['Low'].shift(1)
                 df['MM21'] = ta.sma(df['Close'], length=21)
                 df = df.dropna()
 
@@ -129,10 +133,10 @@ with aba_individual:
             ativo_rx = st.selectbox("Ativo:", ativos_para_rastrear, key="rx_ativo_i")
             usar_mm_rx = st.toggle("📈 Filtro MM21", value=True, key="rx_mm_i")
         with c2:
-            periodo_rx = st.selectbox("Período:", options=['1y', '2y', '5y', 'max'], index=1, key="rx_per_i")
+            periodo_rx = st.selectbox("Período:", options=['1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=1, key="rx_per_i")
             cap_rx = st.number_input("Capital/Trade:", value=10000.0, key="rx_cap_i")
         with c3:
-            tempo_rx = st.selectbox("Gráfico:", ['1d', '1wk'], index=0, key="rx_tmp_i")
+            tempo_rx = st.selectbox("Gráfico:", ['1d', '1wk'], format_func=lambda x: {'1d': 'Diário', '1wk': 'Semanal'}[x], index=0, key="rx_tmp_i")
             usar_chao_rx = st.toggle("📉 Stop Fura-Chão", value=True, key="rx_chao_i")
         with c4:
             usar_alvo_rx = st.toggle("🎯 Alvo Fixo", value=False, key="rx_alvo_tg_i")
@@ -166,19 +170,38 @@ with aba_individual:
                             if bateu_st or bateu_al:
                                 p_sai = min(row['Open'], row['Fura_Chao']) if bateu_st else em_pos['preco'] * (1 + (alvo_rx_val/100))
                                 lucro = cap_rx * ((p_sai / em_pos['preco']) - 1)
-                                trades.append({'Entrada': em_pos['data'].strftime('%d/%m/%y'), 'Saída': row['datetime'].strftime('%d/%m/%y'), 'Lucro': lucro})
+                                trades.append({
+                                    'Entrada': em_pos['data'].strftime('%d/%m/%y'), 
+                                    'Preço Ent.': f"R$ {em_pos['preco']:.2f}",
+                                    'Saída': row['datetime'].strftime('%d/%m/%y'), 
+                                    'Preço Saída': f"R$ {p_sai:.2f}",
+                                    'Lucro R$': lucro
+                                })
                                 em_pos = None
 
                     if trades:
                         df_t = pd.DataFrame(trades)
-                        vits = df_t[df_t['Lucro'] > 0]
-                        derrs = df_t[df_t['Lucro'] <= 0]
+                        vits = df_t[df_t['Lucro R$'] > 0]
+                        derrs = df_t[df_t['Lucro R$'] <= 0]
                         tx = (len(vits)/len(df_t))*100
-                        pf = vits['Lucro'].mean() / abs(derrs['Lucro'].mean()) if not derrs.empty else 0
+                        pf = vits['Lucro R$'].mean() / abs(derrs['Lucro R$'].mean()) if not derrs.empty else 0
                         
                         st.markdown(f"### 📊 Resumo: {ativo_rx}")
-                        st.markdown(f"**Lucro:** R$ {df_t['Lucro'].sum():.2f} | **Acerto:** {tx:.1f}% | **Payoff:** {pf:.2f} | **Trades:** {len(df_t)}")
-                        st.dataframe(df_t, use_container_width=True, height=250)
+                        st.markdown(f"#### 💰 **Lucro:** R$ {df_t['Lucro R$'].sum():.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 🎯 **Acerto:** {tx:.1f}% &nbsp;&nbsp;|&nbsp;&nbsp; ⚖️ **Payoff:** {pf:.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 🔄 **Trades:** {len(df_t)}")
+                        
+                        # Formatando o DataFrame para exibir cores
+                        df_show = df_t.copy()
+                        df_show['Lucro R$'] = df_show['Lucro R$'].apply(lambda x: f"R$ {x:.2f}")
+                        
+                        def colorir_linha(row):
+                            val = str(row['Lucro R$'])
+                            if '-' not in val and '0.00' not in val:
+                                return ['color: #2eeb5c; font-weight: bold'] * len(row)
+                            elif '-' in val:
+                                return ['color: #ff4d4d'] * len(row)
+                            return [''] * len(row)
+
+                        st.dataframe(df_show.style.apply(colorir_linha, axis=1), use_container_width=True, hide_index=True)
                         renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
-                    else: st.warning("Nenhuma operação concluída.")
+                    else: st.warning("Nenhuma operação concluída neste período com essas configurações.")
             except Exception as e: st.error(f"Erro: {e}")
