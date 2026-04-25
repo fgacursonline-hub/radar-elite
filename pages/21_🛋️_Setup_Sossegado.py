@@ -73,10 +73,9 @@ def calcular_sossegado(df, hilo_len=8, wma_len=12, atr_len=10, filtro_atr=True):
     if hilo is None or hilo.empty: return pd.DataFrame()
     
     col_hilo = [c for c in hilo.columns if c.startswith('HILO_')][0]
-    col_hilo_long = [c for c in hilo.columns if c.startswith('HILOl_')][0] # Escadinha verde (tendência de alta)
+    col_hilo_long = [c for c in hilo.columns if c.startswith('HILOl_')][0] # Escadinha verde
     
     df['HiLo'] = hilo[col_hilo]
-    # Se a coluna 'long' não for NaN, a escadinha está embaixo do preço (Tendência de Alta)
     df['Tendencia_Alta'] = ~hilo[col_hilo_long].isna()
     
     # 3. Combustível de Ignição: ATR (Volatilidade)
@@ -84,9 +83,7 @@ def calcular_sossegado(df, hilo_len=8, wma_len=12, atr_len=10, filtro_atr=True):
     df['ATR_Subindo'] = df['ATR'] > df['ATR'].shift(1)
     
     # Lógica de Compra:
-    # A) Escadinha virou para verde (Tendência Alta acabou de nascer)
     virou_alta = df['Tendencia_Alta'] & (~df['Tendencia_Alta'].shift(1).fillna(False))
-    # B) Fechamento tem que estar acima da WMA12
     acima_wma = df['Close'] > df['WMA']
     
     condicao_compra = virou_alta & acima_wma
@@ -94,8 +91,6 @@ def calcular_sossegado(df, hilo_len=8, wma_len=12, atr_len=10, filtro_atr=True):
         condicao_compra = condicao_compra & df['ATR_Subindo']
         
     df['Cruzou_Compra'] = condicao_compra
-    
-    # Lógica de Saída (Fim do Sossego): Escadinha virou para vermelha
     df['Cruzou_Venda'] = (~df['Tendencia_Alta']) & (df['Tendencia_Alta'].shift(1).fillna(False))
     
     return df.dropna()
@@ -122,17 +117,17 @@ with aba_radar:
     with st.container(border=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns(4)
         with col_f1:
-            lista_sel = st.selectbox("Lista:", ["BDRs Elite", "IBrX Seleção", "Todos"], key="f_lst_g")
-            cap_g = st.number_input("Capital/Trade:", value=10000.0, key="f_cap_g")
+            lista_sel = st.selectbox("Lista:", ["BDRs Elite", "IBrX Seleção", "Todos"], key="f_lst_soss")
+            cap_g = st.number_input("Capital/Trade:", value=10000.0, key="f_cap_soss")
         with col_f2:
-            tempo_g = st.selectbox("Tempo Gráfico:", ['1d', '1wk'], index=0, format_func=lambda x: {'1d': 'Diário', '1wk': 'Semanal'}[x], key="f_tmp_g")
-            periodo_busca_g = st.selectbox("Histórico:", ['1y', '2y', '5y', 'max'], index=1, format_func=lambda x: tradutor_periodo_nome[x], key="f_per_g")
+            tempo_g = st.selectbox("Tempo Gráfico:", ['1d', '1wk'], index=0, format_func=lambda x: {'1d': 'Diário', '1wk': 'Semanal'}[x], key="f_tmp_soss")
+            periodo_busca_g = st.selectbox("Histórico:", ['1y', '2y', '5y', 'max'], index=1, format_func=lambda x: tradutor_periodo_nome[x], key="f_per_soss")
         with col_f3:
-            hilo_len_g = st.number_input("HiLo Activator (Original 8):", value=8, step=1)
-            wma_len_g = st.number_input("Média Ponderada WMA:", value=12, step=1)
+            hilo_len_g = st.number_input("HiLo Activator (Original 8):", value=8, step=1, key="hilo_g")
+            wma_len_g = st.number_input("Média Ponderada WMA:", value=12, step=1, key="wma_g")
         with col_f4:
-            usar_atr_g = st.toggle("📈 Exigir ATR Subindo (Força)", value=True)
-            atr_len_g = st.number_input("Período ATR:", value=10, step=1, disabled=not usar_atr_g)
+            usar_atr_g = st.toggle("📈 Exigir ATR Subindo (Força)", value=True, key="tg_atr_g")
+            atr_len_g = st.number_input("Período ATR:", value=10, step=1, disabled=not usar_atr_g, key="atr_len_g")
 
     exibir_explicacao_estrategia()
 
@@ -181,10 +176,10 @@ with aba_individual:
             cap_rx = st.number_input("Capital/Trade:", value=10000.0, key="rx_cap_i")
         with c3:
             tempo_rx = st.selectbox("Gráfico:", ['1d', '1wk'], format_func=lambda x: {'1d': 'Diário', '1wk': 'Semanal'}[x], index=0, key="rx_tmp_i")
-            atr_len_rx = st.number_input("Período ATR:", value=10, step=1, disabled=not usar_atr_rx)
+            atr_len_rx = st.number_input("Período ATR:", value=10, step=1, disabled=not usar_atr_rx, key="rx_atr_len")
         with c4:
-            hilo_len_rx = st.number_input("HiLo Activator (Padrão 8):", value=8, step=1)
-            wma_len_rx = st.number_input("Média WMA:", value=12, step=1)
+            hilo_len_rx = st.number_input("HiLo Activator (Padrão 8):", value=8, step=1, key="rx_hilo_len")
+            wma_len_rx = st.number_input("Média WMA:", value=12, step=1, key="rx_wma_len")
 
     exibir_explicacao_estrategia()
 
@@ -209,9 +204,8 @@ with aba_individual:
                             if row['Cruzou_Compra']:
                                 em_pos = {'data': row['datetime'], 'preco': row['Close']}
                         else:
-                            # Saída do Sossego: HiLo virou para baixo (preço cruzou a escadinha)
                             if row['Cruzou_Venda'] or row['Low'] < row['HiLo']:
-                                p_sai = min(row['Open'], row['HiLo']) # Sai no gap ou cravado no HiLo
+                                p_sai = min(row['Open'], row['HiLo'])
                                 lucro = cap_rx * ((p_sai / em_pos['preco']) - 1)
                                 trades.append({
                                     'Entrada': em_pos['data'].strftime('%d/%m/%y'), 
@@ -232,7 +226,6 @@ with aba_individual:
                         
                         st.markdown(f"### 📊 Resumo: {ativo_rx}")
                         
-                        # Painel de Resultados Elegante
                         c_res1, c_res2, c_res3, c_res4 = st.columns(4)
                         cor_lucro = '#2eeb5c' if lucro_total > 0 else '#ff4d4d'
                         
@@ -243,7 +236,6 @@ with aba_individual:
                         
                         st.markdown("<br>", unsafe_allow_html=True)
 
-                        # Formatando o DataFrame para exibir cores
                         df_show = df_t.copy()
                         df_show['Lucro R$'] = df_show['Lucro R$'].apply(lambda x: f"R$ {x:.2f}")
                         
