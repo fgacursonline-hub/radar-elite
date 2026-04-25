@@ -65,24 +65,24 @@ def calcular_sossegado(df, hilo_len=8, wma_len=12, atr_len=10, filtro_atr=True):
         df.columns = df.columns.get_level_values(0)
     df.index = df.index.tz_localize(None)
     
-    # 1. Bússola Direcional: Média Móvel Ponderada (WMA)
+    # Bússola Direcional: Média Móvel Ponderada (WMA)
     df['WMA'] = ta.wma(df['Close'], length=wma_len)
     
-    # 2. O Gatilho e Condução: HiLo Activator (Escadinha)
+    # Gatilho e Condução: HiLo Activator
     hilo = ta.hilo(df['High'], df['Low'], df['Close'], length=hilo_len)
     if hilo is None or hilo.empty: return pd.DataFrame()
     
     col_hilo = [c for c in hilo.columns if c.startswith('HILO_')][0]
-    col_hilo_long = [c for c in hilo.columns if c.startswith('HILOl_')][0] # Escadinha verde
+    col_hilo_long = [c for c in hilo.columns if c.startswith('HILOl_')][0] 
     
     df['HiLo'] = hilo[col_hilo]
     df['Tendencia_Alta'] = ~hilo[col_hilo_long].isna()
     
-    # 3. Combustível de Ignição: ATR (Volatilidade)
+    # Combustível de Ignição: ATR
     df['ATR'] = ta.atr(df['High'], df['Low'], df['Close'], length=atr_len)
     df['ATR_Subindo'] = df['ATR'] > df['ATR'].shift(1)
     
-    # Lógica de Compra:
+    # Lógica de Compra
     virou_alta = df['Tendencia_Alta'] & (~df['Tendencia_Alta'].shift(1).fillna(False))
     acima_wma = df['Close'] > df['WMA']
     
@@ -135,7 +135,7 @@ with aba_radar:
         ativos = bdrs_elite if lista_sel == "BDRs Elite" else ibrx_selecao if lista_sel == "IBrX Seleção" else bdrs_elite + ibrx_selecao
         intervalo = tradutor_intervalo.get(tempo_g, Interval.in_daily)
         
-        oportunidades = []
+        oportunidades, andamento, historico = [], [], []
         p_bar = st.progress(0); s_text = st.empty()
         
         for i, ativo_raw in enumerate(ativos):
@@ -143,14 +143,51 @@ with aba_radar:
             s_text.text(f"Varrendo: {ativo}")
             p_bar.progress((i+1)/len(ativos))
             try:
-                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo, n_bars=3000)
-                if df is None: continue
-                df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                df = calcular_sossegado(df, hilo_len=hilo_len_g, wma_len=wma_len_g, atr_len=atr_len_g, filtro_atr=usar_atr_g)
+                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo, n_bars=3000)
+                if df_full is None: continue
+                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                df_full = calcular_sossegado(df_full, hilo_len=hilo_len_g, wma_len=wma_len_g, atr_len=atr_len_g, filtro_atr=usar_atr_g)
+                
+                if df_full.empty: continue
 
-                # Verifica sinal de hoje
-                if not df.empty and df['Cruzou_Compra'].iloc[-1]:
-                    oportunidades.append({"Ativo": ativo, "Preço": df['Close'].iloc[-1], "Stop (HiLo)": df['HiLo'].iloc[-1]})
+                # Recorte de tempo
+                data_atual = df_full.index[-1]
+                delta = {'1y': 1, '2y': 2, '5y': 5}.get(periodo_busca_g, 10)
+                data_corte = data_atual - pd.DateOffset(years=delta) if periodo_busca_g != 'max' else df_full.index[0]
+                df = df_full[df_full.index >= data_corte].copy()
+                
+                if df.empty: continue
+
+                trade_aberto = None
+                trades_fechados = []
+                
+                # O Cérebro do Backtest Global
+                for j in range(len(df)):
+                    linha = df.iloc[j]
+                    data = df.index[j]
+                    
+                    if trade_aberto is None:
+                        if linha['Cruzou_Compra']:
+                            if j == len(df) - 1:
+                                oportunidades.append({"Ativo": ativo, "Preço": linha['Close'], "Stop (HiLo)": linha['HiLo']})
+                            else:
+                                trade_aberto = {'entrada_data': data, 'entrada_preco': linha['Close']}
+                    else:
+                        if linha['Cruzou_Venda'] or linha['Low'] < linha['HiLo']:
+                            p_sai = min(linha['Open'], linha['HiLo'])
+                            lucro_rs = cap_g * ((p_sai / trade_aberto['entrada_preco']) - 1)
+                            trades_fechados.append({'lucro_rs': lucro_rs})
+                            trade_aberto = None
+
+                # Registro de Andamentos e Histórico
+                if trade_aberto is not None:
+                    dias = (datetime.now().date() - trade_aberto['entrada_data'].date()).days
+                    resultado = (df['Close'].iloc[-1] / trade_aberto['entrada_preco']) - 1
+                    andamento.append({"Ativo": ativo, "Entrada": trade_aberto['entrada_data'].strftime("%d/%m/%Y"), "Dias": dias, "PM": trade_aberto['entrada_preco'], "Cotação Atual": df['Close'].iloc[-1], "Stop (HiLo)": df['HiLo'].iloc[-1], "Resultado Atual": resultado})
+                
+                if trades_fechados:
+                    lucro_total = sum(t['lucro_rs'] for t in trades_fechados)
+                    historico.append({"Ativo": ativo, "Trades": len(trades_fechados), "Lucro R$": lucro_total, "Resultado": lucro_total / (cap_g * len(trades_fechados))})
             except: pass
         
         p_bar.empty(); s_text.empty()
@@ -161,6 +198,23 @@ with aba_radar:
             df_op['Stop (HiLo)'] = df_op['Stop (HiLo)'].apply(lambda x: f"R$ {x:.2f}")
             st.dataframe(df_op, use_container_width=True, hide_index=True)
         else: st.info("Sem sinais de ignição no momento.")
+
+        st.subheader("⏳ Operações em Andamento (Conduzindo no HiLo)")
+        if andamento:
+            df_and = pd.DataFrame(andamento)
+            df_and['PM'] = df_and['PM'].apply(lambda x: f"R$ {x:.2f}")
+            df_and['Cotação Atual'] = df_and['Cotação Atual'].apply(lambda x: f"R$ {x:.2f}")
+            df_and['Stop (HiLo)'] = df_and['Stop (HiLo)'].apply(lambda x: f"R$ {x:.2f}")
+            st.dataframe(df_and.style.format({'Resultado Atual': "{:.2%}"}).map(lambda val: f"color: {'#00FFCC' if val > 0 else '#FF4D4D'}; font-weight: bold" if isinstance(val, float) else '', subset=['Resultado Atual']), use_container_width=True, hide_index=True)
+        else: st.info("Nenhuma operação em aberto no momento.")
+
+        st.subheader(f"🏆 Top 20 Histórico ({tradutor_periodo_nome.get(periodo_busca_g, periodo_busca_g)})")
+        if historico:
+            df_hist = pd.DataFrame(historico).sort_values(by="Lucro R$", ascending=False).head(20)
+            df_hist['Lucro R$'] = df_hist['Lucro R$'].apply(lambda x: f"R$ {x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+            st.dataframe(df_hist.style.format({'Resultado': "{:.2%}"}).map(lambda val: f"color: {'#00FFCC' if val > 0 else '#FF4D4D'}" if isinstance(val, float) else '', subset=['Resultado']), use_container_width=True, hide_index=True)
+        else:
+            st.warning("Nenhum histórico encontrado.")
 
 # ==========================================
 # ABA 2: RAIO-X INDIVIDUAL (O LABORATÓRIO)
