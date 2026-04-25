@@ -71,33 +71,30 @@ def renderizar_grafico_tv(symbol):
     """
     components.html(html_code, height=500)
 
-def exibir_explicacao_estrategia():
-    st.markdown("<small><b>Fura-Teto:</b> Compra no rompimento da máxima anterior. <b>Fura-Chão:</b> Venda/Stop na perda da mínima anterior.</small>", unsafe_allow_html=True)
-
 # ==========================================
-# ABA 1: RADAR GLOBAL (RESTAURADA)
+# ABA 1: RADAR GLOBAL
 # ==========================================
 with aba_radar:
     with st.container(border=True):
         col_f1, col_f2, col_f3, col_f4 = st.columns(4)
         with col_f1:
-            lista_sel = st.selectbox("Lista:", ["BDRs Elite", "IBrX Seleção", "Todos"], key="f_lst")
-            cap_g = st.number_input("Capital/Trade:", value=10000.0, key="f_cap")
+            lista_sel = st.selectbox("Lista:", ["BDRs Elite", "IBrX Seleção", "Todos"], key="f_lst_g")
+            cap_g = st.number_input("Capital/Trade:", value=10000.0, key="f_cap_g")
         with col_f2:
-            tempo_g = st.selectbox("Tempo Gráfico:", ['1d', '1wk'], index=0, key="f_tmp")
-            periodo_busca_g = st.selectbox("Histórico:", ['1y', '2y', '5y', 'max'], index=1, key="f_per")
+            tempo_g = st.selectbox("Tempo Gráfico:", ['1d', '1wk'], index=0, key="f_tmp_g")
+            periodo_busca_g = st.selectbox("Histórico:", ['1y', '2y', '5y', 'max'], index=1, key="f_per_g")
         with col_f3:
-            usar_mm_g = st.toggle("Filtro MM21", value=True)
-            usar_chao_g = st.toggle("Stop Fura-Chão", value=True)
+            usar_mm_g = st.toggle("Filtro MM21", value=True, key="f_mm_g")
+            usar_chao_g = st.toggle("Stop Fura-Chão", value=True, key="f_chao_g")
         with col_f4:
-            usar_alvo_g = st.toggle("Alvo Fixo (%)", value=False)
-            alvo_g = st.number_input("Alvo %:", value=10.0, disabled=not usar_alvo_g)
+            usar_alvo_g = st.toggle("Alvo Fixo (%)", value=False, key="f_alvo_tg_g")
+            alvo_g = st.number_input("Alvo %:", value=10.0, disabled=not usar_alvo_g, key="f_alvo_val_g")
 
     if st.button("🚀 Iniciar Varredura Global", type="primary", use_container_width=True):
         ativos = bdrs_elite if lista_sel == "BDRs Elite" else ibrx_selecao if lista_sel == "IBrX Seleção" else bdrs_elite + ibrx_selecao
         intervalo = tradutor_intervalo.get(tempo_g, Interval.in_daily)
         
-        oportunidades, historico = [], []
+        oportunidades = []
         p_bar = st.progress(0); s_text = st.empty()
         
         for i, ativo_raw in enumerate(ativos):
@@ -105,85 +102,83 @@ with aba_radar:
             s_text.text(f"Varrendo: {ativo}")
             p_bar.progress((i+1)/len(ativos))
             try:
-                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo, n_bars=3000)
+                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo, n_bars=1000)
                 if df is None: continue
                 df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 df['Fura_Teto'] = df['High'].shift(1)
-                df['Fura_Chao'] = df['Low'].shift(1)
                 df['MM21'] = ta.sma(df['Close'], length=21)
                 df = df.dropna()
 
-                # Verifica sinal de hoje
                 row = df.iloc[-1]; row_ant = df.iloc[-2]
                 if row['High'] > row['Fura_Teto'] and (not usar_mm_g or row_ant['Close'] > row_ant['MM21']):
                     oportunidades.append({"Ativo": ativo, "Preço": row['Close'], "Teto": row['Fura_Teto']})
-                
-                historico.append({"Ativo": ativo, "Sinais": len(df[df['High'] > df['Fura_Teto']])})
             except: pass
         
+        p_bar.empty(); s_text.empty()
         st.subheader("🎯 Oportunidades de Compra Agora")
         if oportunidades: st.dataframe(pd.DataFrame(oportunidades), use_container_width=True, hide_index=True)
         else: st.info("Sem sinais no momento.")
 
 # ==========================================
-# ABA 2: RAIO-X INDIVIDUAL (FONTE PEQUENA)
+# ABA 2: RAIO-X INDIVIDUAL
 # ==========================================
 with aba_individual:
     with st.container(border=True):
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            ativo_rx = st.selectbox("Ativo:", ativos_para_rastrear, key="rx_ativo")
-            usar_mm_rx = st.toggle("📈 Filtro MM21", value=True)
+            ativo_rx = st.selectbox("Ativo:", ativos_para_rastrear, key="rx_ativo_i")
+            usar_mm_rx = st.toggle("📈 Filtro MM21", value=True, key="rx_mm_i")
         with c2:
-            periodo_rx = st.selectbox("Período:", options=['1y', '2y', '5y', 'max'], index=1)
-            cap_rx = st.number_input("Capital/Trade:", value=10000.0)
+            periodo_rx = st.selectbox("Período:", options=['1y', '2y', '5y', 'max'], index=1, key="rx_per_i")
+            cap_rx = st.number_input("Capital/Trade:", value=10000.0, key="rx_cap_i")
         with c3:
-            tempo_rx = st.selectbox("Gráfico:", ['1d', '1wk'], index=0)
-            usar_chao_rx = st.toggle("📉 Stop Fura-Chão", value=True, key="rx_chao")
+            tempo_rx = st.selectbox("Gráfico:", ['1d', '1wk'], index=0, key="rx_tmp_i")
+            usar_chao_rx = st.toggle("📉 Stop Fura-Chão", value=True, key="rx_chao_i")
         with c4:
-            usar_alvo_rx = st.toggle("🎯 Alvo Fixo", value=False, key="rx_alvo_tg")
-            alvo_rx = st.number_input("Alvo %:", value=10.0, disabled=not usar_alvo_rx)
+            usar_alvo_rx = st.toggle("🎯 Alvo Fixo", value=False, key="rx_alvo_tg_i")
+            alvo_rx_val = st.number_input("Alvo %:", value=10.0, disabled=not usar_alvo_rx, key="rx_alvo_val_i")
 
-    if st.button("🔍 Rodar Laboratório", type="primary", use_container_width=True):
-        intervalo = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
+    if st.button("🔍 Rodar Laboratório", type="primary", use_container_width=True, key="rx_btn_i"):
+        intervalo_i = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
         with st.spinner("Analisando..."):
-            df_full = tv.get_hist(symbol=ativo_rx.replace('.SA',''), exchange='BMFBOVESPA', interval=intervalo, n_bars=5000)
-            if df_full is not None:
-                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                df_full['Fura_Teto'] = df_full['High'].shift(1)
-                df_full['Fura_Chao'] = df_full['Low'].shift(1)
-                df_full['MM21'] = ta.sma(df_full['Close'], length=21)
-                
-                delta = {'1y': 1, '2y': 2, '5y': 5}.get(periodo_rx, 10)
-                data_corte = df_full.index[-1] - pd.DateOffset(years=delta) if periodo_rx != 'max' else df_full.index[0]
-                df = df_full[df_full.index >= data_corte].copy().reset_index()
-                
-                trades, em_pos = [], None
-                for i in range(1, len(df)):
-                    row = df.iloc[i]; row_ant = df.iloc[i-1]
-                    if em_pos is None:
-                        if row['High'] > row['Fura_Teto'] and (not usar_mm_rx or row_ant['Close'] > row_ant['MM21']):
-                            p_ent = max(row['Open'], row['Fura_Teto'])
-                            em_pos = {'data': row['datetime'], 'preco': p_ent}
-                    else:
-                        bateu_st = usar_chao_rx and (row['Low'] < row['Fura_Chao'])
-                        bateu_al = usar_alvo_rx and (row['High'] >= em_pos['preco'] * (1 + (alvo_rx/100)))
-                        if bateu_st or bateu_al:
-                            p_sai = min(row['Open'], row['Fura_Chao']) if bateu_st else em_pos['preco'] * (1 + (alvo_rx/100))
-                            lucro = cap_rx * ((p_sai / em_pos['preco']) - 1)
-                            trades.append({'Entrada': em_pos['data'].strftime('%d/%m/%y'), 'Saída': row['datetime'].strftime('%d/%m/%y'), 'Lucro': lucro})
-                            em_pos = None
+            try:
+                df_full = tv.get_hist(symbol=ativo_rx.replace('.SA',''), exchange='BMFBOVESPA', interval=intervalo_i, n_bars=5000)
+                if df_full is not None:
+                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                    df_full['Fura_Teto'] = df_full['High'].shift(1)
+                    df_full['Fura_Chao'] = df_full['Low'].shift(1)
+                    df_full['MM21'] = ta.sma(df_full['Close'], length=21)
+                    
+                    delta = {'1y': 1, '2y': 2, '5y': 5}.get(periodo_rx, 10)
+                    data_corte = df_full.index[-1] - pd.DateOffset(years=delta) if periodo_rx != 'max' else df_full.index[0]
+                    df = df_full[df_full.index >= data_corte].copy().reset_index()
+                    
+                    trades, em_pos = [], None
+                    for i in range(1, len(df)):
+                        row = df.iloc[i]; row_ant = df.iloc[i-1]
+                        if em_pos is None:
+                            if row['High'] > row['Fura_Teto'] and (not usar_mm_rx or row_ant['Close'] > row_ant['MM21']):
+                                p_ent = max(row['Open'], row['Fura_Teto'])
+                                em_pos = {'data': row['datetime'], 'preco': p_ent}
+                        else:
+                            bateu_st = usar_chao_rx and (row['Low'] < row['Fura_Chao'])
+                            bateu_al = usar_alvo_rx and (row['High'] >= em_pos['preco'] * (1 + (alvo_rx_val/100)))
+                            if bateu_st or bateu_al:
+                                p_sai = min(row['Open'], row['Fura_Chao']) if bateu_st else em_pos['preco'] * (1 + (alvo_rx_val/100))
+                                lucro = cap_rx * ((p_sai / em_pos['preco']) - 1)
+                                trades.append({'Entrada': em_pos['data'].strftime('%d/%m/%y'), 'Saída': row['datetime'].strftime('%d/%m/%y'), 'Lucro': lucro})
+                                em_pos = None
 
-                if trades:
-                    df_t = pd.DataFrame(trades)
-                    vits = df_t[df_t['Lucro'] > 0]
-                    derrs = df_t[df_t['Lucro'] <= 0]
-                    tx = (len(vits)/len(df_t))*100
-                    pf = vits['Lucro'].mean() / abs(derrs['Lucro'].mean()) if not derrs.empty else 0
-                    
-                    # --- RESULTADO EM FONTE PEQUENA ---
-                    st.markdown(f"### 📊 Resumo: {ativo_rx}")
-                    st.markdown(f"**Lucro:** R$ {df_t['Lucro'].sum():.2f} | **Acerto:** {tx:.1f}% | **Payoff:** {pf:.2f} | **Trades:** {len(df_t)}")
-                    
-                    st.dataframe(df_t, use_container_width=True, height=250)
-                    renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
+                    if trades:
+                        df_t = pd.DataFrame(trades)
+                        vits = df_t[df_t['Lucro'] > 0]
+                        derrs = df_t[df_t['Lucro'] <= 0]
+                        tx = (len(vits)/len(df_t))*100
+                        pf = vits['Lucro'].mean() / abs(derrs['Lucro'].mean()) if not derrs.empty else 0
+                        
+                        st.markdown(f"### 📊 Resumo: {ativo_rx}")
+                        st.markdown(f"**Lucro:** R$ {df_t['Lucro'].sum():.2f} | **Acerto:** {tx:.1f}% | **Payoff:** {pf:.2f} | **Trades:** {len(df_t)}")
+                        st.dataframe(df_t, use_container_width=True, height=250)
+                        renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
+                    else: st.warning("Nenhuma operação concluída.")
+            except Exception as e: st.error(f"Erro: {e}")
