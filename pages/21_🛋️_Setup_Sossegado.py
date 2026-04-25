@@ -108,14 +108,14 @@ def renderizar_grafico_tv(symbol):
     components.html(html_code, height=500)
 
 def exibir_explicacao_estrategia():
-    st.info("🛋️ **A Estratégia (Setup Sossegado):** Entrar em rompimentos com força e conduzir sem ansiedade. \n\n🟢 **Compra:** A escadinha do HiLo (padrão **8**) vira para baixo do preço confirmando a tendência + O preço fecha acima da Média Ponderada (WMA **12**) + A volatilidade (ATR **10**) está acelerando.\n\n🔴 **Saída / Condução:** Esqueça alvos fixos. Apenas suba o seu Stop Loss diário acompanhando a escadinha do HiLo Activator. O trade acaba automaticamente no dia em que o preço furar a escadinha para baixo.")
+    st.info("🛋️ **A Estratégia (Setup Sossegado):** Entrar em rompimentos com força e conduzir sem ansiedade. \n\n🟢 **Compra:** A escadinha do HiLo (padrão **8**) vira para baixo do preço confirmando a tendência + O preço fecha acima da Média Ponderada (WMA **12**) + A volatilidade (ATR **10**) está acelerando.\n\n🔴 **Saída / Condução:** Você pode usar um Alvo Fixo pré-determinado ou, se preferir o modo 'Sossegado' puro, deixar o campo de alvo desligado e apenas subir o Stop Loss diário acompanhando o HiLo Activator.")
 
 # ==========================================
 # ABA 1: RADAR GLOBAL (SCANNER)
 # ==========================================
 with aba_radar:
     with st.container(border=True):
-        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+        col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
         with col_f1:
             lista_sel = st.selectbox("Lista:", ["BDRs Elite", "IBrX Seleção", "Todos"], key="f_lst_soss")
             cap_g = st.number_input("Capital/Trade:", value=10000.0, key="f_cap_soss")
@@ -123,11 +123,14 @@ with aba_radar:
             tempo_g = st.selectbox("Tempo Gráfico:", ['1d', '1wk'], index=0, format_func=lambda x: {'1d': 'Diário', '1wk': 'Semanal'}[x], key="f_tmp_soss")
             periodo_busca_g = st.selectbox("Histórico:", ['1y', '2y', '5y', 'max'], index=1, format_func=lambda x: tradutor_periodo_nome[x], key="f_per_soss")
         with col_f3:
-            hilo_len_g = st.number_input("HiLo Activator (Original 8):", value=8, step=1, key="hilo_g")
-            wma_len_g = st.number_input("Média Ponderada WMA:", value=12, step=1, key="wma_g")
+            hilo_len_g = st.number_input("HiLo (Padrão 8):", value=8, step=1, key="hilo_g")
+            wma_len_g = st.number_input("Média WMA:", value=12, step=1, key="wma_g")
         with col_f4:
-            usar_atr_g = st.toggle("📈 Exigir ATR Subindo (Força)", value=True, key="tg_atr_g")
+            usar_atr_g = st.toggle("📈 Exigir ATR Subindo", value=True, key="tg_atr_g")
             atr_len_g = st.number_input("Período ATR:", value=10, step=1, disabled=not usar_atr_g, key="atr_len_g")
+        with col_f5:
+            usar_alvo_g = st.toggle("🎯 Alvo Fixo", value=False, key="tg_alvo_g")
+            alvo_g = st.number_input("Alvo %:", value=10.0, disabled=not usar_alvo_g, key="alvo_val_g")
 
     exibir_explicacao_estrategia()
 
@@ -171,8 +174,13 @@ with aba_radar:
                             else:
                                 trade_aberto = {'entrada_data': data, 'entrada_preco': linha['Close']}
                     else:
-                        if linha['Cruzou_Venda'] or linha['Low'] < linha['HiLo']:
-                            p_sai = min(linha['Open'], linha['HiLo'])
+                        bateu_st = linha['Cruzou_Venda'] or linha['Low'] < linha['HiLo']
+                        bateu_al = usar_alvo_g and (linha['High'] >= trade_aberto['entrada_preco'] * (1 + alvo_g/100))
+                        
+                        if bateu_st or bateu_al:
+                            if bateu_st: p_sai = min(linha['Open'], linha['HiLo'])
+                            else: p_sai = trade_aberto['entrada_preco'] * (1 + alvo_g/100)
+                            
                             lucro_rs = cap_g * ((p_sai / trade_aberto['entrada_preco']) - 1)
                             trades_fechados.append({'lucro_rs': lucro_rs})
                             trade_aberto = None
@@ -196,7 +204,7 @@ with aba_radar:
             st.dataframe(df_op, use_container_width=True, hide_index=True)
         else: st.info("Sem sinais de ignição no momento.")
 
-        st.subheader("⏳ Operações em Andamento (Conduzindo no HiLo)")
+        st.subheader("⏳ Operações em Andamento")
         if andamento:
             df_and = pd.DataFrame(andamento)
             df_and['PM'] = df_and['PM'].apply(lambda x: f"R$ {x:.2f}")
@@ -218,19 +226,22 @@ with aba_radar:
 # ==========================================
 with aba_individual:
     with st.container(border=True):
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
             ativo_rx = st.selectbox("Ativo:", ativos_para_rastrear, key="rx_ativo_i")
-            usar_atr_rx = st.toggle("📈 Exigir ATR Subindo", value=True, key="rx_atr_tg")
+            cap_rx = st.number_input("Capital/Trade:", value=10000.0, key="rx_cap_i")
         with c2:
             periodo_rx = st.selectbox("Período:", options=['1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=1, key="rx_per_i")
-            cap_rx = st.number_input("Capital/Trade:", value=10000.0, key="rx_cap_i")
-        with c3:
             tempo_rx = st.selectbox("Gráfico:", ['1d', '1wk'], format_func=lambda x: {'1d': 'Diário', '1wk': 'Semanal'}[x], index=0, key="rx_tmp_i")
-            atr_len_rx = st.number_input("Período ATR:", value=10, step=1, disabled=not usar_atr_rx, key="rx_atr_len")
-        with c4:
-            hilo_len_rx = st.number_input("HiLo Activator (Padrão 8):", value=8, step=1, key="rx_hilo_len")
+        with c3:
+            hilo_len_rx = st.number_input("HiLo (Padrão 8):", value=8, step=1, key="rx_hilo_len")
             wma_len_rx = st.number_input("Média WMA:", value=12, step=1, key="rx_wma_len")
+        with c4:
+            usar_atr_rx = st.toggle("📈 Exigir ATR Subindo", value=True, key="rx_atr_tg")
+            atr_len_rx = st.number_input("Período ATR:", value=10, step=1, disabled=not usar_atr_rx, key="rx_atr_len")
+        with c5:
+            usar_alvo_rx = st.toggle("🎯 Alvo Fixo", value=False, key="rx_alvo_tg")
+            alvo_rx_val = st.number_input("Alvo %:", value=10.0, disabled=not usar_alvo_rx, key="rx_alvo_val")
 
     exibir_explicacao_estrategia()
 
@@ -255,19 +266,26 @@ with aba_individual:
                             if row['Cruzou_Compra']:
                                 em_pos = {'data': row['datetime'], 'preco': row['Close']}
                         else:
-                            if row['Cruzou_Venda'] or row['Low'] < row['HiLo']:
-                                p_sai = min(row['Open'], row['HiLo'])
-                                lucro = cap_rx * ((p_sai / em_pos['preco']) - 1)
+                            bateu_st = row['Cruzou_Venda'] or row['Low'] < row['HiLo']
+                            bateu_al = usar_alvo_rx and (row['High'] >= em_pos['preco'] * (1 + alvo_rx_val/100))
+                            
+                            if bateu_st or bateu_al:
+                                if bateu_st: p_sai = min(row['Open'], row['HiLo'])
+                                else: p_sai = em_pos['preco'] * (1 + alvo_rx_val/100)
+                                
+                                lucro_pct = (p_sai / em_pos['preco']) - 1
+                                lucro_rs = cap_rx * lucro_pct
                                 trades.append({
                                     'Entrada': em_pos['data'].strftime('%d/%m/%y'), 
                                     'Preço Ent.': f"R$ {em_pos['preco']:.2f}",
                                     'Saída': row['datetime'].strftime('%d/%m/%y'), 
                                     'Preço Saída': f"R$ {p_sai:.2f}",
-                                    'Lucro R$': lucro
+                                    'Resultado %': f"{lucro_pct*100:.2f}%",
+                                    'Lucro R$': lucro_rs
                                 })
                                 em_pos = None
 
-                    # --- NOVO: PAINEL DE STATUS DA OPERAÇÃO ---
+                    # --- PAINEL DE STATUS DA OPERAÇÃO ---
                     st.markdown("### 📡 Status em Tempo Real")
                     if em_pos is not None:
                         preco_atual = df['Close'].iloc[-1]
@@ -277,11 +295,12 @@ with aba_individual:
                         
                         cor_status = "#2eeb5c" if resultado_pct > 0 else "#ff4d4d"
                         txt_status = "Ganhando" if resultado_pct > 0 else "Perdendo"
+                        alvo_txt = f"| Alvo Projetado: R$ {(em_pos['preco'] * (1 + alvo_rx_val/100)):.2f}" if usar_alvo_rx else ""
                         
                         st.markdown(f"""
                         <div style="padding: 15px; border-radius: 8px; background-color: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 25px;">
                             ⏳ <b>Em Operação ({ativo_rx})</b><br>
-                            Comprado em: <b>{em_pos['data'].strftime('%d/%m/%Y')}</b> a <b>R$ {em_pos['preco']:.2f}</b><br>
+                            Comprado em: <b>{em_pos['data'].strftime('%d/%m/%Y')}</b> a <b>R$ {em_pos['preco']:.2f}</b> {alvo_txt}<br>
                             Cotação Atual: <b>R$ {preco_atual:.2f}</b> (Stop HiLo na proteção de R$ {hilo_atual:.2f})<br>
                             Resultado Flutuante: <span style="color: {cor_status}; font-weight: bold; font-size: 16px;">{txt_status} (R$ {resultado_rs:.2f} / {resultado_pct*100:.2f}%)</span>
                         </div>
@@ -327,7 +346,5 @@ with aba_individual:
 
                         st.dataframe(df_show.style.apply(colorir_linha, axis=1), use_container_width=True, hide_index=True)
                         renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
-                        
-                        st.info("💡 **Dica de Gráfico:** Adicione o 'Gann HiLo Activator' no TradingView para visualizar a escadinha que guiou as saídas desses trades!")
                     else: st.warning("Nenhuma operação concluída neste período com essas configurações.")
             except Exception as e: st.error(f"Erro: {e}")
