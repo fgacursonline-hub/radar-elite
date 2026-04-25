@@ -1,9 +1,10 @@
 import streamlit as st
+from tvDatafeed import TvDatafeed, Interval
 import streamlit.components.v1 as components
-import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
+import time
 import warnings
 import sys
 import os
@@ -24,13 +25,33 @@ except ImportError:
 ativos_para_rastrear = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
 
 # ==========================================
-# 2. CONFIGURAÇÃO DA PÁGINA
+# 2. CONFIGURAÇÃO DA PÁGINA & TVDATAFEED
 # ==========================================
 st.set_page_config(page_title="Agulhada do Didi Elite", layout="wide", page_icon="🪡")
 
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, faça login na página inicial (Home).")
     st.stop()
+
+# Conexão com o TradingView
+@st.cache_resource
+def get_tv_connection():
+    return TvDatafeed()
+
+tv = get_tv_connection()
+
+tradutor_periodo_nome = {
+    '1mo': '1 Mês', '3mo': '3 Meses', '6mo': '6 Meses',
+    '1y': '1 Ano', '2y': '2 Anos', '5y': '5 Anos',
+    'max': 'Máximo', '60d': '60 Dias'
+}
+
+tradutor_intervalo = {
+    '15m': Interval.in_15_minute,
+    '60m': Interval.in_1_hour,
+    '1d': Interval.in_daily,
+    '1wk': Interval.in_weekly
+}
 
 st.title("🪡 Máquina Quantitativa: Agulhada do Didi")
 st.markdown("Setup direcional explosivo baseado no cruzamento simultâneo das médias de 3, 8 e 20, com filtro ADX dinâmico.")
@@ -107,24 +128,38 @@ def renderizar_grafico_tv(symbol):
     """
     components.html(html_code, height=600)
 
+def exibir_explicacao_estrategia():
+    st.info("🪡 **A Estratégia (Agulhada do Didi):** O coração do sistema trabalha com as médias de 3, 8 e 20, onde a de 8 se torna o 'eixo zero' central. \n\n🟢 **Gatilho de Compra:** Ocorre quando a Média Rápida (3) fura a Média 8 para CIMA, a Média Lenta (20) fura para BAIXO, esmagando o preço. Opcionalmente, exige-se o filtro ADX (>20) confirmando que a explosão direcional tem volume real. \n\n🔴 **Gatilho de Saída (Defesa):** O trade encerra (tiro curto) se a Média Rápida (3) cruzar a de 8 para baixo, devolvendo o ganho, ou quando atinge seus stops/alvos de capital.")
+
 # ==========================================
 # ABA 1: RADAR GLOBAL (SCANNER + TOP 20)
 # ==========================================
 with aba_radar:
     with st.container(border=True):
+        st.markdown("**1. Parâmetros Operacionais**")
         col_f1, col_f2, col_f3, col_f4 = st.columns(4)
         with col_f1:
             lista_selecionada = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"])
-            capital_trade_global = st.number_input("Capital por Trade (R$):", value=10000.00, step=1000.00, key="cap_global")
         with col_f2:
-            tempo_grafico_global = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="tmp_global")
-            int_global = "1d" if "1d" in tempo_grafico_global else "1wk"
+            tempo_grafico_global = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="tmp_global")
+        with col_f3:
+            periodo_busca_g = st.selectbox("Período de Busca:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=4, key="per_busca_g")
+        with col_f4:
+            capital_trade_global = st.number_input("Capital por Trade (R$):", value=10000.00, step=1000.00, key="cap_global")
+            
+        exibir_explicacao_estrategia()
+
+        st.markdown("**2. Calibração (Filtros e Gestão)**")
+        col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+        with col_p1:
             usar_adx_g = st.toggle("📈 Filtro ADX Ativo", value=True, key="tg_adx_g")
             limite_adx_g = st.number_input("Nível ADX (>):", value=20, step=1, key="val_adx_g", disabled=not usar_adx_g)
-        with col_f3:
+        with col_p2:
+            st.write("")
+        with col_p3:
             usar_alvo_g = st.toggle("🎯 Habilitar Alvo", value=True, key="tg_alvo_g")
             alvo_pct_g = st.number_input("Alvo (%):", value=8.00, step=0.50, key="val_alvo_g", disabled=not usar_alvo_g) / 100.0
-        with col_f4:
+        with col_p4:
             usar_stop_g = st.toggle("🛡️ Habilitar Stop Loss", value=True, key="tg_stop_g")
             stop_pct_g = st.number_input("Stop (%):", value=4.00, step=0.50, key="val_stop_g", disabled=not usar_stop_g) / 100.0
 
@@ -133,20 +168,39 @@ with aba_radar:
     else: ativos_alvo = bdrs_elite + ibrx_selecao
     ativos_alvo = sorted(list(set([a.replace('.SA', '') for a in ativos_alvo])))
 
-    btn_iniciar_global = st.button("🚀 Iniciar Varredura de Agulhadas", type="primary", use_container_width=True)
+    btn_iniciar_global = st.button("🚀 Iniciar Varredura de Agulhadas (tvDatafeed)", type="primary", use_container_width=True)
 
     if btn_iniciar_global:
+        intervalo_tv = tradutor_intervalo.get(tempo_grafico_global, Interval.in_daily)
+        
         oportunidades, andamento, historico = [], [], []
         p_bar = st.progress(0)
         s_text = st.empty()
         
         for i, ativo in enumerate(ativos_alvo):
-            s_text.text(f"Mapeando Agulhadas: {ativo} ({i+1}/{len(ativos_alvo)})")
+            s_text.text(f"Mapeando Agulhadas via TV: {ativo} ({i+1}/{len(ativos_alvo)})")
             p_bar.progress((i + 1) / len(ativos_alvo))
             try:
-                df = yf.download(f"{ativo}.SA", period="2y", interval=int_global, progress=False)
-                df = calcular_didi(df, usar_adx=usar_adx_g, limite_adx=limite_adx_g)
-                if df.empty: continue
+                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                if df_full is None or len(df_full) < 60: continue
+
+                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                df_full = df_full.dropna()
+                
+                df_full = calcular_didi(df_full, usar_adx=usar_adx_g, limite_adx=limite_adx_g)
+                if df_full.empty: continue
+                
+                data_atual = df_full.index[-1]
+                if periodo_busca_g == '1mo': data_corte = data_atual - pd.DateOffset(months=1)
+                elif periodo_busca_g == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
+                elif periodo_busca_g == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
+                elif periodo_busca_g == '1y': data_corte = data_atual - pd.DateOffset(years=1)
+                elif periodo_busca_g == '2y': data_corte = data_atual - pd.DateOffset(years=2)
+                elif periodo_busca_g == '5y': data_corte = data_atual - pd.DateOffset(years=5)
+                else: data_corte = df_full.index[0]
+                
+                df = df_full[df_full.index >= data_corte].copy()
+                if len(df) == 0: continue
                 
                 trade_aberto = None
                 trades_fechados = []
@@ -186,7 +240,9 @@ with aba_radar:
                     pior_dd = min(t['pior_queda'] for t in trades_fechados)
                     investimento = capital_trade_global * total_trades
                     historico.append({"Ativo": ativo, "Trades": total_trades, "Pior Queda": pior_dd, "Investimento": investimento, "Lucro R$": lucro_total, "Resultado": lucro_total / investimento if investimento > 0 else 0})
-            except: pass
+            except Exception as e: 
+                pass
+            time.sleep(0.05)
         
         p_bar.empty(); s_text.empty()
         
@@ -208,112 +264,146 @@ with aba_radar:
             st.dataframe(df_and.style.format({'Resultado Atual': "{:.2%}"}).map(lambda val: f"color: {'#00FFCC' if val > 0 else '#FF4D4D'}; font-weight: bold" if isinstance(val, float) else '', subset=['Resultado Atual']), use_container_width=True, hide_index=True)
         else: st.info("Nenhuma operação em aberto no momento.")
 
-        st.subheader("📊 Top 20 Histórico (Melhores Ativos no Didi Index)")
+        st.subheader(f"📊 Top 20 Histórico ({tradutor_periodo_nome.get(periodo_busca_g, periodo_busca_g)})")
         if historico:
             df_hist = pd.DataFrame(historico).sort_values(by="Lucro R$", ascending=False).head(20)
             df_hist['Pior Queda'] = df_hist['Pior Queda'].apply(lambda x: f"{x*100:.2f}%")
             df_hist['Investimento'] = df_hist['Investimento'].apply(lambda x: f"R$ {x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
             st.dataframe(df_hist.style.format({'Lucro R$': "R$ {:,.2f}", 'Resultado': "{:.2%}"}).map(lambda val: f"color: {'#00FFCC' if val > 0 else '#FF4D4D'}" if isinstance(val, str) else '', subset=['Lucro R$', 'Resultado']), use_container_width=True, hide_index=True)
+        else:
+            st.warning("Nenhum histórico encontrado com a calibração selecionada.")
 
 # ==========================================
 # ABA 2: RAIO-X INDIVIDUAL (O LABORATÓRIO)
 # ==========================================
 with aba_individual:
     with st.container(border=True):
+        st.markdown("**1. Setup e Capital**")
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             ativo_rx = st.selectbox("Ativo (Ex: TSLA34):", ativos_para_rastrear, key="rx_ativo")
-            periodo_rx = st.selectbox("Período de Estudo:", ["1 Ano", "2 Anos", "5 Anos", "Máximo"], key="rx_per", index=1)
+            periodo_rx = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=4, key="rx_per")
         with c2:
             capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
-            tempo_rx = st.selectbox("Tempo Gráfico:", ["1d (Diário)", "1wk (Semanal)"], key="rx_tmp")
+            tempo_rx = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="rx_tmp")
         with c3:
             usar_adx_rx = st.toggle("📈 Filtro ADX Ativo", value=True, key="tg_adx_rx")
             limite_adx_rx = st.number_input("Nível ADX (>):", value=20, step=1, key="val_adx_rx", disabled=not usar_adx_rx)
+        with c4:
             usar_alvo_rx = st.toggle("🎯 Habilitar Alvo", value=True, key="tg_alvo_rx")
             alvo_rx = st.number_input("Alvo (%):", value=8.00, step=0.50, key="rx_alvo", disabled=not usar_alvo_rx)
-        with c4:
             usar_stop_rx = st.toggle("🛡️ Habilitar Stop Loss", value=True, key="tg_stop_rx")
             stop_rx = st.number_input("Stop Loss (%):", value=4.00, step=0.50, key="rx_stop", disabled=not usar_stop_rx)
+            
+        exibir_explicacao_estrategia()
             
     btn_rx = st.button("🔍 Dissecando Agulhadas", type="primary", use_container_width=True)
     
     if btn_rx:
-        with st.spinner(f"Processando Didi Index para {ativo_rx}..."):
-            mapa_per = {"1 Ano": "1y", "2 Anos": "2y", "5 Anos": "5y", "Máximo": "max"}
-            df_ativo = yf.download(f"{ativo_rx}.SA", period=mapa_per[periodo_rx], interval="1d" if "1d" in tempo_rx else "1wk", progress=False)
-            df_ativo = calcular_didi(df_ativo, usar_adx=usar_adx_rx, limite_adx=limite_adx_rx)
-            
-            if not df_ativo.empty:
-                alvo_pct = alvo_rx / 100.0
-                stop_pct = stop_rx / 100.0
-                trades_fechados = []
-                em_aberto = None
+        intervalo_tv_rx = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
+        with st.spinner(f"Processando Didi Index para {ativo_rx} via tvDatafeed..."):
+            try:
+                df_full = tv.get_hist(symbol=ativo_rx.replace('.SA', ''), exchange='BMFBOVESPA', interval=intervalo_tv_rx, n_bars=5000)
                 
-                for i in range(len(df_ativo)):
-                    linha = df_ativo.iloc[i]
-                    data = df_ativo.index[i]
+                if df_full is not None and len(df_full) > 60:
+                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                    df_full = df_full.dropna()
                     
-                    if em_aberto is None:
-                        if linha['Cruzou_Compra']:
-                            em_aberto = {'entrada_data': data, 'entrada_preco': linha['Close'], 'pico': linha['Close'], 'pior_queda': 0.0}
-                    else:
-                        if linha['High'] > em_aberto['pico']: em_aberto['pico'] = linha['High']
-                        dd = (linha['Low'] / em_aberto['pico']) - 1
-                        if dd < em_aberto['pior_queda']: em_aberto['pior_queda'] = dd
+                    df_full = calcular_didi(df_full, usar_adx=usar_adx_rx, limite_adx=limite_adx_rx)
+                    
+                    data_atual = df_full.index[-1]
+                    if periodo_rx == '1mo': data_corte = data_atual - pd.DateOffset(months=1)
+                    elif periodo_rx == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
+                    elif periodo_rx == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
+                    elif periodo_rx == '1y': data_corte = data_atual - pd.DateOffset(years=1)
+                    elif periodo_rx == '2y': data_corte = data_atual - pd.DateOffset(years=2)
+                    elif periodo_rx == '5y': data_corte = data_atual - pd.DateOffset(years=5)
+                    else: data_corte = df_full.index[0]
+                    
+                    df_ativo = df_full[df_full.index >= data_corte].copy()
+                    
+                    if not df_ativo.empty:
+                        alvo_pct = alvo_rx / 100.0
+                        stop_pct = stop_rx / 100.0
+                        trades_fechados = []
+                        em_aberto = None
                         
-                        bateu_stop = usar_stop_rx and (linha['Low'] <= em_aberto['entrada_preco'] * (1 - stop_pct))
-                        bateu_alvo = usar_alvo_rx and (linha['High'] >= em_aberto['entrada_preco'] * (1 + alvo_pct))
-                        sinal_venda = linha['Cruzou_Venda']
-                        
-                        if bateu_stop or bateu_alvo or sinal_venda:
-                            if bateu_stop:
-                                preco_saida = em_aberto['entrada_preco'] * (1 - stop_pct)
-                                motivo = "Stop Loss"
-                            elif bateu_alvo:
-                                preco_saida = em_aberto['entrada_preco'] * (1 + alvo_pct)
-                                motivo = "Alvo (Gain)"
+                        for i in range(len(df_ativo)):
+                            linha = df_ativo.iloc[i]
+                            data = df_ativo.index[i]
+                            
+                            if em_aberto is None:
+                                if linha['Cruzou_Compra']:
+                                    em_aberto = {'entrada_data': data, 'entrada_preco': linha['Close'], 'pico': linha['Close'], 'pior_queda': 0.0}
                             else:
-                                preco_saida = linha['Close']
-                                motivo = "Perdeu MM8 (Virada)"
+                                if linha['High'] > em_aberto['pico']: em_aberto['pico'] = linha['High']
+                                dd = (linha['Low'] / em_aberto['pico']) - 1
+                                if dd < em_aberto['pior_queda']: em_aberto['pior_queda'] = dd
+                                
+                                bateu_stop = usar_stop_rx and (linha['Low'] <= em_aberto['entrada_preco'] * (1 - stop_pct))
+                                bateu_alvo = usar_alvo_rx and (linha['High'] >= em_aberto['entrada_preco'] * (1 + alvo_pct))
+                                sinal_venda = linha['Cruzou_Venda']
+                                
+                                if bateu_stop or bateu_alvo or sinal_venda:
+                                    if bateu_stop:
+                                        preco_saida = em_aberto['entrada_preco'] * (1 - stop_pct)
+                                        motivo = "Stop Loss"
+                                    elif bateu_alvo:
+                                        preco_saida = em_aberto['entrada_preco'] * (1 + alvo_pct)
+                                        motivo = "Alvo (Gain)"
+                                    else:
+                                        preco_saida = linha['Close']
+                                        motivo = "Perdeu MM8 (Virada)"
 
-                            lucro_pct = (preco_saida / em_aberto['entrada_preco']) - 1
-                            lucro_rs = capital_rx * lucro_pct
-                            duracao = (data - em_aberto['entrada_data']).days
-                            trades_fechados.append({'Entrada': em_aberto['entrada_data'].strftime("%d/%m/%Y"), 'Saída': data.strftime("%d/%m/%Y"), 'Duração': duracao, 'Motivo Saída': motivo, 'Lucro (R$)': lucro_rs, 'Queda Máx': em_aberto['pior_queda'], 'Situação': "Gain ✅" if lucro_pct > 0 else "Loss ❌"})
-                            em_aberto = None
+                                    lucro_pct = (preco_saida / em_aberto['entrada_preco']) - 1
+                                    lucro_rs = capital_rx * lucro_pct
+                                    duracao = (data - em_aberto['entrada_data']).days
+                                    trades_fechados.append({
+                                        'Entrada': em_aberto['entrada_data'].strftime("%d/%m/%Y"), 
+                                        'Saída': data.strftime("%d/%m/%Y"), 
+                                        'Duração': duracao, 
+                                        'Motivo Saída': motivo, 
+                                        'Lucro (R$)': lucro_rs, 
+                                        'Queda Máx': em_aberto['pior_queda'], 
+                                        'Situação': "Gain ✅" if lucro_pct > 0 else "Loss ❌"
+                                    })
+                                    em_aberto = None
 
-                if em_aberto is not None:
-                    st.info(f"⏳ **{ativo_rx}: Em Operação** (Posicionado desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
-                else:
-                    if df_ativo['Cruzou_Compra'].iloc[-1]:
-                        st.success(f"🪡 **{ativo_rx}: AGULHADA DE COMPRA ATIVADA HOJE!** (ADX >= {limite_adx_rx if usar_adx_rx else 'Desativado'})")
+                        if em_aberto is not None:
+                            st.info(f"⏳ **{ativo_rx}: Em Operação** (Posicionado desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
+                        else:
+                            if df_ativo['Cruzou_Compra'].iloc[-1]:
+                                st.success(f"🪡 **{ativo_rx}: AGULHADA DE COMPRA ATIVADA HOJE!** (ADX >= {limite_adx_rx if usar_adx_rx else 'Desativado'})")
+                            else:
+                                st.success(f"✅ **{ativo_rx}: Aguardando Formação da Agulhada**")
+
+                        st.markdown(f"### 📊 Resultado Consolidado: {ativo_rx}")
+                        if trades_fechados:
+                            df_trades = pd.DataFrame(trades_fechados)
+                            m1, m2, m3, m4 = st.columns(4)
+                            m1.metric("Lucro Total", f"R$ {df_trades['Lucro (R$)'].sum():.2f}")
+                            m2.metric("Duração Média", f"{df_trades['Duração'].mean():.1f} dias")
+                            m3.metric("Operações Fechadas", len(df_trades))
+                            m4.metric("Pior Queda", f"{df_trades['Queda Máx'].min()*100:.2f}%")
+                            
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            df_show = df_trades.copy()
+                            df_show['Lucro (R$)'] = df_show['Lucro (R$)'].apply(lambda x: f"R$ {x:.2f}")
+                            df_show['Queda Máx'] = df_show['Queda Máx'].apply(lambda x: f"{x*100:.2f}%")
+                            def colorir_tabela(val):
+                                if 'Gain' in str(val) or ('R$' in str(val) and '-' not in str(val) and val != 'R$ 0.00'): return 'color: #00FFCC; font-weight: bold'
+                                if 'Loss' in str(val) or ('R$' in str(val) and '-' in str(val)): return 'color: #FF4D4D; font-weight: bold'
+                                return ''
+                            st.dataframe(df_show.style.map(colorir_tabela), use_container_width=True, hide_index=True)
+                        else:
+                            st.warning("Nenhuma Agulhada concluída no período com os parâmetros selecionados.")
+
+                        st.divider()
+                        st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
+                        renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
                     else:
-                        st.success(f"✅ **{ativo_rx}: Aguardando Formação da Agulhada**")
-
-                st.markdown(f"### 📊 Resultado Consolidado: {ativo_rx}")
-                if trades_fechados:
-                    df_trades = pd.DataFrame(trades_fechados)
-                    m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("Lucro Total", f"R$ {df_trades['Lucro (R$)'].sum():.2f}")
-                    m2.metric("Duração Média", f"{df_trades['Duração'].mean():.1f} dias")
-                    m3.metric("Operações Fechadas", len(df_trades))
-                    m4.metric("Pior Queda", f"{df_trades['Queda Máx'].min()*100:.2f}%")
-                    
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    df_show = df_trades.copy()
-                    df_show['Lucro (R$)'] = df_show['Lucro (R$)'].apply(lambda x: f"R$ {x:.2f}")
-                    df_show['Queda Máx'] = df_show['Queda Máx'].apply(lambda x: f"{x*100:.2f}%")
-                    def colorir_tabela(val):
-                        if 'Gain' in str(val) or ('R$' in str(val) and '-' not in str(val) and val != 'R$ 0.00'): return 'color: #00FFCC; font-weight: bold'
-                        if 'Loss' in str(val) or ('R$' in str(val) and '-' in str(val)): return 'color: #FF4D4D; font-weight: bold'
-                        return ''
-                    st.dataframe(df_show.style.map(colorir_tabela), use_container_width=True, hide_index=True)
+                        st.error("Sem dados suficientes no período de corte.")
                 else:
-                    st.warning("Nenhuma Agulhada concluída no período com os parâmetros selecionados.")
-
-                st.divider()
-                st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
-                renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
-            else:
-                st.error("Sem dados suficientes para processar a Agulhada.")
+                    st.error("Não foi possível coletar dados do TradingView para este ativo.")
+            except Exception as e:
+                st.error(f"Erro no processamento via tvDatafeed: {e}")
