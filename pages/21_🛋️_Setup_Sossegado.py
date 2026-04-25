@@ -150,7 +150,6 @@ with aba_radar:
                 
                 if df_full.empty: continue
 
-                # Recorte de tempo
                 data_atual = df_full.index[-1]
                 delta = {'1y': 1, '2y': 2, '5y': 5}.get(periodo_busca_g, 10)
                 data_corte = data_atual - pd.DateOffset(years=delta) if periodo_busca_g != 'max' else df_full.index[0]
@@ -161,7 +160,6 @@ with aba_radar:
                 trade_aberto = None
                 trades_fechados = []
                 
-                # O Cérebro do Backtest Global
                 for j in range(len(df)):
                     linha = df.iloc[j]
                     data = df.index[j]
@@ -179,7 +177,6 @@ with aba_radar:
                             trades_fechados.append({'lucro_rs': lucro_rs})
                             trade_aberto = None
 
-                # Registro de Andamentos e Histórico
                 if trade_aberto is not None:
                     dias = (datetime.now().date() - trade_aberto['entrada_data'].date()).days
                     resultado = (df['Close'].iloc[-1] / trade_aberto['entrada_preco']) - 1
@@ -270,6 +267,33 @@ with aba_individual:
                                 })
                                 em_pos = None
 
+                    # --- NOVO: PAINEL DE STATUS DA OPERAÇÃO ---
+                    st.markdown("### 📡 Status em Tempo Real")
+                    if em_pos is not None:
+                        preco_atual = df['Close'].iloc[-1]
+                        hilo_atual = df['HiLo'].iloc[-1]
+                        resultado_pct = (preco_atual / em_pos['preco']) - 1
+                        resultado_rs = cap_rx * resultado_pct
+                        
+                        cor_status = "#2eeb5c" if resultado_pct > 0 else "#ff4d4d"
+                        txt_status = "Ganhando" if resultado_pct > 0 else "Perdendo"
+                        
+                        st.markdown(f"""
+                        <div style="padding: 15px; border-radius: 8px; background-color: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 25px;">
+                            ⏳ <b>Em Operação ({ativo_rx})</b><br>
+                            Comprado em: <b>{em_pos['data'].strftime('%d/%m/%Y')}</b> a <b>R$ {em_pos['preco']:.2f}</b><br>
+                            Cotação Atual: <b>R$ {preco_atual:.2f}</b> (Stop HiLo na proteção de R$ {hilo_atual:.2f})<br>
+                            Resultado Flutuante: <span style="color: {cor_status}; font-weight: bold; font-size: 16px;">{txt_status} (R$ {resultado_rs:.2f} / {resultado_pct*100:.2f}%)</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div style="padding: 15px; border-radius: 8px; background-color: rgba(46, 235, 92, 0.1); border: 1px solid rgba(46, 235, 92, 0.3); margin-bottom: 25px;">
+                            ✅ <b>{ativo_rx}: Aguardando Novo Sinal Sossegado</b>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    # --- RESUMO E TABELA ---
                     if trades:
                         df_t = pd.DataFrame(trades)
                         vits = df_t[df_t['Lucro R$'] > 0]
@@ -278,7 +302,7 @@ with aba_individual:
                         pf = vits['Lucro R$'].mean() / abs(derrs['Lucro R$'].mean()) if not derrs.empty else 0
                         lucro_total = df_t['Lucro R$'].sum()
                         
-                        st.markdown(f"### 📊 Resumo: {ativo_rx}")
+                        st.markdown(f"### 📊 Histórico Fechado: {ativo_rx}")
                         
                         c_res1, c_res2, c_res3, c_res4 = st.columns(4)
                         cor_lucro = '#2eeb5c' if lucro_total > 0 else '#ff4d4d'
