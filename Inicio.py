@@ -477,12 +477,12 @@ def obter_dados_copom():
         resp = requests.get(url, timeout=5)
         selic = float(resp.json()[0]['valor'])
         
-        # Lógica para descobrir a próxima reunião de 2026
+        # Lógica para descobrir a próxima reunião de 2026 (DATAS ATUALIZADAS)
         hoje = datetime.now().date()
         reunioes_2026 = [
             datetime(2026, 1, 28).date(),
             datetime(2026, 3, 18).date(),
-            datetime(2026, 5, 6).date(),
+            datetime(2026, 4, 29).date(),
             datetime(2026, 6, 17).date(),
             datetime(2026, 8, 5).date(),
             datetime(2026, 9, 16).date(),
