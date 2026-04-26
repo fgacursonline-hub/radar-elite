@@ -77,6 +77,8 @@ with col_botao:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     st.link_button("📖 Ler Manual", "https://seusite.com/manual_ifr", use_container_width=True)
 
+st.info("📊 **Estratégia (Retorno à Média):** O setup foca em comprar o pânico (toque na banda inferior) e vender a euforia (toque na banda superior), aproveitando o conceito de retorno à média. **Atenção:** Keltner brilha em mercados laterais, mas operar contra tendências muito fortes pode gerar falsos rompimentos. É altamente recomendado o uso de filtros de contexto (como MM200, ADX ou divergência de IFR) antes de acionar a compra cega na banda inferior.")
+
 aba_padrao, aba_pm, aba_stop, aba_individual, aba_futuros = st.tabs([
     "📡 Radar (Padrão)", "📡 Radar (PM)", "🛡️ Alvo & Stop", "🔬 Raio-X Individual", "📉 Raio-X Futuros"
 ])
