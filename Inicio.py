@@ -396,7 +396,7 @@ if btn_indiv:
 # 🕵️‍♂️ TERMÔMETRO DO VAREJO (ROBINHOOD)
 # ==========================================
 
-st.divider() # Cria uma linha para separar os assuntos
+
 st.markdown("### 🕵️‍♂️ Termômetro do Varejo (Robinhood)")
 st.caption("Verifique se o movimento está sendo puxado pela euforia da pessoa física americana.")
 
