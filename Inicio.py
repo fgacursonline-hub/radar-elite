@@ -464,6 +464,62 @@ with cl6:
     st.link_button("Investing.com", "https://br.investing.com/", use_container_width=True)
 
 # ==========================================
+# NOVO MÓDULO: DADOS DO BANCO CENTRAL (SELIC & COPOM)
+# ==========================================
+st.divider()
+st.subheader("🏛️ Painel do Banco Central")
+
+@st.cache_data(ttl=3600) # Cache de 1 hora
+def obter_dados_copom():
+    try:
+        # Busca Selic via API do Banco Central
+        url = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1?formato=json"
+        resp = requests.get(url, timeout=5)
+        selic = float(resp.json()[0]['valor'])
+        
+        # Lógica para descobrir a próxima reunião de 2026
+        hoje = datetime.now().date()
+        reunioes_2026 = [
+            datetime(2026, 1, 28).date(),
+            datetime(2026, 3, 18).date(),
+            datetime(2026, 5, 6).date(),
+            datetime(2026, 6, 17).date(),
+            datetime(2026, 8, 5).date(),
+            datetime(2026, 9, 16).date(),
+            datetime(2026, 11, 4).date(),
+            datetime(2026, 12, 9).date()
+        ]
+        
+        proxima_reuniao = None
+        for data_copom in reunioes_2026:
+            if data_copom >= hoje:
+                proxima_reuniao = data_copom
+                break
+                
+        return selic, proxima_reuniao
+    except:
+        return None, None
+
+selic_atual, prox_copom = obter_dados_copom()
+
+cb1, cb2 = st.columns(2)
+with cb1:
+    if selic_atual:
+        st.info(f"### 🇧🇷 Taxa Selic Meta: **{selic_atual}% a.a.**")
+    else:
+        st.error("Não foi possível conectar ao Banco Central.")
+with cb2:
+    if prox_copom:
+        dias_faltando = (prox_copom - datetime.now().date()).days
+        if dias_faltando == 0:
+            st.warning(f"### 🗓️ Próximo COPOM: **Hoje!**")
+        else:
+            st.warning(f"### 🗓️ Próximo COPOM: **{prox_copom.strftime('%d/%m/%Y')}** (em {dias_faltando} dias)")
+    else:
+        st.warning("### 🗓️ Próximo COPOM: Calendário indisponível")
+
+
+# ==========================================
 # 6. RADAR DE NOTÍCIAS MULTI-FONTE
 # ==========================================
 st.divider()
