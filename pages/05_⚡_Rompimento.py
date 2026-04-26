@@ -1,21 +1,37 @@
 import streamlit as st
 import pandas as pd
 from tvDatafeed import TvDatafeed, Interval
+import sys
+import os
 
 # 1. Configuração da Página
 st.set_page_config(page_title="Radar de Rompimento", layout="wide", page_icon="⚡")
+
+# 1. SEGURANÇA E BLOQUEIO
+if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
+    st.error("🚫 Por favor, faça login na página inicial (Home).")
+    st.stop()
+
+# ==========================================
+# IMPORTAÇÃO CENTRALIZADA DOS ATIVOS
+# ==========================================
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+try:
+    from config_ativos import bdrs_elite, ibrx_selecao
+except ImportError:
+    st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
+    st.stop()
 
 # Inicializa o TradingView
 if 'tv' not in st.session_state:
     st.session_state.tv = TvDatafeed()
 tv = st.session_state.tv
 
-# Listas Oficiais
-bdrs_elite = ['NVDC34', 'P2LT34', 'ROXO34', 'INBR32', 'M1TA34', 'TSLA34', 'LILY34', 'AMZO34', 'AURA33', 'GOGL34', 'MSFT34', 'MUTC34', 'MELI34', 'C2OI34', 'ORCL34', 'M2ST34', 'A1MD34', 'NFLX34', 'ITLC34', 'AVGO34', 'COCA34', 'JBSS32', 'AAPL34', 'XPBR31', 'STOC34']
-ibrx_selecao = ['PETR4', 'VALE3', 'ITUB4', 'BBDC4', 'BBAS3', 'B3SA3', 'ABEV3', 'WEGE3', 'AXIA3', 'SUZB3', 'RENT3', 'RADL3', 'EQTL3', 'LREN3', 'PRIO3', 'HAPV3', 'GGBR4', 'VBBR3', 'SBSP3', 'CMIG4', 'CPLE3', 'ENEV3', 'TIMS3', 'TOTS3', 'EGIE3', 'CSAN3', 'ALOS3', 'DIRR3', 'VIVT3', 'KLBN11', 'UGPA3', 'PSSA3', 'CYRE3', 'ASAI3', 'RAIL3', 'ISAE3', 'CSNA3', 'MGLU3', 'EMBJ3', 'TAEE11', 'BBSE3', 'FLRY3', 'MULT3', 'TFCO4', 'LEVE3', 'CPFE3', 'GOAU4', 'MRVE3', 'YDUQ3', 'SMTO3', 'SLCE3', 'CVCB3', 'USIM5', 'BRAP4', 'BRAV3', 'EZTC3', 'PCAR3', 'AUAU3', 'DXCO3', 'CASH3', 'VAMO3', 'AZZA3', 'AURE3', 'BEEF3', 'ECOR3', 'FESA4', 'POMO4', 'CURY3', 'INTB3', 'JHSF3', 'LIGT3', 'LOGG3', 'MDIA3', 'MBRF3', 'NEOE3', 'QUAL3', 'RAPT4', 'ROMI3', 'SANB11', 'SIMH3', 'TEND3', 'VULC3', 'PLPL3', 'CEAB3', 'UNIP6', 'LWSA3', 'BPAC11', 'GMAT3', 'CXSE3', 'ABCB4', 'CSMG3', 'SAPR11', 'GRND3', 'BRAP3', 'LAVV3', 'RANI3', 'ITSA3', 'ALUP11', 'FIQE3', 'COGN3', 'IRBR3', 'SEER3', 'ANIM3', 'JSLG3', 'POSI3', 'MYPK3', 'SOJA3', 'BLAU3', 'PGMN3', 'TUPY3', 'VVEO3', 'MELK3', 'SHUL4', 'BRSR6']
-
 st.title("⚡ Radar & Backtest de Rompimento")
 st.markdown("Identifique e valide rompimentos históricos de Máximas e Fechamentos.")
+
+st.info("📊 **Estratégia (Rompimento de Position Trade):** Este motor caça a entrada de força institucional. O objetivo é varrer o mercado para encontrar ativos que superaram a Máxima ou o Fechamento do período anterior (como o topo do ano ou do mês passado). A tática busca capturar o início de grandes tendências de alta, ignorando ruídos curtos, e automatiza o cálculo do tamanho do seu lote de compra.")
+
 st.divider()
 
 # Criação das Abas
@@ -40,6 +56,10 @@ with aba_rad_p:
     # Botão de Ação
     if st.button("🚀 Iniciar Radar de Rompimento", type="primary", use_container_width=True, key="btn_radar_p"):
         lista_ativos = bdrs_elite if escolha_lista == "BDRs Elite" else ibrx_selecao if escolha_lista == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        
+        # Correção silenciosa da lista
+        lista_ativos = sorted(list(set([a.replace('.SA', '') for a in lista_ativos])))
+        
         barra = st.progress(0)
         encontrados = []
 
@@ -137,6 +157,7 @@ with aba_backtest:
 
     if st.button("⚙️ Rodar Backtest em Lote", type="primary", use_container_width=True, key="btn_run_bk"):
         ativos = bdrs_elite if lista_bk == "BDRs Elite" else ibrx_selecao if lista_bk == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        ativos = sorted(list(set([a.replace('.SA', '') for a in ativos])))
         
         janela = 252 if tempo_bk == "Anual" else (21 if tempo_bk == "Mensal" else 5) 
         
@@ -224,6 +245,7 @@ with aba_backtest:
                 st.dataframe(df_res.style.applymap(colorir_acumulado, subset=['Acumulado']), use_container_width=True, hide_index=True)
         else:
             st.warning("Nenhum trade foi finalizado no histórico selecionado.")
+
 # ==========================================
 # 3. RAIO-X INDIVIDUAL (Simulador Histórico)
 # ==========================================
@@ -247,7 +269,8 @@ with aba_raio_x:
 
     if st.button("⚙️ Rodar Simulação do Ativo", type="primary", use_container_width=True, key="btn_rx"):
         try:
-            df = tv.get_hist(symbol=at_rx, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=hist_rx)
+            at_rx_limpo = at_rx.replace('.SA', '')
+            df = tv.get_hist(symbol=at_rx_limpo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=hist_rx)
             # --- LÓGICA DE JANELA ATUALIZADA (5 dias = 1 semana) ---
             janela_rx = 252 if tempo_rx == "Anual" else (21 if tempo_rx == "Mensal" else 5)
             
@@ -356,7 +379,8 @@ with aba_raio_x:
                 st.error("Histórico insuficiente para essa janela de tempo.")
         except Exception as e: 
             st.error(f"Erro na Simulação: {e}")
-            # ==========================================
+
+# ==========================================
 # 4. RAIO-X FUTUROS (WIN/WDO - ROMPIMENTO)
 # ==========================================
 with aba_futuros:
