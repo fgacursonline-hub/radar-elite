@@ -83,14 +83,16 @@ def calcular_didi(df, usar_adx=True, limite_adx=20):
     # =========================================================
     # A AGULHADA ORIGINAL (BOLOLÔ + ABERTURA)
     # =========================================================
-    
-    # 1. O Bololô (Esmagamento): A distância entre a maior e a menor média deve ser minúscula (ex: menor que 1.5%)
     max_ma = df[['SMA3', 'SMA8', 'SMA20']].max(axis=1)
     min_ma = df[['SMA3', 'SMA8', 'SMA20']].min(axis=1)
-    df['Esmagamento'] = ((max_ma - min_ma) / df['SMA8']) < 0.015
     
-    # Verifica se esse "nó" aconteceu hoje ou nos últimos 3 dias
+    # 1. Bololô Padrão (Distância max de 1.5% entre as médias)
+    df['Esmagamento'] = ((max_ma - min_ma) / df['SMA8']) < 0.015
     teve_bololo = df['Esmagamento'] | df['Esmagamento'].shift(1) | df['Esmagamento'].shift(2) | df['Esmagamento'].shift(3)
+    
+    # 1.5 Bololô de Ouro (Distância ultra-apertada de 0.3% - Médias coladas na linha zero)
+    df['Esmagamento_Ouro'] = ((max_ma - min_ma) / df['SMA8']) < 0.003
+    teve_bololo_ouro = df['Esmagamento_Ouro'] | df['Esmagamento_Ouro'].shift(1) | df['Esmagamento_Ouro'].shift(2) | df['Esmagamento_Ouro'].shift(3)
     
     # 2. O Alinhamento Perfeito: Média 3 apontada pra cima, Média 8 no meio, Média 20 pra baixo
     alinhamento_alta = (df['SMA3'] > df['SMA8']) & (df['SMA8'] > df['SMA20'])
@@ -105,6 +107,8 @@ def calcular_didi(df, usar_adx=True, limite_adx=20):
         df['Cruzou_Compra'] = condicao_agulhada & (df['ADX'] >= limite_adx)
     else:
         df['Cruzou_Compra'] = condicao_agulhada
+        
+    df['Agulhada_Ouro'] = df['Cruzou_Compra'] & teve_bololo_ouro
     
     # Lógica de Saída Clássica (Quando a Média Rápida de 3 fura a de 8 para baixo)
     df['Cruzou_Venda'] = (df['SMA3'] < df['SMA8']) & (df['SMA3'].shift(1) >= df['SMA8'].shift(1))
@@ -139,7 +143,7 @@ def renderizar_grafico_tv(symbol):
     components.html(html_code, height=600)
 
 def exibir_explicacao_estrategia():
-    st.info("🪡 **A Estratégia (Agulhada Padrão Brasil):** A matemática foi programada para agir como no ProfitChart. O robô audita o 'Buraco da Agulha'.\n\n🟢 **Gatilho de Compra:** Primeiro, as 3 médias (3, 8 e 20) precisam se embolar, ficando a menos de 1.5% de distância umas das outras. Em seguida, elas precisam se abrir na ordem exata de alta: **Média 3 > Média 8 > Média 20** (com a Média 8 cortando pelo meio). O filtro ADX (>20) ajuda a evitar agulhadas sem força direcional.\n\n🔴 **Gatilho de Saída (Defesa):** O trade encerra assim que a Média Rápida (3) voltar a cruzar a Média (8) para baixo, indicando perda de fôlego.")
+    st.info("🪡 **A Estratégia (Agulhada Padrão Brasil):** O robô audita o 'Buraco da Agulha'.\n\n🟢 **Gatilho de Compra:** Primeiro, as 3 médias precisam se embolar. Em seguida, elas se abrem na ordem exata de alta: **Média 3 > Média 8 > Média 20** (com a Média 8 cortando pelo meio). \n🌟 **Agulhada de Ouro:** Ocorre quando o esmagamento das médias no eixo zero é virtualmente perfeito (linhas sobrepostas) antes da explosão. \n🔴 **Defesas Opcionais:** Você pode desligar o Stop, o Alvo ou a Saída pela virada da Média 8 se quiser segurar a operação por mais tempo.")
 
 # ==========================================
 # ABA 1: RADAR GLOBAL (SCANNER + TOP 20)
@@ -165,7 +169,8 @@ with aba_radar:
             usar_adx_g = st.toggle("📈 Filtro ADX Ativo", value=True, key="tg_adx_g")
             limite_adx_g = st.number_input("Nível ADX (>):", value=20, step=1, key="val_adx_g", disabled=not usar_adx_g)
         with col_p2:
-            st.write("")
+            usar_saida_mm8_g = st.toggle("📉 Saída pela MM8", value=True, key="tg_mm8_g", help="Desligue para não sair da operação se a média 3 cruzar a 8 para baixo.")
+            st.caption("Virada Rápida")
         with col_p3:
             usar_alvo_g = st.toggle("🎯 Habilitar Alvo", value=True, key="tg_alvo_g")
             alvo_pct_g = st.number_input("Alvo (%):", value=8.00, step=0.50, key="val_alvo_g", disabled=not usar_alvo_g) / 100.0
@@ -221,10 +226,11 @@ with aba_radar:
                     
                     if trade_aberto is None:
                         if linha['Cruzou_Compra']:
+                            tipo_ent = "Ouro 🌟" if linha.get('Agulhada_Ouro', False) else "Padrão"
                             if j == len(df) - 1:
-                                oportunidades.append({"Ativo": ativo, "Preço Atual": linha['Close'], "ADX": linha['ADX']})
+                                oportunidades.append({"Ativo": ativo, "Tipo": tipo_ent, "Preço Atual": linha['Close'], "ADX": linha['ADX']})
                             else:
-                                trade_aberto = {'entrada_data': data, 'entrada_preco': linha['Close'], 'pico': linha['Close'], 'pior_queda': 0.0}
+                                trade_aberto = {'entrada_data': data, 'entrada_preco': linha['Close'], 'pico': linha['Close'], 'pior_queda': 0.0, 'tipo': tipo_ent}
                     else:
                         if linha['High'] > trade_aberto['pico']: trade_aberto['pico'] = linha['High']
                         dd_atual = (linha['Low'] / trade_aberto['pico']) - 1
@@ -232,8 +238,9 @@ with aba_radar:
                         
                         bateu_stop = usar_stop_g and (linha['Low'] <= trade_aberto['entrada_preco'] * (1 - stop_pct_g))
                         bateu_alvo = usar_alvo_g and (linha['High'] >= trade_aberto['entrada_preco'] * (1 + alvo_pct_g))
+                        sinal_venda = usar_saida_mm8_g and linha['Cruzou_Venda']
                         
-                        if bateu_stop or bateu_alvo or linha['Cruzou_Venda']:
+                        if bateu_stop or bateu_alvo or sinal_venda:
                             preco_saida = trade_aberto['entrada_preco'] * (1 - stop_pct_g) if bateu_stop else (trade_aberto['entrada_preco'] * (1 + alvo_pct_g) if bateu_alvo else linha['Close'])
                             lucro_rs = capital_trade_global * ((preco_saida / trade_aberto['entrada_preco']) - 1)
                             trades_fechados.append({'lucro_rs': lucro_rs, 'pior_queda': trade_aberto['pior_queda']})
@@ -242,7 +249,7 @@ with aba_radar:
                 if trade_aberto is not None:
                     dias = (datetime.now().date() - trade_aberto['entrada_data'].date()).days
                     resultado = (df['Close'].iloc[-1] / trade_aberto['entrada_preco']) - 1
-                    andamento.append({"Ativo": ativo, "Entrada": trade_aberto['entrada_data'].strftime("%d/%m/%Y"), "Dias": dias, "PM": trade_aberto['entrada_preco'], "Cotação Atual": df['Close'].iloc[-1], "Proj. Máx": trade_aberto['pior_queda'], "Resultado Atual": resultado})
+                    andamento.append({"Ativo": ativo, "Entrada": trade_aberto['entrada_data'].strftime("%d/%m/%Y"), "Tipo": trade_aberto['tipo'], "Dias": dias, "PM": trade_aberto['entrada_preco'], "Cotação Atual": df['Close'].iloc[-1], "Proj. Máx": trade_aberto['pior_queda'], "Resultado Atual": resultado})
                 
                 if trades_fechados:
                     total_trades = len(trades_fechados)
@@ -259,9 +266,12 @@ with aba_radar:
         st.subheader("🪡 Oportunidades Hoje (Sinal Ativo)")
         if oportunidades:
             df_op = pd.DataFrame(oportunidades)
+            def highlight_ouro(row):
+                if 'Ouro' in row['Tipo']: return ['background-color: #ffd700; color: black; font-weight: bold'] * len(row)
+                return [''] * len(row)
             df_op['Preço Atual'] = df_op['Preço Atual'].apply(lambda x: f"R$ {x:.2f}")
             df_op['ADX'] = df_op['ADX'].apply(lambda x: f"{x:.1f} (Válido)" if x >= limite_adx_g else f"{x:.1f} (Abaixo)")
-            st.dataframe(df_op, use_container_width=True, hide_index=True)
+            st.dataframe(df_op.style.apply(highlight_ouro, axis=1), use_container_width=True, hide_index=True)
         else: 
             st.info(f"Nenhum ativo disparou Agulhada de Alta {'com ADX > ' + str(limite_adx_g) if usar_adx_g else ''} no pregão atual.")
 
@@ -297,12 +307,13 @@ with aba_individual:
             capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
             tempo_rx = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="rx_tmp")
         with c3:
-            usar_adx_rx = st.toggle("📈 Filtro ADX Ativo", value=True, key="tg_adx_rx")
+            usar_adx_rx = st.toggle("📈 Filtro ADX Ativo", value=False, key="tg_adx_rx")
             limite_adx_rx = st.number_input("Nível ADX (>):", value=20, step=1, key="val_adx_rx", disabled=not usar_adx_rx)
+            usar_saida_mm8_rx = st.toggle("📉 Saída pela MM8", value=True, key="tg_mm8_rx")
         with c4:
-            usar_alvo_rx = st.toggle("🎯 Habilitar Alvo", value=True, key="tg_alvo_rx")
+            usar_alvo_rx = st.toggle("🎯 Habilitar Alvo", value=False, key="tg_alvo_rx")
             alvo_rx = st.number_input("Alvo (%):", value=8.00, step=0.50, key="rx_alvo", disabled=not usar_alvo_rx)
-            usar_stop_rx = st.toggle("🛡️ Habilitar Stop Loss", value=True, key="tg_stop_rx")
+            usar_stop_rx = st.toggle("🛡️ Habilitar Stop Loss", value=False, key="tg_stop_rx")
             stop_rx = st.number_input("Stop Loss (%):", value=4.00, step=0.50, key="rx_stop", disabled=not usar_stop_rx)
             
         exibir_explicacao_estrategia()
@@ -344,7 +355,8 @@ with aba_individual:
                             
                             if em_aberto is None:
                                 if linha['Cruzou_Compra']:
-                                    em_aberto = {'entrada_data': data, 'entrada_preco': linha['Close'], 'pico': linha['Close'], 'pior_queda': 0.0}
+                                    tipo_ent = "Ouro 🌟" if linha.get('Agulhada_Ouro', False) else "Padrão"
+                                    em_aberto = {'entrada_data': data, 'entrada_preco': linha['Close'], 'pico': linha['Close'], 'pior_queda': 0.0, 'tipo': tipo_ent}
                             else:
                                 if linha['High'] > em_aberto['pico']: em_aberto['pico'] = linha['High']
                                 dd = (linha['Low'] / em_aberto['pico']) - 1
@@ -352,7 +364,7 @@ with aba_individual:
                                 
                                 bateu_stop = usar_stop_rx and (linha['Low'] <= em_aberto['entrada_preco'] * (1 - stop_pct))
                                 bateu_alvo = usar_alvo_rx and (linha['High'] >= em_aberto['entrada_preco'] * (1 + alvo_pct))
-                                sinal_venda = linha['Cruzou_Venda']
+                                sinal_venda = usar_saida_mm8_rx and linha['Cruzou_Venda']
                                 
                                 if bateu_stop or bateu_alvo or sinal_venda:
                                     if bateu_stop:
@@ -371,6 +383,7 @@ with aba_individual:
                                     trades_fechados.append({
                                         'Entrada': em_aberto['entrada_data'].strftime("%d/%m/%Y"), 
                                         'Saída': data.strftime("%d/%m/%Y"), 
+                                        'Tipo': em_aberto['tipo'],
                                         'Duração': duracao, 
                                         'Motivo Saída': motivo, 
                                         'Lucro (R$)': lucro_rs, 
@@ -380,10 +393,14 @@ with aba_individual:
                                     em_aberto = None
 
                         if em_aberto is not None:
-                            st.info(f"⏳ **{ativo_rx}: Em Operação** (Posicionado desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
+                            tag_ouro = "🌟 " if "Ouro" in em_aberto['tipo'] else ""
+                            st.info(f"⏳ **{ativo_rx}: Em Operação {tag_ouro}** (Posicionado desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
                         else:
                             if df_ativo['Cruzou_Compra'].iloc[-1]:
-                                st.success(f"🪡 **{ativo_rx}: AGULHADA DE COMPRA ATIVADA HOJE!** (ADX >= {limite_adx_rx if usar_adx_rx else 'Desativado'})")
+                                if df_ativo['Agulhada_Ouro'].iloc[-1]:
+                                    st.success(f"🌟 **{ativo_rx}: ENTRADA OURO ATIVADA HOJE!** (Esmagamento Perfeito no Eixo Zero)")
+                                else:
+                                    st.success(f"🪡 **{ativo_rx}: AGULHADA DE COMPRA ATIVADA HOJE!** (ADX >= {limite_adx_rx if usar_adx_rx else 'Desativado'})")
                             else:
                                 st.success(f"✅ **{ativo_rx}: Aguardando Formação da Agulhada**")
 
@@ -400,11 +417,21 @@ with aba_individual:
                             df_show = df_trades.copy()
                             df_show['Lucro (R$)'] = df_show['Lucro (R$)'].apply(lambda x: f"R$ {x:.2f}")
                             df_show['Queda Máx'] = df_show['Queda Máx'].apply(lambda x: f"{x*100:.2f}%")
-                            def colorir_tabela(val):
-                                if 'Gain' in str(val) or ('R$' in str(val) and '-' not in str(val) and val != 'R$ 0.00'): return 'color: #00FFCC; font-weight: bold'
-                                if 'Loss' in str(val) or ('R$' in str(val) and '-' in str(val)): return 'color: #FF4D4D; font-weight: bold'
-                                return ''
-                            st.dataframe(df_show.style.map(colorir_tabela), use_container_width=True, hide_index=True)
+                            
+                            def colorir_tabela(row):
+                                styles = [''] * len(row)
+                                for i, col in enumerate(row.index):
+                                    val = str(row[col])
+                                    if col == 'Tipo' and 'Ouro' in val:
+                                        styles[i] = 'background-color: #ffd700; color: black; font-weight: bold'
+                                    elif col in ['Lucro (R$)', 'Situação']:
+                                        if 'Gain' in val or ('R$' in val and '-' not in val and val != 'R$ 0.00'):
+                                            styles[i] = 'color: #00FFCC; font-weight: bold'
+                                        elif 'Loss' in val or ('R$' in val and '-' in val):
+                                            styles[i] = 'color: #FF4D4D; font-weight: bold'
+                                return styles
+
+                            st.dataframe(df_show.style.apply(colorir_tabela, axis=1), use_container_width=True, hide_index=True)
                         else:
                             st.warning("Nenhuma Agulhada concluída no período com os parâmetros selecionados.")
 
