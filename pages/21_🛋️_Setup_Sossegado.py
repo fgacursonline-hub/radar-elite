@@ -108,14 +108,15 @@ def renderizar_grafico_tv(symbol):
     components.html(html_code, height=500)
 
 def exibir_explicacao_estrategia():
-    st.info("🛋️ **A Estratégia (Setup Sossegado):** Entrar em rompimentos com força e conduzir sem ansiedade. \n\n🟢 **Compra:** A escadinha do HiLo (padrão **8**) vira para baixo do preço confirmando a tendência + O preço fecha acima da Média Ponderada (WMA **12**) + A volatilidade (ATR **10**) está acelerando.\n\n🔴 **Saída / Condução:** Você pode usar um Alvo Fixo pré-determinado ou, se preferir o modo 'Sossegado' puro, deixar o campo de alvo desligado e apenas subir o Stop Loss diário acompanhando o HiLo Activator.")
+    st.info("🛋️ **A Estratégia (Setup Sossegado):** Entrar em rompimentos e conduzir com a escadinha do HiLo. \n\n🟢 **Compra:** A escadinha do HiLo vira para baixo do preço confirmando a tendência + O preço fecha acima da Média Ponderada (WMA) + A volatilidade (ATR) está acelerando.\n\n🔴 **Saídas Flexíveis:** Você pode habilitar a condução móvel pelo HiLo (se perder a escadinha, sai), definir um Alvo Fixo (%) para embolsar o ganho rápido, ou travar um Stop Loss Fixo (%) de emergência. Use os botões para personalizar sua gestão de risco.")
 
 # ==========================================
 # ABA 1: RADAR GLOBAL (SCANNER)
 # ==========================================
 with aba_radar:
     with st.container(border=True):
-        col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
+        st.markdown("**1. Parâmetros de Varredura**")
+        col_f1, col_f2, col_f3, col_f4 = st.columns(4)
         with col_f1:
             lista_sel = st.selectbox("Lista:", ["BDRs Elite", "IBrX Seleção", "Todos"], key="f_lst_soss")
             cap_g = st.number_input("Capital/Trade:", value=10000.0, key="f_cap_soss")
@@ -128,9 +129,17 @@ with aba_radar:
         with col_f4:
             usar_atr_g = st.toggle("📈 Exigir ATR Subindo", value=True, key="tg_atr_g")
             atr_len_g = st.number_input("Período ATR:", value=10, step=1, disabled=not usar_atr_g, key="atr_len_g")
-        with col_f5:
-            usar_alvo_g = st.toggle("🎯 Alvo Fixo", value=False, key="tg_alvo_g")
-            alvo_g = st.number_input("Alvo %:", value=10.0, disabled=not usar_alvo_g, key="alvo_val_g")
+
+        st.markdown("**2. Gestão de Risco e Saídas**")
+        c_saida1, c_saida2, c_saida3 = st.columns(3)
+        with c_saida1:
+            usar_saida_hilo_g = st.toggle("📉 Saída Móvel pelo HiLo", value=True, key="tg_hilo_g", help="Encerra a operação se o preço furar a escadinha do HiLo para baixo.")
+        with c_saida2:
+            usar_alvo_g = st.toggle("🎯 Alvo Fixo (%)", value=False, key="tg_alvo_g")
+            alvo_g = st.number_input("Alvo %:", value=10.0, step=1.0, disabled=not usar_alvo_g, key="alvo_val_g")
+        with c_saida3:
+            usar_stop_g = st.toggle("🛡️ Stop Loss Fixo (%)", value=False, key="tg_stop_g")
+            stop_g = st.number_input("Stop %:", value=5.0, step=1.0, disabled=not usar_stop_g, key="stop_val_g")
 
     exibir_explicacao_estrategia()
 
@@ -174,12 +183,14 @@ with aba_radar:
                             else:
                                 trade_aberto = {'entrada_data': data, 'entrada_preco': linha['Close']}
                     else:
-                        bateu_st = linha['Cruzou_Venda'] or linha['Low'] < linha['HiLo']
-                        bateu_al = usar_alvo_g and (linha['High'] >= trade_aberto['entrada_preco'] * (1 + alvo_g/100))
+                        bateu_hilo = usar_saida_hilo_g and (linha['Cruzou_Venda'] or linha['Low'] < linha['HiLo'])
+                        bateu_alvo = usar_alvo_g and (linha['High'] >= trade_aberto['entrada_preco'] * (1 + alvo_g/100))
+                        bateu_stop = usar_stop_g and (linha['Low'] <= trade_aberto['entrada_preco'] * (1 - stop_g/100))
                         
-                        if bateu_st or bateu_al:
-                            if bateu_st: p_sai = min(linha['Open'], linha['HiLo'])
-                            else: p_sai = trade_aberto['entrada_preco'] * (1 + alvo_g/100)
+                        if bateu_hilo or bateu_alvo or bateu_stop:
+                            if bateu_stop: p_sai = trade_aberto['entrada_preco'] * (1 - stop_g/100)
+                            elif bateu_alvo: p_sai = trade_aberto['entrada_preco'] * (1 + alvo_g/100)
+                            else: p_sai = min(linha['Open'], linha['HiLo']) # Sai no slippage da abertura ou no limite do HiLo
                             
                             lucro_rs = cap_g * ((p_sai / trade_aberto['entrada_preco']) - 1)
                             trades_fechados.append({'lucro_rs': lucro_rs})
@@ -188,7 +199,16 @@ with aba_radar:
                 if trade_aberto is not None:
                     dias = (datetime.now().date() - trade_aberto['entrada_data'].date()).days
                     resultado = (df['Close'].iloc[-1] / trade_aberto['entrada_preco']) - 1
-                    andamento.append({"Ativo": ativo, "Entrada": trade_aberto['entrada_data'].strftime("%d/%m/%Y"), "Dias": dias, "PM": trade_aberto['entrada_preco'], "Cotação Atual": df['Close'].iloc[-1], "Stop (HiLo)": df['HiLo'].iloc[-1], "Resultado Atual": resultado})
+                    
+                    # Formata as informações de proteção em andamento
+                    prot_txt = []
+                    if usar_saida_hilo_g: prot_txt.append(f"HiLo: R${df['HiLo'].iloc[-1]:.2f}")
+                    if usar_stop_g: prot_txt.append(f"Fixo: R${trade_aberto['entrada_preco'] * (1 - stop_g/100):.2f}")
+                    stop_str = " | ".join(prot_txt) if prot_txt else "Sem Proteção"
+                    
+                    alvo_str = f"R${trade_aberto['entrada_preco'] * (1 + alvo_g/100):.2f}" if usar_alvo_g else "Aberto"
+                    
+                    andamento.append({"Ativo": ativo, "Entrada": trade_aberto['entrada_data'].strftime("%d/%m/%Y"), "Dias": dias, "PM": trade_aberto['entrada_preco'], "Cotação Atual": df['Close'].iloc[-1], "Stop Armado": stop_str, "Alvo": alvo_str, "Resultado Atual": resultado})
                 
                 if trades_fechados:
                     lucro_total = sum(t['lucro_rs'] for t in trades_fechados)
@@ -196,6 +216,7 @@ with aba_radar:
             except: pass
         
         p_bar.empty(); s_text.empty()
+        
         st.subheader("🎯 Gatilhos Armados Hoje")
         if oportunidades: 
             df_op = pd.DataFrame(oportunidades)
@@ -209,7 +230,6 @@ with aba_radar:
             df_and = pd.DataFrame(andamento)
             df_and['PM'] = df_and['PM'].apply(lambda x: f"R$ {x:.2f}")
             df_and['Cotação Atual'] = df_and['Cotação Atual'].apply(lambda x: f"R$ {x:.2f}")
-            df_and['Stop (HiLo)'] = df_and['Stop (HiLo)'].apply(lambda x: f"R$ {x:.2f}")
             st.dataframe(df_and.style.format({'Resultado Atual': "{:.2%}"}).map(lambda val: f"color: {'#00FFCC' if val > 0 else '#FF4D4D'}; font-weight: bold" if isinstance(val, float) else '', subset=['Resultado Atual']), use_container_width=True, hide_index=True)
         else: st.info("Nenhuma operação em aberto no momento.")
 
@@ -226,7 +246,8 @@ with aba_radar:
 # ==========================================
 with aba_individual:
     with st.container(border=True):
-        c1, c2, c3, c4, c5 = st.columns(5)
+        st.markdown("**1. Parâmetros do Ativo**")
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             ativo_rx = st.selectbox("Ativo:", ativos_para_rastrear, key="rx_ativo_i")
             cap_rx = st.number_input("Capital/Trade:", value=10000.0, key="rx_cap_i")
@@ -239,13 +260,21 @@ with aba_individual:
         with c4:
             usar_atr_rx = st.toggle("📈 Exigir ATR Subindo", value=True, key="rx_atr_tg")
             atr_len_rx = st.number_input("Período ATR:", value=10, step=1, disabled=not usar_atr_rx, key="rx_atr_len")
-        with c5:
-            usar_alvo_rx = st.toggle("🎯 Alvo Fixo", value=False, key="rx_alvo_tg")
+
+        st.markdown("**2. Gestão de Risco e Saídas**")
+        c_rx_saida1, c_rx_saida2, c_rx_saida3 = st.columns(3)
+        with c_rx_saida1:
+            usar_saida_hilo_rx = st.toggle("📉 Saída Móvel pelo HiLo", value=True, key="rx_tg_hilo")
+        with c_rx_saida2:
+            usar_alvo_rx = st.toggle("🎯 Alvo Fixo (%)", value=False, key="rx_tg_alvo")
             alvo_rx_val = st.number_input("Alvo %:", value=10.0, disabled=not usar_alvo_rx, key="rx_alvo_val")
+        with c_rx_saida3:
+            usar_stop_rx = st.toggle("🛡️ Stop Loss Fixo (%)", value=False, key="rx_tg_stop")
+            stop_rx_val = st.number_input("Stop %:", value=5.0, disabled=not usar_stop_rx, key="rx_stop_val")
 
     exibir_explicacao_estrategia()
 
-    if st.button("🔍 Rodar Laboratório", type="primary", use_container_width=True, key="rx_btn_i"):
+    if st.button("🔍 Rodar Laboratório Sossegado", type="primary", use_container_width=True, key="rx_btn_i"):
         intervalo_i = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
         with st.spinner("Analisando a paz do sossego..."):
             try:
@@ -266,12 +295,20 @@ with aba_individual:
                             if row['Cruzou_Compra']:
                                 em_pos = {'data': row['datetime'], 'preco': row['Close']}
                         else:
-                            bateu_st = row['Cruzou_Venda'] or row['Low'] < row['HiLo']
-                            bateu_al = usar_alvo_rx and (row['High'] >= em_pos['preco'] * (1 + alvo_rx_val/100))
+                            bateu_hilo = usar_saida_hilo_rx and (row['Cruzou_Venda'] or row['Low'] < row['HiLo'])
+                            bateu_alvo = usar_alvo_rx and (row['High'] >= em_pos['preco'] * (1 + alvo_rx_val/100))
+                            bateu_stop = usar_stop_rx and (row['Low'] <= em_pos['preco'] * (1 - stop_rx_val/100))
                             
-                            if bateu_st or bateu_al:
-                                if bateu_st: p_sai = min(row['Open'], row['HiLo'])
-                                else: p_sai = em_pos['preco'] * (1 + alvo_rx_val/100)
+                            if bateu_hilo or bateu_alvo or bateu_stop:
+                                if bateu_stop:
+                                    p_sai = em_pos['preco'] * (1 - stop_rx_val/100)
+                                    motivo = "Stop Fixo ❌"
+                                elif bateu_alvo:
+                                    p_sai = em_pos['preco'] * (1 + alvo_rx_val/100)
+                                    motivo = "Alvo Fixo ✅"
+                                else:
+                                    p_sai = min(row['Open'], row['HiLo'])
+                                    motivo = "Perdeu HiLo 📉"
                                 
                                 lucro_pct = (p_sai / em_pos['preco']) - 1
                                 lucro_rs = cap_rx * lucro_pct
@@ -280,6 +317,7 @@ with aba_individual:
                                     'Preço Ent.': f"R$ {em_pos['preco']:.2f}",
                                     'Saída': row['datetime'].strftime('%d/%m/%y'), 
                                     'Preço Saída': f"R$ {p_sai:.2f}",
+                                    'Motivo': motivo,
                                     'Resultado %': f"{lucro_pct*100:.2f}%",
                                     'Lucro R$': lucro_rs
                                 })
@@ -295,13 +333,19 @@ with aba_individual:
                         
                         cor_status = "#2eeb5c" if resultado_pct > 0 else "#ff4d4d"
                         txt_status = "Ganhando" if resultado_pct > 0 else "Perdendo"
+                        
                         alvo_txt = f"| Alvo Projetado: R$ {(em_pos['preco'] * (1 + alvo_rx_val/100)):.2f}" if usar_alvo_rx else ""
+                        
+                        prot_txt = []
+                        if usar_saida_hilo_rx: prot_txt.append(f"Móvel (HiLo): R$ {hilo_atual:.2f}")
+                        if usar_stop_rx: prot_txt.append(f"Fixo: R$ {(em_pos['preco'] * (1 - stop_rx_val/100)):.2f}")
+                        stop_txt = " | Stops Armados [" + ", ".join(prot_txt) + "]" if prot_txt else " | Sem Stop Armado"
                         
                         st.markdown(f"""
                         <div style="padding: 15px; border-radius: 8px; background-color: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 25px;">
                             ⏳ <b>Em Operação ({ativo_rx})</b><br>
-                            Comprado em: <b>{em_pos['data'].strftime('%d/%m/%Y')}</b> a <b>R$ {em_pos['preco']:.2f}</b> {alvo_txt}<br>
-                            Cotação Atual: <b>R$ {preco_atual:.2f}</b> (Stop HiLo na proteção de R$ {hilo_atual:.2f})<br>
+                            Comprado em: <b>{em_pos['data'].strftime('%d/%m/%Y')}</b> a <b>R$ {em_pos['preco']:.2f}</b> {alvo_txt} {stop_txt}<br>
+                            Cotação Atual: <b>R$ {preco_atual:.2f}</b><br>
                             Resultado Flutuante: <span style="color: {cor_status}; font-weight: bold; font-size: 16px;">{txt_status} (R$ {resultado_rs:.2f} / {resultado_pct*100:.2f}%)</span>
                         </div>
                         """, unsafe_allow_html=True)
