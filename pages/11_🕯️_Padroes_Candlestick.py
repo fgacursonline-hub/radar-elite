@@ -39,6 +39,46 @@ tv = get_tv_connection()
 st.title("🕯️ Laboratório de Price Action: Mamona Candles")
 st.markdown("Rastreador de reversão com 33 padrões de alta precisão baseados puramente na anatomia gráfica. A psicologia crua dos touros e ursos, sem atraso de indicadores.")
 
+# ------------------------------------------
+# MANUAL TÁTICO (MENU RETRÁTIL)
+# ------------------------------------------
+with st.expander("📖 Manual Tático: Entenda os Padrões e a Psicologia (Clique para Abrir)"):
+    st.markdown("""
+    ### ⚙️ O Que Esse Scanner Faz?
+    Ele faz uma leitura biométrica do último candle (Abertura, Máxima, Mínima e Fechamento) e calcula proporções exatas. Ao cruzar isso com a tendência dos últimos dias, ele lê a **psicologia imediata** dos grandes institucionais, rastreando armadilhas visuais de forma 100% matemática.
+
+    ---
+    ### 🟢 1. Força Compradora (Ataque dos Touros - Fundos)
+    Surgem após quedas, avisando que os compradores institucionais entraram rasgando para defender o preço:
+    * **Engolfo de Alta:** O tsunami. Um candle verde gigante engole totalmente o candle vermelho de ontem.
+    * **Harami de Alta:** A 'mulher grávida'. O corpo pequeno do dia (verde) fica dentro da barra gigante vermelha de ontem. A venda secou.
+    * **Martelo & Martelo Invertido:** Deixam pavios longos testando o fundo, mas fecham perto da máxima. Forte absorção de venda.
+    * **Estrela da Manhã:** Padrão de 3 dias. Queda, indecisão no fundo, e alta explosiva no terceiro dia. O nascer de uma nova tendência.
+    * **Linha de Perfuração (Piercing):** Mercado abre em buraco (Gap de baixa), mas fecha rasgando acima da metade do candle vermelho de ontem.
+    * **Pinça de Fundo:** Dois dias batendo exatamente no mesmo centavo na mínima. Suporte de concreto institucional.
+    * **Torre de Fundo:** Queda forte, alguns dias de consolidação no fundo (tijolos da torre), e uma alta violenta quebrando resistências.
+
+    ---
+    ### 🔴 2. Força Vendedora (Ataque dos Ursos - Topos)
+    Surgem em topos, avisando que a "festa acabou" e a realização de lucros começou:
+    * **Engolfo de Baixa:** O colapso. Barra vermelha engole inteiramente a esperança verde do dia anterior.
+    * **Harami de Baixa:** A alta perdeu fôlego. Um pequeno candle de queda nasce dentro do candle de alta anterior.
+    * **Estrela da Noite:** O anoitecer. Alta num dia, indecisão no topo no segundo dia, e pancada vendedora no terceiro.
+    * **Enforcado:** Idêntico ao "Martelo", mas no TOPO. O pavio inferior mostra que os ursos já empurram o preço para baixo.
+    * **Estrela Cadente (Shooting Star):** Preço tenta fazer nova máxima, mas toma uma voadora e deixa pavio gigante para cima (tiro Sniper).
+    * **Nuvem Negra (Dark Cloud):** Oposto da Linha de Perfuração. Preço tenta subir, mas ursos empurram o fechamento para baixo do meio da vela verde de ontem.
+    * **Pinça de Topo:** Dois dias batendo exatamente na mesma máxima. Um "teto de vidro" impenetrável.
+    * **Torre de Topo:** Alta forte, mercado anda de lado no topo (distribuição) e desaba em bloco.
+
+    ---
+    ### ⚪ 3. Os Dojis (A Zona de Guerra e Indecisão)
+    O Doji é o candle em formato de cruz (+). Abertura e fechamento no mesmo preço. Empate técnico.
+    * **Doji Clássico:** Empate total. Pausa para respirar.
+    * **Doji Libélula (Dragonfly - Alta):** Formato de "T". Não tem pavio em cima, só embaixo. Otimismo absurdo (devolveram toda a queda).
+    * **Doji Lápide (Gravestone - Baixa):** Formato de "T" invertido. Pavio gigante para cima. Pessimismo (sepultaram a tentativa de alta).
+    * **Doji Estrela (Baixa):** Surge fora do corpo de um candle direcional. Sinaliza exaustão imediata.
+    """)
+
 # ==========================================
 # 3. DICIONÁRIO DE EXPLICAÇÕES TÁTICAS
 # ==========================================
