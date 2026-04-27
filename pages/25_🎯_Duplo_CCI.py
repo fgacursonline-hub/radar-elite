@@ -2,7 +2,6 @@ import streamlit as st
 from tvDatafeed import TvDatafeed, Interval
 import streamlit.components.v1 as components
 import pandas as pd
-import pandas_ta as ta
 import numpy as np
 import time
 import warnings
@@ -58,7 +57,7 @@ def colorir_lucro(row):
     return [''] * len(row)
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO: DUPLO CCI
+# 3. MOTOR MATEMÁTICO: DUPLO CCI (NATIVO & BLINDADO)
 # ==========================================
 def calcular_duplo_cci(df, cci_longo=50, cci_curto=14):
     try:
@@ -68,14 +67,26 @@ def calcular_duplo_cci(df, cci_longo=50, cci_curto=14):
             df.columns = df.columns.get_level_values(0)
         df.index = df.index.tz_localize(None)
         
-        # Cálculos nativos e robustos do pandas-ta
-        df['CCI_Longo'] = ta.cci(df['High'], df['Low'], df['Close'], length=cci_longo)
-        df['CCI_Curto'] = ta.cci(df['High'], df['Low'], df['Close'], length=cci_curto)
+        # Garante que as colunas são float e não strings perdidas
+        for col in ['Open', 'High', 'Low', 'Close']:
+            df[col] = df[col].astype(float)
         
-        # Limpa os NaNs iniciais para não quebrar a lógica
+        # FUNÇÃO NATIVA DE CCI (À prova de falhas de bibliotecas externas)
+        def calc_cci(d_frame, per):
+            tp = (d_frame['High'] + d_frame['Low'] + d_frame['Close']) / 3.0
+            sma_tp = tp.rolling(window=per).mean()
+            # Mean Absolute Deviation
+            mad = tp.rolling(window=per).apply(lambda x: np.abs(x - x.mean()).mean(), raw=True)
+            return (tp - sma_tp) / (0.015 * mad)
+        
+        # Injeta os CCIs no DataFrame
+        df['CCI_Longo'] = calc_cci(df, cci_longo)
+        df['CCI_Curto'] = calc_cci(df, cci_curto)
+        
+        # Limpa os NaNs iniciais da matemática rolante
         df = df.dropna(subset=['CCI_Longo', 'CCI_Curto']).copy()
         
-        # Regra de Compra: Tendência Longa de Alta (CCI Longo > 0) + Gatilho Curto (CCI Curto cruzando ZERO pra cima)
+        # Regra de Compra: Tendência Longa de Alta (CCI Longo > 0) + Gatilho Curto cruzando ZERO pra cima
         tendencia_alta = df['CCI_Longo'] > 0
         gatilho_compra = (df['CCI_Curto'] > 0) & (df['CCI_Curto'].shift(1) <= 0)
         df['Cruzou_Compra'] = tendencia_alta & gatilho_compra
@@ -85,7 +96,8 @@ def calcular_duplo_cci(df, cci_longo=50, cci_curto=14):
         
         return df
     except Exception as e:
-        print(f"Erro no Motor Duplo CCI: {e}")
+        # Alarme de emergência: se o Python quebrar a matemática, ele grita na tela.
+        st.error(f"Erro Crítico de Matemática no Motor Duplo CCI: {e}")
         return None
 
 def renderizar_grafico_tv(symbol):
