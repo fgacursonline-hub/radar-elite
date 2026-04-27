@@ -120,7 +120,7 @@ def renderizar_grafico_tv(symbol):
     components.html(html_code, height=600)
 
 st.title("🤖 Máquina de Tendência (ADX + SuperTrend)")
-st.info("📊 **Estratégia (Trend Following Extremo):** Um sistema blindado contra ruídos laterais. \n\n🟢 **Gatilho de Compra:** O SuperTrend precisa estar verde (alta) **+** a linha compradora do DMI (+DI) deve estar acima da vendedora (-DI) **+** a linha de força do ADX deve estar apontando para cima e acima do limite. \n🔴 **Defesas:** Saída programada pela reversão do SuperTrend, com opções de Alvo de Lucro ou Stop Loss fixo para gestão de risco extra.")
+st.info("📊 **Estratégia (Trend Following Extremo):** Um sistema blindado contra ruídos laterais. \n\n🟢 **Gatilho de Compra:** O SuperTrend precisa estar verde (alta) **+** a linha compradora do DMI (+DI) deve estar acima da vendedora (-DI) **+** a linha de força do ADX deve estar apontando para cima e acima do limite. \n🔴 **Defesas:** Você pode montar o seu escudo desativando ou ativando a Saída pela Reversão do SuperTrend, Alvo de Lucro ou Stop Loss fixo.")
 
 aba_padrao, aba_individual, aba_futuros = st.tabs([
     "📡 Radar Padrão", "🔬 Raio-X Individual", "📉 Raio-X Futuros"
@@ -154,6 +154,7 @@ with aba_padrao:
             alvo_g = st.number_input("Alvo (%):", value=15.0, step=1.0, disabled=not usar_alvo_g, key="val_alvo_g")
             usar_stop_g = st.toggle("🛡️ Stop Loss", value=False, key="tg_stop_g")
             stop_g = st.number_input("Stop Loss (%):", value=5.0, step=1.0, disabled=not usar_stop_g, key="val_stop_g")
+            usar_saida_st_g = st.toggle("📉 Saída pela Reversão (ST)", value=True, key="tg_st_g")
 
     btn_iniciar_tr = st.button("🚀 Iniciar Varredura de Tendência", type="primary", use_container_width=True, key="tr_btn")
 
@@ -200,7 +201,7 @@ with aba_padrao:
                         
                         bateu_alvo = usar_alvo_g and (df_back['High'].iloc[i] >= take_profit)
                         bateu_stop = usar_stop_g and (df_back['Low'].iloc[i] <= stop_price)
-                        reverteu_st = df_back['ST_Dir'].iloc[i] == -1
+                        reverteu_st = usar_saida_st_g and (df_back['ST_Dir'].iloc[i] == -1)
                         
                         if bateu_stop:
                             trades.append({'Lucro (R$)': -(float(capital_tr) * stop_d), 'Drawdown_Raw': ((min_price_in_trade / preco_entrada) - 1) * 100, 'Motivo': 'Stop ❌'})
@@ -291,6 +292,7 @@ with aba_individual:
             lupa_alvo = st.number_input("Alvo (%):", value=15.0, step=0.5, disabled=not usar_alvo_rx, key="i_tr_alvo")
             usar_stop_rx = st.toggle("🛡️ Stop Loss Fixo", value=False, key="tg_stop_rx")
             lupa_stop = st.number_input("Stop Loss (%):", value=5.0, step=0.5, disabled=not usar_stop_rx, key="i_tr_stop")
+            usar_saida_st_rx = st.toggle("📉 Saída pela Reversão (ST)", value=True, key="tg_st_rx")
 
     if st.button("🔍 Gerar Raio-X da Máquina", type="primary", use_container_width=True, key="i_tr_btn"):
         intervalo_tv = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
@@ -334,7 +336,7 @@ with aba_individual:
                                 
                                 bateu_alvo = usar_alvo_rx and (df_b['High'].iloc[i] >= take_p)
                                 bateu_stop = usar_stop_rx and (df_b['Low'].iloc[i] <= stop_p)
-                                reverteu_st = df_b['ST_Dir'].iloc[i] == -1
+                                reverteu_st = usar_saida_st_rx and (df_b['ST_Dir'].iloc[i] == -1)
                                 
                                 saiu = False
                                 if bateu_stop:
@@ -343,7 +345,7 @@ with aba_individual:
                                 elif bateu_alvo:
                                     lucro = float(capital_rx) * alvo_d
                                     vitorias += 1; situacao = "Alvo ✅"; saiu = True
-                                elif reverteu_st:
+                                elif reverteu_st: # Saiu por reversão do SuperTrend
                                     lucro = float(capital_rx) * ((df_b['Close'].iloc[i] / p_ent) - 1)
                                     if lucro > 0: vitorias += 1; situacao = "Saída ST ✅"
                                     else: derrotas += 1; situacao = "Reversão ❌"
@@ -398,10 +400,6 @@ with aba_individual:
                             st.dataframe(df_res.style.map(colorir_res_indiv, subset=['Situação']), use_container_width=True, hide_index=True)
                         else:
                             st.info("Nenhum trade fechado no período de estudo selecionado.")
-                        
-                        st.divider()
-                        st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
-                        renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
                 else:
                     st.error("Base de dados vazia para este ativo no TradingView.")
             except Exception as e: st.error(f"Erro no processamento: {e}")
@@ -452,7 +450,7 @@ with aba_futuros:
                     df_full = calcular_indicadores_trend(df_full, f_adx_len, f_st_len, f_st_mult)
                     
                     if df_full is not None:
-                        trades, posicao = [], 0 
+                        trades, posicao = [], 0 # 0: Fora, 1: Comprado, -1: Vendido
                         vits, derrs = 0, 0
                         df_b = df_full.reset_index()
                         col_dt = df_b.columns[0]
@@ -474,18 +472,18 @@ with aba_futuros:
                                 posicao = 0
 
                             # GESTÃO
-                            if posicao == 1: 
+                            if posicao == 1: # COMPRADO
                                 if df_b['High'].iloc[i] >= take_p:
                                     luc = f_alvo * f_contratos * f_multi
                                     trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Tipo': 'Compra 🟢', 'Pontos': f_alvo, 'Lucro (R$)': luc, 'Status': 'Gain ✅'})
                                     vits += 1; posicao = 0
-                                elif df_b['ST_Dir'].iloc[i] == -1: 
+                                elif df_b['ST_Dir'].iloc[i] == -1: # Reversão Supertrend (Stop)
                                     pts = (df_b['Close'].iloc[i] - p_ent)
                                     luc = pts * f_contratos * f_multi
                                     trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Tipo': 'Compra 🟢', 'Pontos': pts, 'Lucro (R$)': luc, 'Status': 'Reversão ❌'})
                                     derrs += 1; posicao = 0
                                     
-                            elif posicao == -1: 
+                            elif posicao == -1: # VENDIDO
                                 if df_b['Low'].iloc[i] <= take_p:
                                     luc = f_alvo * f_contratos * f_multi
                                     trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Tipo': 'Venda 🔴', 'Pontos': f_alvo, 'Lucro (R$)': luc, 'Status': 'Gain ✅'})
