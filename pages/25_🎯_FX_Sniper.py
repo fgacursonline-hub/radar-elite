@@ -58,52 +58,58 @@ def colorir_lucro(row):
     return [''] * len(row)
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO: T3-CCI (FX SNIPER)
+# 3. MOTOR MATEMÁTICO: T3-CCI (BLINDADO)
 # ==========================================
 def calcular_t3_cci(df, cci_period=14, t3_period=5, b=0.618):
-    if df.empty or len(df) < max(cci_period, t3_period) + 15:
-        return pd.DataFrame()
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    df.index = df.index.tz_localize(None)
-    
-    # Calcula o CCI Clássico
-    cci_calc = ta.cci(df['High'], df['Low'], df['Close'], length=cci_period)
-    if cci_calc is None or cci_calc.empty: return pd.DataFrame()
-    df['CCI'] = cci_calc
-    
-    # TRUQUE DE ENGENHARIA: Expurgar os NaNs iniciais ANTES de rodar a Média Exponencial
-    df = df.dropna(subset=['CCI']).copy()
-    
-    # Constantes matemáticas de Tim Tillson (Proporção T3)
-    b2 = b * b
-    b3 = b2 * b
-    c1 = -b3
-    c2 = 3 * (b2 + b3)
-    c3 = -3 * (2 * b2 + b + b3)
-    c4 = 1 + 3 * b + b3 + 3 * b2
-    
-    # Fator de peso da EMA adaptado
-    nn = max(t3_period, 1)
-    nr = 1 + 0.5 * (nn - 1)
-    w1 = 2 / (nr + 1)
-    
-    # Cascata de 6 EMAs usando o valor do CCI
-    e1 = df['CCI'].ewm(alpha=w1, adjust=False).mean()
-    e2 = e1.ewm(alpha=w1, adjust=False).mean()
-    e3 = e2.ewm(alpha=w1, adjust=False).mean()
-    e4 = e3.ewm(alpha=w1, adjust=False).mean()
-    e5 = e4.ewm(alpha=w1, adjust=False).mean()
-    e6 = e5.ewm(alpha=w1, adjust=False).mean()
-    
-    # Equação final T3
-    df['T3_CCI'] = c1 * e6 + c2 * e5 + c3 * e4 + c4 * e3
-    
-    # Lógica do Gatilho FX Sniper (Cruzamento da linha Zero)
-    df['Cruzou_Compra'] = (df['T3_CCI'] > 0) & (df['T3_CCI'].shift(1) <= 0)
-    df['Cruzou_Venda'] = (df['T3_CCI'] < 0) & (df['T3_CCI'].shift(1) >= 0)
-    
-    return df.dropna()
+    try:
+        if df.empty or len(df) < 50:
+            return None
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        df.index = df.index.tz_localize(None)
+        
+        # 1. Injeção Nativa do CCI (À prova de falhas)
+        df.ta.cci(length=cci_period, append=True)
+        colunas_cci = [c for c in df.columns if c.startswith('CCI')]
+        if not colunas_cci:
+            return None
+        df.rename(columns={colunas_cci[0]: 'CCI'}, inplace=True)
+        
+        # 2. Expurgar o NaN inicial ANTES de ligar as exponenciais
+        df = df.dropna(subset=['CCI']).copy()
+        
+        # 3. Matemática de Tim Tillson (Proporção T3)
+        b2 = b * b
+        b3 = b2 * b
+        c1 = -b3
+        c2 = 3 * (b2 + b3)
+        c3 = -3 * (2 * b2 + b + b3)
+        c4 = 1 + 3 * b + b3 + 3 * b2
+        
+        nn = max(t3_period, 1)
+        nr = 1 + 0.5 * (nn - 1)
+        w1 = 2 / (nr + 1)
+        
+        # Cascata das 6 EMAs
+        e1 = df['CCI'].ewm(alpha=w1, adjust=False).mean()
+        e2 = e1.ewm(alpha=w1, adjust=False).mean()
+        e3 = e2.ewm(alpha=w1, adjust=False).mean()
+        e4 = e3.ewm(alpha=w1, adjust=False).mean()
+        e5 = e4.ewm(alpha=w1, adjust=False).mean()
+        e6 = e5.ewm(alpha=w1, adjust=False).mean()
+        
+        # Equação final
+        df['T3_CCI'] = c1 * e6 + c2 * e5 + c3 * e4 + c4 * e3
+        
+        # Gatilhos
+        df['Cruzou_Compra'] = (df['T3_CCI'] > 0) & (df['T3_CCI'].shift(1) <= 0)
+        df['Cruzou_Venda'] = (df['T3_CCI'] < 0) & (df['T3_CCI'].shift(1) >= 0)
+        
+        return df.dropna()
+    except Exception as e:
+        # Se quebrar, imprime o erro no terminal do Streamlit para auditarmos
+        print(f"Erro no Motor T3: {e}")
+        return None
 
 def renderizar_grafico_tv(symbol):
     html_code = f"""
@@ -398,4 +404,5 @@ with aba_individual:
                         renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
                 else:
                     st.error("Base de dados vazia para este ativo no TradingView.")
-            except Exception as e: st.error(f"Erro no processamento: {e}")
+            except Exception as e: 
+                st.error(f"⚠️ Erro de processamento no ativo {ativo_rx}: {e}")
