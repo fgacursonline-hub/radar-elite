@@ -72,6 +72,9 @@ def calcular_t3_cci(df, cci_period=14, t3_period=5, b=0.618):
     if cci_calc is None or cci_calc.empty: return pd.DataFrame()
     df['CCI'] = cci_calc
     
+    # TRUQUE DE ENGENHARIA: Expurgar os NaNs iniciais ANTES de rodar a Média Exponencial
+    df = df.dropna(subset=['CCI']).copy()
+    
     # Constantes matemáticas de Tim Tillson (Proporção T3)
     b2 = b * b
     b3 = b2 * b
