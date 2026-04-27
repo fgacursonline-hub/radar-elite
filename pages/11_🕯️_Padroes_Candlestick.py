@@ -43,21 +43,21 @@ st.markdown("Rastreador de reversão baseado puramente na anatomia dos candles d
 # 3. DICIONÁRIO DE EXPLICAÇÕES TÁTICAS
 # ==========================================
 dicionario_padroes = {
-    'Doji': {'Tipo': '⚪ Neutro', 'Cor': '#d3d3d3', 'Desc': 'Indecisão extrema. Abertura e fechamento no mesmo preço. O mercado pisou no freio.'},
-    'Engolfo de Alta': {'Tipo': '🟢 Alta', 'Cor': '#00FF00', 'Desc': 'O candle verde de hoje engole totalmente o corpo do candle vermelho anterior. Força compradora brutal assumindo o controle.'},
-    'Engolfo de Baixa': {'Tipo': '🔴 Baixa', 'Cor': '#FF4D4D', 'Desc': 'O candle vermelho de hoje engole o verde anterior. Os ursos aniquilaram as defesas compradoras.'},
-    'Harami de Alta': {'Tipo': '🟢 Alta', 'Cor': '#00FF00', 'Desc': 'Mulher grávida de alta. O corpo verde de hoje está contido no vermelho de ontem. A pressão de venda estancou.'},
-    'Harami de Baixa': {'Tipo': '🔴 Baixa', 'Cor': '#FF4D4D', 'Desc': 'Mulher grávida de baixa. A exaustão da compra. O mercado parou de subir repentinamente.'},
-    'Martelo': {'Tipo': '🟢 Alta', 'Cor': '#00FF00', 'Desc': 'Rejeição de fundo. Um longo pavio inferior mostra que os ursos bateram, mas os touros devolveram com juros.'},
-    'Martelo Invertido': {'Tipo': '🟢 Alta', 'Cor': '#00FF00', 'Desc': 'Tentativa de alta em um fundo. Os compradores testaram as máximas, deixando um longo pavio para cima.'},
-    'Estrela Cadente': {'Tipo': '🔴 Baixa', 'Cor': '#FF4D4D', 'Desc': 'Rejeição de topo (Sniper). Os touros tentaram subir, mas levaram um tiro dos ursos e devolveram tudo (pavio longo).'},
-    'Enforcado': {'Tipo': '🔴 Baixa', 'Cor': '#FF4D4D', 'Desc': 'Idêntico ao martelo, mas no TOPO de uma tendência. Mostra que o chão dos compradores começou a ceder.'},
-    'Estrela da Manhã': {'Tipo': '🟢 Alta', 'Cor': '#00FF00', 'Desc': 'Padrão de 3 dias. O sol nascendo: Queda, indecisão com gap, e um forte salto comprador no terceiro dia.'},
-    'Estrela da Noite': {'Tipo': '🔴 Baixa', 'Cor': '#FF4D4D', 'Desc': 'Padrão de 3 dias. O anoitecer: Alta forte, indecisão no topo, e uma paulada de queda no terceiro dia.'},
-    'Linha de Perfuração': {'Tipo': '🟢 Alta', 'Cor': '#00FF00', 'Desc': 'O preço abriu caindo feio, mas os touros perfuraram a queda e fecharam acima da metade do candle de ontem.'},
-    'Cinturão de Alta': {'Tipo': '🟢 Alta', 'Cor': '#00FF00', 'Desc': 'Abre na mínima do dia e só sobe, fechando forte. Um trator comprador triturando vendas.'},
-    'Kicker de Alta': {'Tipo': '🟢 Alta', 'Cor': '#00FF00', 'Desc': 'Chute violento! O mercado vinha caindo, mas abre em um Gap de Alta gigante e sobe rasgando.'},
-    'Kicker de Baixa': {'Tipo': '🔴 Baixa', 'Cor': '#FF4D4D', 'Desc': 'Rasteira! O mercado vinha subindo, mas abre em Gap de Baixa rasgando as defesas e despencando.'}
+    'Doji': {'Tipo': '⚪ Neutro', 'Desc': 'Indecisão extrema. Abertura e fechamento no mesmo preço. O mercado pisou no freio.'},
+    'Engolfo de Alta': {'Tipo': '🟢 Alta', 'Desc': 'O candle verde de hoje engole totalmente o corpo do candle vermelho anterior. Força compradora brutal assumindo o controle.'},
+    'Engolfo de Baixa': {'Tipo': '🔴 Baixa', 'Desc': 'O candle vermelho de hoje engole o verde anterior. Os ursos aniquilaram as defesas compradoras.'},
+    'Harami de Alta': {'Tipo': '🟢 Alta', 'Desc': 'Mulher grávida de alta. O corpo verde de hoje está contido no vermelho de ontem. A pressão de venda estancou.'},
+    'Harami de Baixa': {'Tipo': '🔴 Baixa', 'Desc': 'Mulher grávida de baixa. A exaustão da compra. O mercado parou de subir repentinamente.'},
+    'Martelo': {'Tipo': '🟢 Alta', 'Desc': 'Rejeição de fundo. Um longo pavio inferior mostra que os ursos bateram, mas os touros devolveram com juros.'},
+    'Martelo Invertido': {'Tipo': '🟢 Alta', 'Desc': 'Tentativa de alta em um fundo. Os compradores testaram as máximas, deixando um longo pavio para cima.'},
+    'Estrela Cadente': {'Tipo': '🔴 Baixa', 'Desc': 'Rejeição de topo (Sniper). Os touros tentaram subir, mas levaram um tiro dos ursos e devolveram tudo (pavio longo).'},
+    'Enforcado': {'Tipo': '🔴 Baixa', 'Desc': 'Idêntico ao martelo, mas no TOPO de uma tendência. Mostra que o chão dos compradores começou a ceder.'},
+    'Estrela da Manhã': {'Tipo': '🟢 Alta', 'Desc': 'Padrão de 3 dias. O sol nascendo: Queda, indecisão com gap, e um forte salto comprador no terceiro dia.'},
+    'Estrela da Noite': {'Tipo': '🔴 Baixa', 'Desc': 'Padrão de 3 dias. O anoitecer: Alta forte, indecisão no topo, e uma paulada de queda no terceiro dia.'},
+    'Linha de Perfuração': {'Tipo': '🟢 Alta', 'Desc': 'O preço abriu caindo feio, mas os touros perfuraram a queda e fecharam acima da metade do candle de ontem.'},
+    'Cinturão de Alta': {'Tipo': '🟢 Alta', 'Desc': 'Abre na mínima do dia e só sobe, fechando forte. Um trator comprador triturando vendas.'},
+    'Kicker de Alta': {'Tipo': '🟢 Alta', 'Desc': 'Chute violento! O mercado vinha caindo, mas abre em um Gap de Alta gigante e sobe rasgando.'},
+    'Kicker de Baixa': {'Tipo': '🔴 Baixa', 'Desc': 'Rasteira! O mercado vinha subindo, mas abre em Gap de Baixa rasgando as defesas e despencando.'}
 }
 
 # ==========================================
@@ -183,8 +183,7 @@ if btn_radar:
                             'Cotação': f"R$ {cotacao:.2f}",
                             'Padrão Formado': padrao,
                             'Direção': info['Tipo'],
-                            'Leitura Psicológica': info['Desc'],
-                            '_cor': info['Cor']
+                            'Leitura Psicológica': info['Desc']
                         })
         except Exception as e:
             pass
@@ -200,15 +199,23 @@ if btn_radar:
         st.success(f"🎯 Varredura concluída! Encontramos **{len(resultados)}** padrões sendo desenhados no fechamento atual.")
         df_res = pd.DataFrame(resultados)
         
-        # Função para colorir o DataFrame
-        def colorir_direcao(row):
-            cor = row['_cor']
-            estilos = [''] * len(row)
-            idx_direcao = df_res.columns.get_loc('Direção')
-            estilos[idx_direcao] = f'color: {cor}; font-weight: bold;'
-            return estilos
+        # Função para colorir a tabela baseada no emoji da direção
+        def colorir_direcao(val):
+            if isinstance(val, str):
+                if '🟢' in val:
+                    return 'color: #00FF00; font-weight: bold'
+                elif '🔴' in val:
+                    return 'color: #FF4D4D; font-weight: bold'
+                elif '⚪' in val:
+                    return 'color: #d3d3d3; font-weight: bold'
+            return ''
 
-        df_show = df_res.drop(columns=['_cor'])
-        st.dataframe(df_show.style.apply(colorir_direcao, axis=1), use_container_width=True, hide_index=True)
+        # Tenta aplicar o map (pandas mais recentes) ou applymap (pandas antigos)
+        try:
+            styled_df = df_res.style.map(colorir_direcao, subset=['Direção'])
+        except AttributeError:
+            styled_df = df_res.style.applymap(colorir_direcao, subset=['Direção'])
+
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
     else:
         st.info("🤷‍♂️ Nenhum padrão clássico de Candlestick foi detectado no último candle dos ativos mapeados.")
