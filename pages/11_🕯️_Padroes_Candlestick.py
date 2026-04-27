@@ -36,7 +36,7 @@ def get_tv_connection():
 
 tv = get_tv_connection()
 
-st.title("🕯️ Laboratório de Price Action: Mamona Candles")
+st.title("🕯️ Laboratório de Price Action")
 st.markdown("Rastreador de reversão com 33 padrões de alta precisão baseados puramente na anatomia gráfica. A psicologia crua dos touros e ursos, sem atraso de indicadores.")
 
 # ------------------------------------------
