@@ -1,11 +1,12 @@
 import streamlit as st
-from tvDatafeed import TvDatafeed, Interval
 import streamlit.components.v1 as components
 import pandas as pd
 import pandas_ta as ta
 import time
 import warnings
 import numpy as np
+import sys
+import os
 
 warnings.filterwarnings('ignore')
 
@@ -14,12 +15,24 @@ if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, faça login na página inicial (Home).")
     st.stop()
 
-# 2. CONEXÃO E LISTAS
-@st.cache_resource
-def get_tv_connection():
-    return TvDatafeed()
+# ==========================================
+# 🔥 NOVO: IMPORTAÇÃO CENTRALIZADA (ATIVOS E MOTOR)
+# ==========================================
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+try:
+    from config_ativos import bdrs_elite, ibrx_selecao
+except ImportError:
+    st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
+    st.stop()
 
-tv = get_tv_connection()
+try:
+    from motor_dados import puxar_dados_blindados
+except ImportError:
+    st.error("❌ Arquivo 'motor_dados.py' não encontrado na raiz do projeto. Crie o Bunker de Dados primeiro.")
+    st.stop()
+
+# 🔥 NOVO: Lista unificada para os menus suspensos de Raio-X Individual
+todos_ativos = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
 
 # --- CONFIGURAÇÃO DO TELEGRAM ---
 TOKEN_TELEGRAM = "8689032615:AAFnJTZm0SYgSng9VlwzzZdafOP4mmGlt5Y"
@@ -29,7 +42,6 @@ def enviar_alerta_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TOKEN_TELEGRAM}/sendMessage"
     payload = {"chat_id": CHAT_ID_TELEGRAM, "text": mensagem}
     try:
-        # Manda a mensagem sem travar o restante do código
         import requests
         requests.post(url, json=payload, timeout=5)
     except:
@@ -41,52 +53,13 @@ tradutor_periodo_nome = {
     'max': 'Máximo', '60d': '60 Dias'
 }
 
-tradutor_intervalo = {
-    '15m': Interval.in_15_minute,
-    '60m': Interval.in_1_hour,
-    '1d': Interval.in_daily,
-    '1wk': Interval.in_weekly
-}
-
-bdrs_elite = [
-    'NVDC34.SA', 'P2LT34.SA', 'ROXO34.SA', 'INBR32.SA', 'M1TA34.SA', 'TSLA34.SA',
-    'LILY34.SA', 'AMZO34.SA', 'AURA33.SA', 'GOGL34.SA', 'MSFT34.SA', 'MUTC34.SA',
-    'MELI34.SA', 'C2OI34.SA', 'ORCL34.SA', 'M2ST34.SA', 'A1MD34.SA', 'NFLX34.SA',
-    'ITLC34.SA', 'AVGO34.SA', 'COCA34.SA', 'JBSS32.SA', 'AAPL34.SA', 'XPBR31.SA',
-    'STOC34.SA'
-]
-
-ibrx_selecao = [
-    'PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA', 'BBAS3.SA', 'B3SA3.SA', 'ABEV3.SA',
-    'WEGE3.SA', 'AXIA3.SA', 'SUZB3.SA', 'RENT3.SA', 'RADL3.SA', 'EQTL3.SA', 'LREN3.SA',
-    'PRIO3.SA', 'HAPV3.SA', 'GGBR4.SA', 'VBBR3.SA', 'SBSP3.SA', 'CMIG4.SA', 'CPLE3.SA',
-    'ENEV3.SA', 'TIMS3.SA', 'TOTS3.SA', 'EGIE3.SA', 'CSAN3.SA', 'ALOS3.SA', 'DIRR3.SA',
-    'VIVT3.SA', 'KLBN11.SA', 'UGPA3.SA', 'PSSA3.SA', 'CYRE3.SA', 'ASAI3.SA', 'RAIL3.SA',
-    'ISAE3.SA', 'CSNA3.SA', 'MGLU3.SA', 'EMBJ3.SA', 'TAEE11.SA', 'BBSE3.SA', 'FLRY3.SA',
-    'MULT3.SA', 'TFCO4.SA', 'LEVE3.SA', 'CPFE3.SA', 'GOAU4.SA', 'MRVE3.SA', 'YDUQ3.SA',
-    'SMTO3.SA', 'SLCE3.SA', 'CVCB3.SA', 'USIM5.SA', 'BRAP4.SA', 'BRAV3.SA', 'EZTC3.SA',
-    'PCAR3.SA', 'AUAU3.SA', 'DXCO3.SA', 'CASH3.SA', 'VAMO3.SA', 'AZZA3.SA', 'AURE3.SA',
-    'BEEF3.SA', 'ECOR3.SA', 'FESA4.SA', 'POMO4.SA', 'CURY3.SA', 'INTB3.SA', 'JHSF3.SA',
-    'LIGT3.SA', 'LOGG3.SA', 'MDIA3.SA', 'MBRF3.SA', 'NEOE3.SA', 'QUAL3.SA', 'RAPT4.SA',
-    'ROMI3.SA', 'SANB11.SA', 'SIMH3.SA', 'TEND3.SA', 'VULC3.SA', 'PLPL3.SA', 'CEAB3.SA',
-    'UNIP6.SA', 'LWSA3.SA', 'BPAC11.SA', 'GMAT3.SA', 'CXSE3.SA', 'ABCB4.SA', 'CSMG3.SA',
-    'SAPR11.SA', 'GRND3.SA', 'BRAP3.SA', 'LAVV3.SA', 'RANI3.SA', 'ITSA3.SA', 'ALUP11.SA',
-    'FIQE3.SA', 'COGN3.SA', 'IRBR3.SA', 'SEER3.SA', 'ANIM3.SA', 'JSLG3.SA', 'POSI3.SA',
-    'MYPK3.SA', 'SOJA3.SA', 'BLAU3.SA', 'PGMN3.SA', 'TUPY3.SA', 'VVEO3.SA', 'MELK3.SA',
-    'SHUL4.SA', 'BRSR6.SA',
-]
-
 # --- FUNÇÃO MESTRA DE ESTILIZAÇÃO VISUAL ---
 def colorir_lucro(row):
-    # 1. Pinta de verde as Posições em Aberto que estão no lucro (verifica colunas de resultado)
     for col in ['Resultado Atual', 'Resultado']:
         if col in row and isinstance(row[col], str) and row[col].startswith('+'):
             return ['color: #2eeb5c; font-weight: bold'] * len(row)
-    
-    # 2. Pinta de verde o Histórico de Trades que deram Gain (verifica a coluna situação)
     if 'Situação' in row and isinstance(row['Situação'], str) and 'Gain' in row['Situação']:
         return ['color: #2eeb5c; font-weight: bold'] * len(row)
-        
     return [''] * len(row)
 
 def renderizar_grafico_tv(simbolo_tv, altura=600):
@@ -154,7 +127,6 @@ with aba_padrao:
         if tempo_padrao == '15m' and periodo_padrao not in ['1mo', '3mo']: periodo_padrao = '60d'
         elif tempo_padrao == '60m' and periodo_padrao in ['5y', 'max']: periodo_padrao = '2y'
 
-        intervalo_tv = tradutor_intervalo.get(tempo_padrao, Interval.in_daily)
         alvo_dec = alvo_padrao / 100
 
         ls_sinais_p, ls_abertos_p, ls_resumo_p = [], [], []
@@ -167,12 +139,10 @@ with aba_padrao:
             p_bar_p.progress((idx + 1) / len(ativos_padrao))
 
             try:
-                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                # 🔥 NOVO: MOTOR BLINDADO
+                df_full = puxar_dados_blindados(ativo, tempo_grafico=tempo_padrao, barras=5000)
                 if df_full is None or len(df_full) < 50: continue
 
-                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                df_full = df_full.dropna()
-                
                 df_full['IFR'] = ta.rsi(df_full['Close'], length=ifr_padrao)
                 df_full['IFR_Prev'] = df_full['IFR'].shift(1)
                 df_full = df_full.dropna()
@@ -250,7 +220,6 @@ with aba_padrao:
                         'Resultado': f"{res_pct:.2f}%"
                     })
             except: pass
-            time.sleep(0.05)
 
         s_text_p.empty()
         p_bar_p.empty()
@@ -303,7 +272,6 @@ with aba_pm:
         if tempo_pm == '15m' and periodo_pm not in ['1mo', '3mo']: periodo_pm = '60d'
         elif tempo_pm == '60m' and periodo_pm in ['5y', 'max']: periodo_pm = '2y'
 
-        intervalo_tv = tradutor_intervalo.get(tempo_pm, Interval.in_daily)
         alvo_decimal = alvo_pm / 100
 
         lista_sinais, lista_abertos, lista_resumo = [], [], []
@@ -316,11 +284,9 @@ with aba_pm:
             progress_bar.progress((idx + 1) / len(ativos_pm))
 
             try:
-                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                # 🔥 NOVO: MOTOR BLINDADO
+                df_full = puxar_dados_blindados(ativo, tempo_grafico=tempo_pm, barras=5000)
                 if df_full is None or len(df_full) < 50: continue
-
-                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                df_full = df_full.dropna()
                 
                 df_full['IFR'] = ta.rsi(df_full['Close'], length=ifr_pm)
                 df_full['IFR_Prev'] = df_full['IFR'].shift(1)
@@ -403,7 +369,6 @@ with aba_pm:
                     })
 
             except Exception as e: pass
-            time.sleep(0.05)
 
         status_text.empty()
         progress_bar.empty()
@@ -453,7 +418,6 @@ with aba_stop:
         if tempo_stop == '15m' and periodo_stop not in ['1mo', '3mo']: periodo_stop = '60d'
         elif tempo_stop == '60m' and periodo_stop in ['5y', 'max']: periodo_stop = '2y'
 
-        intervalo_tv = tradutor_intervalo.get(tempo_stop, Interval.in_daily)
         alvo_dec = alvo_stop / 100
         stop_dec = perda_stop / 100
 
@@ -467,12 +431,10 @@ with aba_stop:
             p_bar.progress((idx + 1) / len(ativos_stop))
 
             try:
-                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                # 🔥 NOVO: MOTOR BLINDADO
+                df_full = puxar_dados_blindados(ativo, tempo_grafico=tempo_stop, barras=5000)
                 if df_full is None or len(df_full) < 50: continue
 
-                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                df_full = df_full.dropna()
-                
                 df_full['IFR'] = ta.rsi(df_full['Close'], length=ifr_stop)
                 df_full['IFR_Prev'] = df_full['IFR'].shift(1)
                 df_full = df_full.dropna()
@@ -549,7 +511,6 @@ with aba_stop:
                     })
 
             except Exception as e: pass
-            time.sleep(0.05)
 
         s_text.empty()
         p_bar.empty()
@@ -581,7 +542,8 @@ with aba_individual:
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        lupa_ativo = st.text_input("Ativo (Ex: TSLA34):", value="TSLA34", key="l2_ativo")
+        # 🔥 NOVO: MENU SUSPENSO BLINDADO
+        lupa_ativo = st.selectbox("Selecione o Ativo:", todos_ativos, index=todos_ativos.index('TSLA34') if 'TSLA34' in todos_ativos else 0, key="l2_ativo")
         lupa_estrategia = st.selectbox("Estratégia:", ["Padrão (Sem PM)", "PM Dinâmico", "Alvo & Stop Loss"], key="l2_est")
         lupa_periodo = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="l2_per")
     with col2:
@@ -595,23 +557,13 @@ with aba_individual:
     btn_raiox = st.button("🔍 Rodar Análise Completa", type="primary", use_container_width=True, key="l2_btn")
 
     if btn_raiox:
-        ativo = lupa_ativo.strip().upper().replace('.SA', '')
-        
-        mapa_intervalos = {
-            '15m': Interval.in_15_minute,
-            '60m': Interval.in_1_hour,
-            '1d': Interval.in_daily,
-            '1wk': Interval.in_weekly,
-            '1mo': Interval.in_monthly
-        }
-        intervalo_tv = mapa_intervalos.get(lupa_tempo, Interval.in_daily)
-
+        ativo = lupa_ativo
         with st.spinner(f'Calculando dados de {ativo}...'):
             try:
-                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                # 🔥 NOVO: MOTOR BLINDADO
+                df_full = puxar_dados_blindados(ativo, tempo_grafico=lupa_tempo, barras=5000)
                 
                 if df_full is not None and len(df_full) > 50:
-                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     df_full['IFR'] = ta.rsi(df_full['Close'], length=lupa_ifr_periodo)
                     df_full['IFR_Prev'] = df_full['IFR'].shift(1)
                     df_full = df_full.dropna()
@@ -713,7 +665,6 @@ with aba_individual:
                         
                         df_t['Queda Máx'] = df_t['Queda Máx'].map("{:.2f}%".format)
                         
-                        # APLICA NOVA FUNÇÃO DE COR NA TABELA INDIVIDUAL TAMBÉM
                         st.dataframe(df_t.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
                     else:
                         st.info("Nenhuma operação fechada no período de estudo.")
@@ -761,12 +712,11 @@ with aba_futuros:
     btn_raiox_futuros = st.button("🚀 Gerar Raio-X", type="primary", use_container_width=True, key="f_btn")
 
     if btn_raiox_futuros:
-        intervalo_tv = tradutor_intervalo.get(fut_tempo, Interval.in_15_minute)
         with st.spinner(f'Analisando {fut_selecionado}...'):
             try:
-                df_full = tv.get_hist(symbol=fut_ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=10000)
+                # 🔥 NOVO: MOTOR BLINDADO
+                df_full = puxar_dados_blindados(fut_ativo, tempo_grafico=fut_tempo, barras=10000)
                 if df_full is not None and len(df_full) > 50:
-                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     df_full['IFR'] = ta.rsi(df_full['Close'], length=fut_ifr)
                     df_full['IFR_Prev'] = df_full['IFR'].shift(1)
                     df_full = df_full.dropna()
@@ -864,7 +814,6 @@ with aba_futuros:
                         else:
                             st.error(f"🚨 **Expectativa Negativa:** O saldo de R$ {l_total:,.2f} mostra que a conta não fecha. Você precisa acertar mais de {t_critica:.1f}% para este Payoff, ou aumentar seu alvo.")
 
-                        # APLICA NOVA FUNÇÃO DE COR NA TABELA DE FUTUROS TAMBÉM
                         st.dataframe(df_t.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
                     else:
                         st.warning("Nenhuma operação encontrada.")
@@ -908,10 +857,10 @@ with aba_connors:
                 p_bar.progress((idx + 1) / len(ativos_analise))
 
                 try:
-                    df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=5000)
+                    # 🔥 NOVO: MOTOR BLINDADO
+                    df_full = puxar_dados_blindados(ativo, tempo_grafico='1d', barras=5000)
                     if df_full is None or len(df_full) < 200: continue
 
-                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     df_full['IFR2'] = ta.rsi(df_full['Close'], length=2)
                     df_full['MM200'] = ta.sma(df_full['Close'], length=200)
                     df_full['MME5'] = ta.ema(df_full['Close'], length=5)
@@ -975,7 +924,6 @@ with aba_connors:
                     if total_trades > 0:
                         ls_resumo.append({'Ativo': ativo, 'Trades': total_trades, 'Acertos': f"{(vitorias/total_trades)*100:.1f}%", 'Lucro Total R$': lucro_total})
                 except: pass
-                time.sleep(0.01)
 
             s_text.empty(); p_bar.empty()
             
@@ -997,7 +945,8 @@ with aba_connors:
     else:
         col1, col2, col3, col4 = st.columns(4)
         with col1: 
-            rx_ativo = st.text_input("Ativo (Ex: PETR4):", value="PETR4", key="rxc_atv").upper().replace('.SA', '')
+            # 🔥 NOVO: MENU SUSPENSO BLINDADO
+            rx_ativo = st.selectbox("Selecione o Ativo:", todos_ativos, index=todos_ativos.index('PETR4') if 'PETR4' in todos_ativos else 0, key="rxc_atv")
             rx_per = st.selectbox("Período:", ['1y', '2y', '5y', 'max'], index=2, format_func=lambda x: tradutor_periodo_nome.get(x, x), key="rxc_per")
         with col2: 
             rx_gatilho = st.number_input("Gatilho (IFR2 <):", value=25.0, step=5.0, max_value=50.0, key="rxc_gat")
@@ -1013,10 +962,11 @@ with aba_connors:
         if btn_rx and rx_ativo:
             with st.spinner(f'Calculando elástico de {rx_ativo}...'):
                 try:
-                    df_full = tv.get_hist(symbol=rx_ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=5000)
+                    # 🔥 NOVO: MOTOR BLINDADO
+                    df_full = puxar_dados_blindados(rx_ativo, tempo_grafico='1d', barras=5000)
+                    
                     if df_full is None or len(df_full) < 200: st.error("Dados insuficientes.")
                     else:
-                        df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                         df_full['IFR2'] = ta.rsi(df_full['Close'], length=2)
                         df_full['MM200'] = ta.sma(df_full['Close'], length=200)
                         df_full['MME5'] = ta.ema(df_full['Close'], length=5)
@@ -1122,7 +1072,6 @@ with aba_connors:
 
                             df_t['Queda Máx'] = df_t['Queda Máx'].map("{:.2f}%".format)
                             
-                            # APLICA NOVA FUNÇÃO DE COR NA TABELA DO IFR2
                             st.dataframe(df_t.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
                         else:
                             st.warning("Nenhuma operação concluída usando essa configuração.")
