@@ -45,7 +45,7 @@ tradutor_intervalo = {
 }
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO: TTM SQUEEZE PRO (REPLICAÇÃO EXATA)
+# 3. MOTOR MATEMÁTICO: TTM SQUEEZE PRO
 # ==========================================
 def calcular_squeeze_pro(df, length=20, bb_mult=2.0, kc_high=1.0, kc_mid=1.5, kc_low=2.0):
     try:
@@ -72,7 +72,7 @@ def calcular_squeeze_pro(df, length=20, bb_mult=2.0, kc_high=1.0, kc_mid=1.5, kc
         df['KC_upper_low'] = df['KC_basis'] + df['devKC'] * kc_low
         df['KC_lower_low'] = df['KC_basis'] - df['devKC'] * kc_low
         
-        # 3. Condições da "Mola" (Squeeze) - Lógica original do Pine
+        # 3. Condições da "Mola" (Squeeze)
         df['NoSqz'] = (df['BB_lower'] < df['KC_lower_low']) | (df['BB_upper'] > df['KC_upper_low'])
         df['LowSqz'] = (df['BB_lower'] >= df['KC_lower_low']) | (df['BB_upper'] <= df['KC_upper_low'])
         df['MidSqz'] = (df['BB_lower'] >= df['KC_lower_mid']) | (df['BB_upper'] <= df['KC_upper_mid'])
@@ -86,7 +86,7 @@ def calcular_squeeze_pro(df, length=20, bb_mult=2.0, kc_high=1.0, kc_mid=1.5, kc
             
         df['Status_Mola'] = df.apply(classificar_mola, axis=1)
         
-        # Gatilho de Disparo (Ontem estava comprimido, hoje soltou)
+        # Gatilho de Disparo
         df['Squeeze_Fired'] = df['NoSqz'] & (~df['NoSqz'].shift(1).fillna(True))
         
         # 4. Oscilador de Momento (Regressão Linear)
@@ -111,7 +111,7 @@ def calcular_squeeze_pro(df, length=20, bb_mult=2.0, kc_high=1.0, kc_mid=1.5, kc
                 
         df['Cor_Momento'] = df.apply(classificar_momento, axis=1)
         
-        return df.dropna().tail(1) # Retorna apenas a foto do último dia
+        return df.dropna().tail(1)
     except Exception as e:
         return None
 
@@ -137,7 +137,8 @@ with st.container(border=True):
     with col1:
         lista_sel = st.selectbox("Alvo da Varredura:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"])
     with col2:
-        tempo_grafico = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'})
+        # AQUI ESTAVA O ERRO (Adicionado o [x] no final do lambda)
+        tempo_grafico = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x])
     with col3:
         st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
         btn_iniciar = st.button("🚀 Iniciar Varredura PRO", type="primary", use_container_width=True)
@@ -162,7 +163,6 @@ if btn_iniciar:
             if df is not None and not df.empty:
                 df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 
-                # Aplica o motor do Squeeze Pro
                 res = calcular_squeeze_pro(df)
                 
                 if res is not None and not res.empty:
@@ -172,10 +172,9 @@ if btn_iniciar:
                         'Cotação': f"R$ {linha['Close']:.2f}",
                         'Status da Mola': linha['Status_Mola'],
                         'Direção Institucional': linha['Cor_Momento'],
-                        '_MOM': linha['MOM'] # Usado para ordenar a força oculta
+                        '_MOM': linha['MOM'] 
                     }
                     
-                    # Filtra: Ou explodiu hoje, ou está em compressão extrema preste a explodir
                     if linha['Squeeze_Fired']:
                         resultados_explosao.append(dados)
                     elif 'Extrema' in linha['Status_Mola'] or 'Média' in linha['Status_Mola']:
@@ -203,16 +202,27 @@ if btn_iniciar:
                 if '🟠' in val: return 'color: #FFA500; font-weight: bold'
             return ''
             
-        st.dataframe(df_exp.style.map(colorir_tabela, subset=['Status da Mola', 'Direção Institucional']), use_container_width=True, hide_index=True)
+        try:
+            styled_df_exp = df_exp.style.map(colorir_tabela, subset=['Status da Mola', 'Direção Institucional'])
+        except AttributeError:
+            styled_df_exp = df_exp.style.applymap(colorir_tabela, subset=['Status da Mola', 'Direção Institucional'])
+            
+        st.dataframe(styled_df_exp, use_container_width=True, hide_index=True)
     else:
         st.info("Nenhuma mola foi solta no pregão atual. O mercado está segurando o fôlego.")
 
     # ------------------------------------
-    # EXIBIÇÃO: ALERTAS DE COMPRESSÃO (O RADAR)
+    # EXIBIÇÃO: ALERTAS DE COMPRESSÃO
     # ------------------------------------
     st.subheader("⚠️ Radar de Pressão: Explosão Iminente")
     if resultados_compressao:
         df_comp = pd.DataFrame(resultados_compressao).sort_values(by='Status da Mola').drop(columns=['_MOM'])
-        st.dataframe(df_comp.style.map(colorir_tabela, subset=['Status da Mola', 'Direção Institucional']), use_container_width=True, hide_index=True)
+        
+        try:
+            styled_df_comp = df_comp.style.map(colorir_tabela, subset=['Status da Mola', 'Direção Institucional'])
+        except AttributeError:
+            styled_df_comp = df_comp.style.applymap(colorir_tabela, subset=['Status da Mola', 'Direção Institucional'])
+            
+        st.dataframe(styled_df_comp, use_container_width=True, hide_index=True)
     else:
         st.info("Nenhum ativo está em compressão perigosa no momento.")
