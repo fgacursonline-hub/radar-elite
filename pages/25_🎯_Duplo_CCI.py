@@ -27,7 +27,7 @@ ativos_para_rastrear = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elit
 # ==========================================
 # 2. CONFIGURAÇÃO DA PÁGINA & TVDATAFEED
 # ==========================================
-st.set_page_config(page_title="FX Sniper T3-CCI", layout="wide", page_icon="🎯")
+st.set_page_config(page_title="Duplo CCI Elite", layout="wide", page_icon="🎯")
 
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, faça login na página inicial (Home).")
@@ -58,57 +58,34 @@ def colorir_lucro(row):
     return [''] * len(row)
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO: T3-CCI (BLINDADO)
+# 3. MOTOR MATEMÁTICO: DUPLO CCI
 # ==========================================
-def calcular_t3_cci(df, cci_period=14, t3_period=5, b=0.618):
+def calcular_duplo_cci(df, cci_longo=50, cci_curto=14):
     try:
-        if df.empty or len(df) < 50:
+        if df.empty or len(df) < max(cci_longo, cci_curto) + 5:
             return None
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         df.index = df.index.tz_localize(None)
         
-        # 1. Injeção Nativa do CCI (À prova de falhas)
-        df.ta.cci(length=cci_period, append=True)
-        colunas_cci = [c for c in df.columns if c.startswith('CCI')]
-        if not colunas_cci:
-            return None
-        df.rename(columns={colunas_cci[0]: 'CCI'}, inplace=True)
+        # Cálculos nativos e robustos do pandas-ta
+        df['CCI_Longo'] = ta.cci(df['High'], df['Low'], df['Close'], length=cci_longo)
+        df['CCI_Curto'] = ta.cci(df['High'], df['Low'], df['Close'], length=cci_curto)
         
-        # 2. Expurgar o NaN inicial ANTES de ligar as exponenciais
-        df = df.dropna(subset=['CCI']).copy()
+        # Limpa os NaNs iniciais para não quebrar a lógica
+        df = df.dropna(subset=['CCI_Longo', 'CCI_Curto']).copy()
         
-        # 3. Matemática de Tim Tillson (Proporção T3)
-        b2 = b * b
-        b3 = b2 * b
-        c1 = -b3
-        c2 = 3 * (b2 + b3)
-        c3 = -3 * (2 * b2 + b + b3)
-        c4 = 1 + 3 * b + b3 + 3 * b2
+        # Regra de Compra: Tendência Longa de Alta (CCI Longo > 0) + Gatilho Curto (CCI Curto cruzando ZERO pra cima)
+        tendencia_alta = df['CCI_Longo'] > 0
+        gatilho_compra = (df['CCI_Curto'] > 0) & (df['CCI_Curto'].shift(1) <= 0)
+        df['Cruzou_Compra'] = tendencia_alta & gatilho_compra
         
-        nn = max(t3_period, 1)
-        nr = 1 + 0.5 * (nn - 1)
-        w1 = 2 / (nr + 1)
+        # Regra de Saída (Reversão): CCI Curto perde a força e cruza ZERO para baixo
+        df['Cruzou_Venda'] = (df['CCI_Curto'] < 0) & (df['CCI_Curto'].shift(1) >= 0)
         
-        # Cascata das 6 EMAs
-        e1 = df['CCI'].ewm(alpha=w1, adjust=False).mean()
-        e2 = e1.ewm(alpha=w1, adjust=False).mean()
-        e3 = e2.ewm(alpha=w1, adjust=False).mean()
-        e4 = e3.ewm(alpha=w1, adjust=False).mean()
-        e5 = e4.ewm(alpha=w1, adjust=False).mean()
-        e6 = e5.ewm(alpha=w1, adjust=False).mean()
-        
-        # Equação final
-        df['T3_CCI'] = c1 * e6 + c2 * e5 + c3 * e4 + c4 * e3
-        
-        # Gatilhos
-        df['Cruzou_Compra'] = (df['T3_CCI'] > 0) & (df['T3_CCI'].shift(1) <= 0)
-        df['Cruzou_Venda'] = (df['T3_CCI'] < 0) & (df['T3_CCI'].shift(1) >= 0)
-        
-        return df.dropna()
+        return df
     except Exception as e:
-        # Se quebrar, imprime o erro no terminal do Streamlit para auditarmos
-        print(f"Erro no Motor T3: {e}")
+        print(f"Erro no Motor Duplo CCI: {e}")
         return None
 
 def renderizar_grafico_tv(symbol):
@@ -138,8 +115,8 @@ def renderizar_grafico_tv(symbol):
     """
     components.html(html_code, height=600)
 
-st.title("🎯 Máquina Quantitativa: FX Sniper (T3-CCI)")
-st.info("📊 **Estratégia (Trend Following Suavizado):** Este algoritmo joga o indicador CCI dentro de um 'liquidificador' matemático chamado T3 (Média Tillson), que aplica 6 exponenciais simultâneas e uma proporção áurea. O resultado é uma leitura de tendência quase imune a falsos sinais. \n\n🟢 **Gatilho de Compra:** A linha ultra-suavizada cruza o eixo ZERO para CIMA. \n🔴 **Defesas Opcionais:** Desligue Stop, Alvo e Reversão (T3 < 0) para operar um buy-and-hold guiado por momento absoluto.")
+st.title("🎯 Máquina Quantitativa: Duplo CCI")
+st.info("📊 **Estratégia (Filtro de Tendência + Gatilho):** Usa duas velocidades de CCI para limpar o ruído. \n\n🟢 **Gatilho de Compra:** O CCI Longo precisa estar acima de ZERO (tendência de alta confirmada) no exato momento em que o CCI Curto cruza o ZERO de baixo para cima (explosão de momento). \n🔴 **Defesas Opcionais:** Desligue Stop, Alvo e Reversão (CCI Curto < 0) para gerir sua operação livremente.")
 
 aba_padrao, aba_individual = st.tabs(["📡 Radar Padrão (Scanner Global)", "🔬 Raio-X Individual (Laboratório)"])
 
@@ -157,18 +134,18 @@ with aba_padrao:
             tempo_tr = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="tr_tmp")
             periodo_tr = st.selectbox("Histórico (Backtest):", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="tr_per")
         with c3:
-            st.markdown("##### ⚙️ T3-CCI Settings")
-            cci_len_g = st.number_input("Período CCI:", min_value=2, value=14, step=1, key="tr_cci")
-            t3_len_g = st.number_input("Período T3:", min_value=2, value=5, step=1, key="tr_t3")
+            st.markdown("##### ⚙️ Setup Duplo CCI")
+            cci_l_g = st.number_input("CCI Longo (Tendência):", min_value=10, value=50, step=1, key="tr_cci_l")
+            cci_s_g = st.number_input("CCI Curto (Gatilho):", min_value=2, value=14, step=1, key="tr_cci_s")
         with c4:
             st.markdown("##### 🛡️ Gestão Opcional")
             usar_alvo_g = st.toggle("🎯 Alvo Fixo", value=True, key="tg_alvo_g")
             alvo_g = st.number_input("Alvo (%):", value=15.0, step=1.0, disabled=not usar_alvo_g, key="val_alvo_g")
-            usar_stop_g = st.toggle("🛡️ Stop Loss", value=False, key="tg_stop_g")
+            usar_stop_g = st.toggle("🛡️ Stop Loss Fixo", value=False, key="tg_stop_g")
             stop_g = st.number_input("Stop Loss (%):", value=5.0, step=1.0, disabled=not usar_stop_g, key="val_stop_g")
-            usar_saida_rev_g = st.toggle("📉 Saída Reversão (T3<0)", value=True, key="tg_rev_g")
+            usar_saida_rev_g = st.toggle("📉 Saída Reversão (CCI Curto < 0)", value=True, key="tg_rev_g")
 
-    btn_iniciar_tr = st.button("🚀 Iniciar Varredura FX Sniper", type="primary", use_container_width=True, key="tr_btn")
+    btn_iniciar_tr = st.button("🚀 Iniciar Varredura Duplo CCI", type="primary", use_container_width=True, key="tr_btn")
 
     if btn_iniciar_tr:
         intervalo_tv = tradutor_intervalo.get(tempo_tr, Interval.in_daily)
@@ -179,7 +156,7 @@ with aba_padrao:
         p_bar = st.progress(0); s_text = st.empty()
 
         for idx, ativo in enumerate(ativos_tr):
-            s_text.text(f"🔍 Calculando T3-CCI: {ativo} ({idx+1}/{len(ativos_tr)})")
+            s_text.text(f"🔍 Calculando Duplo CCI: {ativo} ({idx+1}/{len(ativos_tr)})")
             p_bar.progress((idx + 1) / len(ativos_tr))
 
             try:
@@ -187,7 +164,7 @@ with aba_padrao:
                 if df_full is None or len(df_full) < 50: continue
                 df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 
-                df_full = calcular_t3_cci(df_full, cci_len_g, t3_len_g)
+                df_full = calcular_duplo_cci(df_full, cci_l_g, cci_s_g)
                 if df_full is None: continue
 
                 data_corte = df_full.index[-1] - pd.DateOffset(months={'1mo':1, '3mo':3, '6mo':6, '1y':12, '2y':24, '5y':60}.get(periodo_tr, 120)) if periodo_tr != 'max' else df_full.index[0]
@@ -243,7 +220,7 @@ with aba_padrao:
                 else:
                     hoje = df_full.iloc[-1]
                     if hoje['Cruzou_Compra']:
-                        ls_sinais.append({'Ativo': ativo, 'Preço Atual': f"R$ {hoje['Close']:.2f}", 'T3-CCI': f"Cruzou ZERO 🟢"})
+                        ls_sinais.append({'Ativo': ativo, 'Preço Atual': f"R$ {hoje['Close']:.2f}", 'CCI': f"Alinhado 🟢"})
 
                 if len(trades) > 0:
                     df_t = pd.DataFrame(trades)
@@ -253,7 +230,7 @@ with aba_padrao:
 
         s_text.empty(); p_bar.empty()
 
-        st.subheader(f"🚀 Sinais de Ignição Hoje (T3-CCI > 0)")
+        st.subheader(f"🚀 Sinais de Ignição Hoje (Ambos CCI Alinhados)")
         if len(ls_sinais) > 0: st.dataframe(pd.DataFrame(ls_sinais), use_container_width=True, hide_index=True)
         else: st.info("Nenhum cruzamento direcional validado hoje.")
 
@@ -273,7 +250,7 @@ with aba_padrao:
 # ABA 2: RAIO-X INDIVIDUAL (O LABORATÓRIO)
 # ==========================================
 with aba_individual:
-    st.subheader("🔬 Análise Detalhada FX Sniper")
+    st.subheader("🔬 Análise Detalhada Duplo CCI")
     
     with st.container(border=True):
         ci1, ci2, ci3, ci4 = st.columns(4)
@@ -284,28 +261,28 @@ with aba_individual:
             tempo_rx = st.selectbox("Tempo Gráfico:", options=['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="i_tr_tmp")
             periodo_rx = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="i_tr_per")
         with ci3:
-            st.markdown("##### ⚙️ T3-CCI Settings")
-            lupa_cci = st.number_input("Período CCI:", min_value=2, value=14, key="i_tr_cci")
-            lupa_t3 = st.number_input("Período T3:", min_value=2, value=5, key="i_tr_t3")
+            st.markdown("##### ⚙️ Calibragem CCI")
+            lupa_cci_l = st.number_input("CCI Longo (Tendência):", min_value=10, value=50, key="i_tr_ccil")
+            lupa_cci_s = st.number_input("CCI Curto (Gatilho):", min_value=2, value=14, key="i_tr_ccis")
         with ci4:
             st.markdown("##### 🛡️ Gestão Opcional")
             usar_alvo_rx = st.toggle("🎯 Alvo Fixo", value=True, key="tg_alvo_rx")
             lupa_alvo = st.number_input("Alvo (%):", value=15.0, step=0.5, disabled=not usar_alvo_rx, key="i_tr_alvo")
             usar_stop_rx = st.toggle("🛡️ Stop Loss Fixo", value=False, key="tg_stop_rx")
             lupa_stop = st.number_input("Stop Loss (%):", value=5.0, step=0.5, disabled=not usar_stop_rx, key="i_tr_stop")
-            usar_saida_rev_rx = st.toggle("📉 Saída Reversão (T3<0)", value=True, key="tg_rev_rx")
+            usar_saida_rev_rx = st.toggle("📉 Saída Reversão (CCI Curto < 0)", value=True, key="tg_rev_rx")
 
-    if st.button("🔍 Gerar Raio-X FX Sniper", type="primary", use_container_width=True, key="i_tr_btn"):
+    if st.button("🔍 Gerar Raio-X Duplo CCI", type="primary", use_container_width=True, key="i_tr_btn"):
         intervalo_tv = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
         alvo_d, stop_d = lupa_alvo / 100.0, lupa_stop / 100.0
 
-        with st.spinner(f'Calculando proporções áureas para {ativo_rx}...'):
+        with st.spinner(f'Calculando força de tendência para {ativo_rx}...'):
             try:
                 df_full = tv.get_hist(symbol=ativo_rx, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
                 
                 if df_full is not None and len(df_full) > 50:
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                    df_full = calcular_t3_cci(df_full, lupa_cci, lupa_t3)
+                    df_full = calcular_duplo_cci(df_full, lupa_cci_l, lupa_cci_s)
                     
                     if df_full is not None:
                         data_corte = df_full.index[-1] - pd.DateOffset(months={'1mo':1, '3mo':3, '6mo':6, '1y':12, '2y':24, '5y':60}.get(periodo_rx, 120)) if periodo_rx != 'max' else df_full.index[0]
@@ -343,7 +320,7 @@ with aba_individual:
                                     vitorias += 1; situacao = "Alvo ✅"; saiu = True
                                 elif reverteu_st:
                                     lucro = float(capital_rx) * ((df_b['Close'].iloc[i] / p_ent) - 1)
-                                    if lucro > 0: vitorias += 1; situacao = "Saída Linha Zero ✅"
+                                    if lucro > 0: vitorias += 1; situacao = "Saída CCI < 0 ✅"
                                     else: derrotas += 1; situacao = "Reversão ❌"
                                     saiu = True
 
@@ -363,7 +340,7 @@ with aba_individual:
                             res_rs = posicao_atual['Cap'] * res_pct / 100
                             prej_max = ((min_na_op / posicao_atual['PM']) - 1) * 100
                             
-                            st.caption(f"🛡️ *Defesas Ativas:* Alvo: {'ON' if usar_alvo_rx else 'OFF'} | Stop Fixo: {'ON' if usar_stop_rx else 'OFF'} | Saída Zero: {'ON' if usar_saida_rev_rx else 'OFF'}")
+                            st.caption(f"🛡️ *Defesas Ativas:* Alvo: {'ON' if usar_alvo_rx else 'OFF'} | Stop Fixo: {'ON' if usar_stop_rx else 'OFF'} | Saída Reversão: {'ON' if usar_saida_rev_rx else 'OFF'}")
 
                             c1, c2, c3 = st.columns(3)
                             c1.metric("Data Entrada", posicao_atual['Data'].strftime('%d/%m/%Y'))
@@ -376,7 +353,7 @@ with aba_individual:
                             c5.metric("Prejuízo Máximo (DD)", f"{prej_max:.2f}%")
                             c6.metric("Resultado Atual", f"{res_pct:.2f}%", delta=f"R$ {res_rs:.2f}")
                         else:
-                            st.success(f"✅ **{ativo_rx}: Aguardando Cruzamento do Eixo Zero.**")
+                            st.success(f"✅ **{ativo_rx}: Aguardando Gatilho (CCI Curto cruzar Zero).**")
 
                         if trades:
                             df_res = pd.DataFrame(trades)
