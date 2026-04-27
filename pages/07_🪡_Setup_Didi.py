@@ -53,13 +53,13 @@ tradutor_intervalo = {
     '1wk': Interval.in_weekly
 }
 
-st.title("🪡 Máquina Quantitativa: Agulhada do Didi")
-st.markdown("Setup direcional explosivo baseado no cruzamento simultâneo das médias de 3, 8 e 20, com filtro ADX dinâmico.")
+st.title("🪡 Máquina Quantitativa: Agulhada do Didi (Padrão Original)")
+st.markdown("O setup direcional mais famoso do Brasil. Exige que as médias passem pelo 'buraco da agulha' antes de explodir.")
 
 aba_radar, aba_individual = st.tabs(["🌐 Radar Global (Scanner & Top 20)", "🔬 Raio-X Individual (Backtest)"])
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO (DIDI INDEX - CORRIGIDO VISUAL)
+# 3. MOTOR MATEMÁTICO (DIDI ORIGINAL - PROFIT)
 # ==========================================
 def calcular_didi(df, usar_adx=True, limite_adx=20):
     if df.empty or len(df) < 60: return pd.DataFrame()
@@ -67,14 +67,10 @@ def calcular_didi(df, usar_adx=True, limite_adx=20):
         df.columns = df.columns.get_level_values(0)
     df.index = df.index.tz_localize(None)
     
-    # Médias Móveis Simples (Clássicas do Didi)
+    # Médias Móveis Simples
     df['SMA3'] = df['Close'].rolling(window=3).mean()
     df['SMA8'] = df['Close'].rolling(window=8).mean()
     df['SMA20'] = df['Close'].rolling(window=20).mean()
-    
-    # Linhas do Didi Index (Razão sobre a Média 8, que vira a linha 1.00 do indicador)
-    df['D3'] = df['SMA3'] / df['SMA8']
-    df['D20'] = df['SMA20'] / df['SMA8']
     
     # Filtro ADX (Mede a força da tendência)
     adx_df = df.ta.adx(length=14)
@@ -85,13 +81,24 @@ def calcular_didi(df, usar_adx=True, limite_adx=20):
         df['ADX'] = 0
 
     # =========================================================
-    # O GATILHO EXATO DO TRADINGVIEW
+    # A AGULHADA ORIGINAL (BOLOLÔ + ABERTURA)
     # =========================================================
-    # A linha verde (D3) cruza a linha preta (1.0) para CIMA no candle atual.
-    cruzou_d3_alta = (df['D3'] > 1.0) & (df['D3'].shift(1) <= 1.0)
     
-    # A linha vermelha (D20) precisa estar ABAIXO da linha preta (1.0).
-    condicao_agulhada = cruzou_d3_alta & (df['D20'] < 1.0)
+    # 1. O Bololô (Esmagamento): A distância entre a maior e a menor média deve ser minúscula (ex: menor que 1.5%)
+    max_ma = df[['SMA3', 'SMA8', 'SMA20']].max(axis=1)
+    min_ma = df[['SMA3', 'SMA8', 'SMA20']].min(axis=1)
+    df['Esmagamento'] = ((max_ma - min_ma) / df['SMA8']) < 0.015
+    
+    # Verifica se esse "nó" aconteceu hoje ou nos últimos 3 dias
+    teve_bololo = df['Esmagamento'] | df['Esmagamento'].shift(1) | df['Esmagamento'].shift(2) | df['Esmagamento'].shift(3)
+    
+    # 2. O Alinhamento Perfeito: Média 3 apontada pra cima, Média 8 no meio, Média 20 pra baixo
+    alinhamento_alta = (df['SMA3'] > df['SMA8']) & (df['SMA8'] > df['SMA20'])
+    
+    # 3. O Gatilho: As médias estavam bagunçadas ontem, mas assumiram a formação de alta HOJE
+    alinhamento_alta_prev = (df['SMA3'].shift(1) > df['SMA8'].shift(1)) & (df['SMA8'].shift(1) > df['SMA20'].shift(1))
+    
+    condicao_agulhada = teve_bololo & alinhamento_alta & (~alinhamento_alta_prev)
     
     # Aplica o filtro ADX dinâmico
     if usar_adx:
@@ -99,8 +106,8 @@ def calcular_didi(df, usar_adx=True, limite_adx=20):
     else:
         df['Cruzou_Compra'] = condicao_agulhada
     
-    # Lógica de Saída (Quando a Média 3 cruza a Média 8 para baixo)
-    df['Cruzou_Venda'] = (df['D3'] < 1.0) & (df['D3'].shift(1) >= 1.0)
+    # Lógica de Saída Clássica (Quando a Média Rápida de 3 fura a de 8 para baixo)
+    df['Cruzou_Venda'] = (df['SMA3'] < df['SMA8']) & (df['SMA3'].shift(1) >= df['SMA8'].shift(1))
     
     return df.dropna()
 
@@ -132,7 +139,7 @@ def renderizar_grafico_tv(symbol):
     components.html(html_code, height=600)
 
 def exibir_explicacao_estrategia():
-    st.info("🪡 **A Estratégia (Agulhada do Didi):** O coração do sistema trabalha com as médias de 3, 8 e 20, onde a de 8 se torna o 'eixo zero' central (Valor 1.00). \n\n🟢 **Gatilho de Compra:** Ocorre exatamente no candle em que a Média Rápida (3) fura a Média 8 para CIMA, enquanto a Média Lenta (20) está posicionada para BAIXO. Opcionalmente, exige-se o filtro ADX (>20) confirmando que a explosão direcional tem volume real. \n\n🔴 **Gatilho de Saída (Defesa):** O trade encerra se a Média Rápida (3) cruzar a de 8 para baixo (devolvendo o ganho), ou quando atinge seus stops/alvos de capital.")
+    st.info("🪡 **A Estratégia (Agulhada Padrão Brasil):** A matemática foi programada para agir como no ProfitChart. O robô audita o 'Buraco da Agulha'.\n\n🟢 **Gatilho de Compra:** Primeiro, as 3 médias (3, 8 e 20) precisam se embolar, ficando a menos de 1.5% de distância umas das outras. Em seguida, elas precisam se abrir na ordem exata de alta: **Média 3 > Média 8 > Média 20** (com a Média 8 cortando pelo meio). O filtro ADX (>20) ajuda a evitar agulhadas sem força direcional.\n\n🔴 **Gatilho de Saída (Defesa):** O trade encerra assim que a Média Rápida (3) voltar a cruzar a Média (8) para baixo, indicando perda de fôlego.")
 
 # ==========================================
 # ABA 1: RADAR GLOBAL (SCANNER + TOP 20)
@@ -171,7 +178,7 @@ with aba_radar:
     else: ativos_alvo = bdrs_elite + ibrx_selecao
     ativos_alvo = sorted(list(set([a.replace('.SA', '') for a in ativos_alvo])))
 
-    btn_iniciar_global = st.button("🚀 Iniciar Varredura de Agulhadas (tvDatafeed)", type="primary", use_container_width=True)
+    btn_iniciar_global = st.button("🚀 Iniciar Varredura de Agulhadas", type="primary", use_container_width=True)
 
     if btn_iniciar_global:
         intervalo_tv = tradutor_intervalo.get(tempo_grafico_global, Interval.in_daily)
@@ -181,7 +188,7 @@ with aba_radar:
         s_text = st.empty()
         
         for i, ativo in enumerate(ativos_alvo):
-            s_text.text(f"Mapeando Agulhadas via TV: {ativo} ({i+1}/{len(ativos_alvo)})")
+            s_text.text(f"Mapeando Agulhadas: {ativo} ({i+1}/{len(ativos_alvo)})")
             p_bar.progress((i + 1) / len(ativos_alvo))
             try:
                 df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
