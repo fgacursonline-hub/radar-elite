@@ -56,8 +56,8 @@ dicionario_padroes = {
     'Estrela da Noite': {'Tipo': '🔴 Baixa', 'Desc': 'Padrão de 3 dias. O anoitecer: Alta forte, indecisão no topo, e uma paulada de queda no terceiro dia.'},
     'Linha de Perfuração': {'Tipo': '🟢 Alta', 'Desc': 'O preço abriu caindo feio, mas os touros perfuraram a queda e fecharam acima da metade do candle de ontem.'},
     'Cinturão de Alta': {'Tipo': '🟢 Alta', 'Desc': 'Abre na mínima do dia e só sobe, fechando forte. Um trator comprador triturando vendas.'},
-    'Kicker de Alta': {'Tipo': '🟢 Alta', 'Desc': 'Chute violento! O mercado vinha caindo, mas abre em um Gap de Alta gigante e sobe rasgando.'},
-    'Kicker de Baixa': {'Tipo': '🔴 Baixa', 'Desc': 'Rasteira! O mercado vinha subindo, mas abre em Gap de Baixa rasgando as defesas e despencando.'}
+    'Gap de Fuga de Alta': {'Tipo': '🟢 Alta', 'Desc': 'Voadora nos ursos! O mercado vinha caindo, mas abre em um Gap de Alta gigante e sobe rasgando (Kicker).'},
+    'Gap de Fuga de Baixa': {'Tipo': '🔴 Baixa', 'Desc': 'Rasteira nos touros! O mercado vinha subindo, mas abre em Gap de Baixa rasgando as defesas e despencando (Kicker).'}
 }
 
 # ==========================================
@@ -121,8 +121,8 @@ def escanear_padroes(df, trend=5, dojiSize=0.05):
     if bullEng: padroes_hoje.append('Engolfo de Alta')
     if piercing: padroes_hoje.append('Linha de Perfuração')
     if bullBelt: padroes_hoje.append('Cinturão de Alta')
-    if bullKick: padroes_hoje.append('Kicker de Alta')
-    if bearKick: padroes_hoje.append('Kicker de Baixa')
+    if bullKick: padroes_hoje.append('Gap de Fuga de Alta')
+    if bearKick: padroes_hoje.append('Gap de Fuga de Baixa')
     if hangingMan: padroes_hoje.append('Enforcado')
     if eveningStar: padroes_hoje.append('Estrela da Noite')
     if morningStar: padroes_hoje.append('Estrela da Manhã')
@@ -210,7 +210,6 @@ if btn_radar:
                     return 'color: #d3d3d3; font-weight: bold'
             return ''
 
-        # Tenta aplicar o map (pandas mais recentes) ou applymap (pandas antigos)
         try:
             styled_df = df_res.style.map(colorir_direcao, subset=['Direção'])
         except AttributeError:
