@@ -59,7 +59,7 @@ st.markdown("Setup direcional explosivo baseado no cruzamento simultâneo das m�
 aba_radar, aba_individual = st.tabs(["🌐 Radar Global (Scanner & Top 20)", "🔬 Raio-X Individual (Backtest)"])
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO (DIDI INDEX)
+# 3. MOTOR MATEMÁTICO (DIDI INDEX - CORRIGIDO)
 # ==========================================
 def calcular_didi(df, usar_adx=True, limite_adx=20):
     if df.empty or len(df) < 60: return pd.DataFrame()
@@ -67,12 +67,12 @@ def calcular_didi(df, usar_adx=True, limite_adx=20):
         df.columns = df.columns.get_level_values(0)
     df.index = df.index.tz_localize(None)
     
-    # Médias Móveis Simples
+    # Médias Móveis Simples (Clássicas do Didi)
     df['SMA3'] = df['Close'].rolling(window=3).mean()
     df['SMA8'] = df['Close'].rolling(window=8).mean()
     df['SMA20'] = df['Close'].rolling(window=20).mean()
     
-    # Linhas do Didi Index (Razão sobre a Média 8)
+    # Linhas do Didi Index (Razão sobre a Média 8, que vira a linha 1.0 ou "Eixo Zero")
     df['D3'] = df['SMA3'] / df['SMA8']
     df['D20'] = df['SMA20'] / df['SMA8']
     
@@ -84,11 +84,28 @@ def calcular_didi(df, usar_adx=True, limite_adx=20):
     else:
         df['ADX'] = 0
 
-    # Lógica da Agulhada
-    cruzou_d3_alta = (df['D3'].shift(1) <= 1.0) & (df['D3'] > 1.0)
-    cruzou_d20_baixa = (df['D20'].shift(1) >= 1.0) & (df['D20'] < 1.0)
+    # =========================================================
+    # A MÁGICA DE PRECISÃO (O BURACO DA AGULHA)
+    # =========================================================
+    # Regra 1: A Agulhada Perfeita. As linhas precisam se abrir D3 para cima e D20 para baixo.
+    alinhamento_ok = (df['D3'] > 1.0) & (df['D20'] < 1.0)
     
-    condicao_agulhada = (df['D3'] > 1.0) & (df['D20'] < 1.0) & (cruzou_d3_alta | cruzou_d20_baixa)
+    # Regra 2: O Esmagamento. Antes de abrir, as médias precisam estar "espremidas". 
+    # Validamos se ontem (ou anteontem) as linhas D3 e D20 estavam muito próximas do eixo 1.0 (ex: menos de 0.5% de distância).
+    tolerancia_esmagamento = 0.005 # 0.5% de diferença entre as médias
+    esmagamento_previo = (
+        ((df['D3'].shift(1) <= 1.0 + tolerancia_esmagamento) & (df['D3'].shift(1) >= 1.0 - tolerancia_esmagamento)) &
+        ((df['D20'].shift(1) <= 1.0 + tolerancia_esmagamento) & (df['D20'].shift(1) >= 1.0 - tolerancia_esmagamento))
+    ) | (
+        ((df['D3'].shift(2) <= 1.0 + tolerancia_esmagamento) & (df['D3'].shift(2) >= 1.0 - tolerancia_esmagamento)) &
+        ((df['D20'].shift(2) <= 1.0 + tolerancia_esmagamento) & (df['D20'].shift(2) >= 1.0 - tolerancia_esmagamento))
+    )
+
+    # Regra 3: O Gatilho. A média 3 não pode estar cruzada para cima da Média 8 há muito tempo. Tem que ser recente.
+    # Exigimos que ela tenha cruzado a linha 1.0 para cima hoje ou ontem.
+    cruzou_d3_alta = (df['D3'].shift(1) <= 1.0) & (df['D3'] > 1.0) | (df['D3'].shift(2) <= 1.0) & (df['D3'].shift(1) > 1.0)
+    
+    condicao_agulhada = alinhamento_ok & esmagamento_previo & cruzou_d3_alta
     
     # Aplica o filtro ADX dinâmico
     if usar_adx:
@@ -129,7 +146,7 @@ def renderizar_grafico_tv(symbol):
     components.html(html_code, height=600)
 
 def exibir_explicacao_estrategia():
-    st.info("🪡 **A Estratégia (Agulhada do Didi):** O coração do sistema trabalha com as médias de 3, 8 e 20, onde a de 8 se torna o 'eixo zero' central. \n\n🟢 **Gatilho de Compra:** Ocorre quando a Média Rápida (3) fura a Média 8 para CIMA, a Média Lenta (20) fura para BAIXO, esmagando o preço. Opcionalmente, exige-se o filtro ADX (>20) confirmando que a explosão direcional tem volume real. \n\n🔴 **Gatilho de Saída (Defesa):** O trade encerra (tiro curto) se a Média Rápida (3) cruzar a de 8 para baixo, devolvendo o ganho, ou quando atinge seus stops/alvos de capital.")
+    st.info("🪡 **A Estratégia (Agulhada do Didi):** O coração do sistema trabalha com as médias de 3, 8 e 20, onde a de 8 se torna o 'eixo zero' central. \n\n🟢 **Gatilho de Compra:** Ocorre quando a Média Rápida (3) fura a Média 8 para CIMA, a Média Lenta (20) fura para BAIXO, após passarem muito próximas ('buraco da agulha'). Opcionalmente, exige-se o filtro ADX (>20) confirmando que a explosão direcional tem volume real. \n\n🔴 **Gatilho de Saída (Defesa):** O trade encerra (tiro curto) se a Média Rápida (3) cruzar a de 8 para baixo, devolvendo o ganho, ou quando atinge seus stops/alvos de capital.")
 
 # ==========================================
 # ABA 1: RADAR GLOBAL (SCANNER + TOP 20)
@@ -168,7 +185,7 @@ with aba_radar:
     else: ativos_alvo = bdrs_elite + ibrx_selecao
     ativos_alvo = sorted(list(set([a.replace('.SA', '') for a in ativos_alvo])))
 
-    btn_iniciar_global = st.button("🚀 Iniciar Varredura de Agulhadas (tvDatafeed)", type="primary", use_container_width=True)
+    btn_iniciar_global = st.button("🚀 Iniciar Varredura de Agulhadas", type="primary", use_container_width=True)
 
     if btn_iniciar_global:
         intervalo_tv = tradutor_intervalo.get(tempo_grafico_global, Interval.in_daily)
@@ -178,7 +195,7 @@ with aba_radar:
         s_text = st.empty()
         
         for i, ativo in enumerate(ativos_alvo):
-            s_text.text(f"Mapeando Agulhadas via TV: {ativo} ({i+1}/{len(ativos_alvo)})")
+            s_text.text(f"Mapeando Agulhadas: {ativo} ({i+1}/{len(ativos_alvo)})")
             p_bar.progress((i + 1) / len(ativos_alvo))
             try:
                 df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
