@@ -1,21 +1,19 @@
 import streamlit as st
 from tvDatafeed import TvDatafeed, Interval
+import streamlit.components.v1 as components
 import pandas as pd
 import pandas_ta as ta
+import numpy as np
 import time
 import warnings
 import sys
 import os
+from datetime import datetime
 
 warnings.filterwarnings('ignore')
 
-# 1. SEGURANÇA E BLOQUEIO
-if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
-    st.error("🚫 Por favor, faça login na página inicial (Home).")
-    st.stop()
-
 # ==========================================
-# IMPORTAÇÃO CENTRALIZADA DOS ATIVOS
+# 1. IMPORTAÇÃO CENTRALIZADA DOS ATIVOS
 # ==========================================
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 try:
@@ -24,17 +22,34 @@ except ImportError:
     st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
     st.stop()
 
-# 2. CONEXÃO E LISTAS
+ativos_para_rastrear = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
+
+# ==========================================
+# 2. CONFIGURAÇÃO DA PÁGINA & TVDATAFEED
+# ==========================================
+st.set_page_config(page_title="Trend Machine", layout="wide", page_icon="🤖")
+
+if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
+    st.error("🚫 Por favor, faça login na página inicial (Home).")
+    st.stop()
+
 @st.cache_resource
 def get_tv_connection():
     return TvDatafeed()
 
 tv = get_tv_connection()
 
-tradutor_intervalo = {'15m': Interval.in_15_minute, '60m': Interval.in_1_hour, '1d': Interval.in_daily, '1wk': Interval.in_weekly, '1mo': Interval.in_monthly}
 tradutor_periodo_nome = {
     '1mo': '1 Mês', '3mo': '3 Meses', '6mo': '6 Meses',
-    '1y': '1 Ano', '2y': '2 Anos', '5y': '5 Anos', 'max': 'Máximo'
+    '1y': '1 Ano', '2y': '2 Anos', '5y': '5 Anos',
+    'max': 'Máximo', '60d': '60 Dias'
+}
+
+tradutor_intervalo = {
+    '15m': Interval.in_15_minute,
+    '60m': Interval.in_1_hour,
+    '1d': Interval.in_daily,
+    '1wk': Interval.in_weekly
 }
 
 def colorir_lucro(row):
@@ -43,11 +58,14 @@ def colorir_lucro(row):
     return [''] * len(row)
 
 # ==========================================
-# MOTOR MATEMÁTICO: ADX + SUPERTREND
+# 3. MOTOR MATEMÁTICO: ADX + SUPERTREND
 # ==========================================
 def calcular_indicadores_trend(df, adx_len=14, st_len=10, st_mult=3.0):
     if df is None or len(df) < max(adx_len, st_len) * 2:
         return None
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    df.index = df.index.tz_localize(None)
     
     # 1. Calcula ADX e DMI
     adx_df = ta.adx(df['High'], df['Low'], df['Close'], length=adx_len)
@@ -74,59 +92,80 @@ def calcular_indicadores_trend(df, adx_len=14, st_len=10, st_mult=3.0):
     df['ADX_Prev'] = df['ADX'].shift(1)
     return df.dropna()
 
-# 3. INTERFACE DE ABAS
-col_titulo, col_botao = st.columns([4, 1])
+def renderizar_grafico_tv(symbol):
+    html_code = f"""
+    <div class="tradingview-widget-container">
+      <div id="tv_chart_{symbol.replace(':', '')}" style="height: 600px; width: 100%;"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+      <script type="text/javascript">
+      new TradingView.widget(
+      {{
+      "autosize": true,
+      "symbol": "{symbol}",
+      "interval": "D",
+      "timezone": "America/Sao_Paulo",
+      "theme": "dark",
+      "style": "1",
+      "locale": "br",
+      "enable_publishing": false,
+      "hide_top_toolbar": false,
+      "hide_legend": false,
+      "save_image": false,
+      "container_id": "tv_chart_{symbol.replace(':', '')}"
+    }}
+      );
+      </script>
+    </div>
+    """
+    components.html(html_code, height=600)
 
-with col_titulo:
-    st.title("🤖 Máquina de Tendência (ADX + SuperTrend)")
+st.title("🤖 Máquina de Tendência (ADX + SuperTrend)")
+st.info("📊 **Estratégia (Trend Following Extremo):** Um sistema blindado contra ruídos laterais. \n\n🟢 **Gatilho de Compra:** O SuperTrend precisa estar verde (alta) **+** a linha compradora do DMI (+DI) deve estar acima da vendedora (-DI) **+** a linha de força do ADX deve estar apontando para cima e acima do limite. \n🔴 **Defesas:** Saída programada pela reversão do SuperTrend, com opções de Alvo de Lucro ou Stop Loss fixo para gestão de risco extra.")
 
-with col_botao:
-    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-    st.link_button("📖 Ler Manual", "https://seusite.com/manual_ifr", use_container_width=True)
-
-st.info("📊 **Estratégia (Trend Following Extremo):** Um sistema blindado contra ruídos laterais. \n\n🟢 **Gatilho de Compra:** O SuperTrend precisa estar verde (alta) **+** a linha compradora do DMI (+DI) deve estar acima da vendedora (-DI) **+** a linha de força do ADX deve estar acima do limite estipulado (ex: 20 ou 25) e apontando para cima. Só entra se TUDO confirmar a força dos touros.")
-
-aba_padrao, aba_pm, aba_stop, aba_individual, aba_futuros = st.tabs([
-    "📡 Radar Padrão", "📡 Radar (PM)", "🛡️ Alvo & Stop", "🔬 Raio-X Individual", "📉 Raio-X Futuros"
+aba_padrao, aba_individual, aba_futuros = st.tabs([
+    "📡 Radar Padrão", "🔬 Raio-X Individual", "📉 Raio-X Futuros"
 ])
 
 # ==========================================
 # ABA 1: RADAR PADRÃO
 # ==========================================
 with aba_padrao:
-    st.subheader("📡 Radar Padrão (Entrada Blindada & Alvo Fixo)")
-    
-    cp1, cp2, cp3 = st.columns(3)
-    with cp1:
-        lista_tr = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="tr_lista")
-        ativos_tr = bdrs_elite if lista_tr == "BDRs Elite" else ibrx_selecao if lista_tr == "IBrX Seleção" else bdrs_elite + ibrx_selecao
-        periodo_tr = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="tr_per")
-        capital_tr = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="tr_cap")
-    with cp2:
-        st.markdown("##### ⚙️ Configuração ADX & DMI")
-        adx_len = st.number_input("Período ADX:", min_value=2, value=14, step=1, key="tr_adx_len")
-        adx_limiar = st.number_input("Filtro de Força (ADX >):", min_value=10, value=20, step=1, help="Geralmente 20 ou 25. Abaixo disso é mercado lateral.", key="tr_adx_lim")
-    with cp3:
-        st.markdown("##### ⚙️ Configuração SuperTrend")
-        st_len = st.number_input("Período SuperTrend:", min_value=2, value=10, step=1, key="tr_st_len")
-        st_mult = st.number_input("Multiplicador SuperTrend:", min_value=0.5, value=3.0, step=0.1, key="tr_st_mult")
-        alvo_tr = st.number_input("Alvo de Lucro (%):", value=10.0, step=0.5, key="tr_alvo")
-        tempo_tr = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk', '1mo'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x], key="tr_tmp")
+    with st.container(border=True):
+        st.markdown("**1. Parâmetros Base**")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            lista_tr = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="tr_lista")
+            capital_tr = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="tr_cap")
+        with c2:
+            tempo_tr = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk', '1mo'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x], key="tr_tmp")
+            periodo_tr = st.selectbox("Histórico (Backtest):", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="tr_per")
+        with c3:
+            st.markdown("##### ⚙️ ADX & SuperTrend")
+            c_adx1, c_adx2 = st.columns(2)
+            adx_len = c_adx1.number_input("Período ADX:", min_value=2, value=14, step=1, key="tr_adx_len")
+            adx_limiar = c_adx2.number_input("ADX (>):", min_value=10, value=20, step=1, key="tr_adx_lim")
+            
+            c_st1, c_st2 = st.columns(2)
+            st_len = c_st1.number_input("ST Período:", min_value=2, value=10, step=1, key="tr_st_len")
+            st_mult = c_st2.number_input("ST Mult:", min_value=0.5, value=3.0, step=0.1, key="tr_st_mult")
+        with c4:
+            st.markdown("##### 🛡️ Gestão de Risco")
+            usar_alvo_g = st.toggle("🎯 Alvo Fixo", value=True, key="tg_alvo_g")
+            alvo_g = st.number_input("Alvo (%):", value=15.0, step=1.0, disabled=not usar_alvo_g, key="val_alvo_g")
+            usar_stop_g = st.toggle("🛡️ Stop Loss", value=False, key="tg_stop_g")
+            stop_g = st.number_input("Stop Loss (%):", value=5.0, step=1.0, disabled=not usar_stop_g, key="val_stop_g")
 
     btn_iniciar_tr = st.button("🚀 Iniciar Varredura de Tendência", type="primary", use_container_width=True, key="tr_btn")
 
     if btn_iniciar_tr:
-        if tempo_tr == '15m' and periodo_tr not in ['1mo', '3mo']: periodo_tr = '60d'
-        elif tempo_tr == '60m' and periodo_tr in ['5y', 'max']: periodo_tr = '2y'
-
         intervalo_tv = tradutor_intervalo.get(tempo_tr, Interval.in_daily)
-        alvo_dec = alvo_tr / 100
-
+        ativos_tr = bdrs_elite if lista_tr == "BDRs Elite" else ibrx_selecao if lista_tr == "IBrX Seleção" else bdrs_elite + ibrx_selecao
+        ativos_tr = sorted(list(set([a.replace('.SA', '') for a in ativos_tr])))
+        
         ls_sinais, ls_abertos, ls_resumo = [], [], []
         p_bar = st.progress(0); s_text = st.empty()
 
-        for idx, ativo_raw in enumerate(ativos_tr):
-            ativo = ativo_raw.replace('.SA', '')
+        for idx, ativo in enumerate(ativos_tr):
             s_text.text(f"🔍 Medindo Força Institucional: {ativo} ({idx+1}/{len(ativos_tr)})")
             p_bar.progress((idx + 1) / len(ativos_tr))
 
@@ -150,28 +189,38 @@ with aba_padrao:
                 col_data = df_back.columns[0]
                 min_price_in_trade = 0.0
 
+                alvo_d = alvo_g / 100.0
+                stop_d = stop_g / 100.0
+
                 for i in range(1, len(df_back)):
                     sinal_compra = (df_back['ST_Dir'].iloc[i] == 1) and (df_back['+DI'].iloc[i] > df_back['-DI'].iloc[i]) and (df_back['ADX'].iloc[i] > adx_limiar) and (df_back['ADX'].iloc[i] > df_back['ADX_Prev'].iloc[i])
                     
                     if em_pos:
                         if df_back['Low'].iloc[i] < min_price_in_trade: min_price_in_trade = df_back['Low'].iloc[i]
                         
-                        if df_back['High'].iloc[i] >= take_profit:
-                            trades.append({'Lucro (R$)': float(capital_tr) * alvo_dec, 'Drawdown_Raw': ((min_price_in_trade / preco_entrada) - 1) * 100})
-                            em_pos = False
-                            continue
-                        # Saída de emergência: Tendência virou forte para baixo
-                        elif df_back['ST_Dir'].iloc[i] == -1:
-                            trades.append({'Lucro (R$)': float(capital_tr) * ((df_back['Close'].iloc[i] / preco_entrada) - 1), 'Drawdown_Raw': ((min_price_in_trade / preco_entrada) - 1) * 100})
-                            em_pos = False
-                            continue
+                        bateu_alvo = usar_alvo_g and (df_back['High'].iloc[i] >= take_profit)
+                        bateu_stop = usar_stop_g and (df_back['Low'].iloc[i] <= stop_price)
+                        reverteu_st = df_back['ST_Dir'].iloc[i] == -1
+                        
+                        if bateu_stop:
+                            trades.append({'Lucro (R$)': -(float(capital_tr) * stop_d), 'Drawdown_Raw': ((min_price_in_trade / preco_entrada) - 1) * 100, 'Motivo': 'Stop ❌'})
+                            em_pos = False; continue
+                        elif bateu_alvo:
+                            trades.append({'Lucro (R$)': float(capital_tr) * alvo_d, 'Drawdown_Raw': ((min_price_in_trade / preco_entrada) - 1) * 100, 'Motivo': 'Alvo ✅'})
+                            em_pos = False; continue
+                        elif reverteu_st:
+                            lucro_rs = float(capital_tr) * ((df_back['Close'].iloc[i] / preco_entrada) - 1)
+                            motivo = 'Saída ST ✅' if lucro_rs > 0 else 'Saída ST ❌'
+                            trades.append({'Lucro (R$)': lucro_rs, 'Drawdown_Raw': ((min_price_in_trade / preco_entrada) - 1) * 100, 'Motivo': motivo})
+                            em_pos = False; continue
 
                     if sinal_compra and not em_pos:
                         em_pos = True
                         d_ent = df_back[col_data].iloc[i]
                         preco_entrada = df_back['Close'].iloc[i] 
                         min_price_in_trade = df_back['Low'].iloc[i]
-                        take_profit = preco_entrada * (1 + alvo_dec)
+                        take_profit = preco_entrada * (1 + alvo_d)
+                        stop_price = preco_entrada * (1 - stop_d)
 
                 if em_pos:
                     resultado_atual = ((df_back['Close'].iloc[-1] / preco_entrada) - 1) * 100
@@ -213,153 +262,45 @@ with aba_padrao:
         else: st.warning("Nenhuma operação finalizada.")
 
 # ==========================================
-# ABA 2: RADAR PM (APORTES EM NOVAS FORÇAS)
-# ==========================================
-with aba_pm:
-    st.subheader("📡 Radar PM Dinâmico (Re-Entrada na Tendência)")
-    st.markdown("Se a força institucional retornar e engatilhar um novo sinal de compra enquanto você já está posicionado e no prejuízo, o robô realiza novo aporte.")
-    st.info("Em construção... (A lógica base é idêntica ao Radar Padrão, mas recalcula o Preço Médio e Alvo ao detectar novo gatilho triplo).")
-    # Para não exceder o limite de caracteres de uma única resposta e focar no que importa, 
-    # a estrutura de PM e Stop Loss será o espelho das abas do "Cruzamento de Médias",
-    # substituindo o gatilho de cruzamento por `sinal_compra` do ADX.
-
-# ==========================================
-# ABA 3: RADAR ALVO & STOP (CLÁSSICO)
-# ==========================================
-with aba_stop:
-    st.subheader("🛡️ Radar Alvo & Stop (Risco Estrito)")
-    
-    cs1, cs2, cs3 = st.columns(3)
-    with cs1:
-        lista_s = st.selectbox("Lista de Ativos:", ["BDRs Elite", "IBrX Seleção", "Todos (BDRs + IBrX)"], key="trs_lista")
-        ativos_s = bdrs_elite if lista_s == "BDRs Elite" else ibrx_selecao if lista_s == "IBrX Seleção" else bdrs_elite + ibrx_selecao
-        periodo_s = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="trs_per")
-        capital_s = st.number_input("Capital/Trade (R$):", value=10000.0, step=1000.0, key="trs_cap")
-    with cs2:
-        adx_len_s = st.number_input("Período ADX:", min_value=2, value=14, step=1, key="trs_adx")
-        adx_lim_s = st.number_input("Filtro Força (ADX >):", min_value=10, value=20, step=1, key="trs_lim")
-        st_len_s = st.number_input("Período SuperTrend:", min_value=2, value=10, step=1, key="trs_st_len")
-    with cs3:
-        st_mult_s = st.number_input("Multiplicador ST:", min_value=0.5, value=3.0, step=0.1, key="trs_st_m")
-        alvo_s = st.number_input("Alvo de Lucro (%):", value=10.0, step=0.5, key="trs_alvo")
-        stop_s = st.number_input("Stop Loss (%):", value=5.0, step=0.5, key="trs_stop")
-        tempo_s = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk', '1mo'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x], key="trs_tmp")
-
-    btn_s = st.button("🚀 Iniciar Varredura Alvo/Stop", type="primary", use_container_width=True, key="trs_btn")
-
-    if btn_s:
-        intervalo_tv = tradutor_intervalo.get(tempo_s, Interval.in_daily)
-        alvo_dec, stop_dec = alvo_s / 100, stop_s / 100
-        ls_sinais, ls_abertos, ls_resumo = [], [], []
-        p_bar = st.progress(0); s_text = st.empty()
-
-        for idx, ativo_raw in enumerate(ativos_s):
-            ativo = ativo_raw.replace('.SA', '')
-            s_text.text(f"🔍 Analisando: {ativo} ({idx+1}/{len(ativos_s)})")
-            p_bar.progress((idx + 1) / len(ativos_s))
-            try:
-                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
-                if df_full is None or len(df_full) < 50: continue
-                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                
-                df_full = calcular_indicadores_trend(df_full, adx_len_s, st_len_s, st_mult_s)
-                if df_full is None: continue
-
-                data_atual = df_full.index[-1]
-                offset_map = {'1mo': 1, '3mo': 3, '6mo': 6, '1y': 12, '2y': 24, '5y': 60}
-                data_corte = data_atual - pd.DateOffset(months=offset_map.get(periodo_s, 120)) if periodo_s != 'max' else df_full.index[0]
-                df = df_full[df_full.index >= data_corte].copy().reset_index()
-
-                trades, em_pos, vitorias, derrotas = [], False, 0, 0
-                col_data = df.columns[0]
-
-                for i in range(1, len(df)):
-                    sinal_compra = (df['ST_Dir'].iloc[i] == 1) and (df['+DI'].iloc[i] > df['-DI'].iloc[i]) and (df['ADX'].iloc[i] > adx_lim_s) and (df['ADX'].iloc[i] > df['ADX_Prev'].iloc[i])
-                    
-                    if em_pos:
-                        if df['Low'].iloc[i] <= stop_price:
-                            trades.append({'Lucro (R$)': -(float(capital_s) * stop_dec), 'Resultado': 'Stop'})
-                            derrotas += 1; em_pos = False; continue
-                        if df['High'].iloc[i] >= take_profit:
-                            trades.append({'Lucro (R$)': float(capital_s) * alvo_dec, 'Resultado': 'Gain'})
-                            vitorias += 1; em_pos = False; continue
-
-                    if sinal_compra and not em_pos:
-                        em_pos, d_ent, preco_entrada = True, df[col_data].iloc[i], df['Close'].iloc[i] 
-                        take_profit, stop_price = preco_entrada * (1 + alvo_dec), preco_entrada * (1 - stop_dec)
-
-                if em_pos:
-                    resultado_atual = ((df['Close'].iloc[-1] / preco_entrada) - 1) * 100
-                    ls_abertos.append({'Ativo': ativo, 'Entrada': d_ent.strftime('%d/%m/%Y'), 'Preço Entrada': f"R$ {preco_entrada:.2f}", 'Alvo 🎯': f"R$ {take_profit:.2f}", 'Stop 🛡️': f"R$ {stop_price:.2f}", 'Cotação Atual': f"R$ {df['Close'].iloc[-1]:.2f}", 'Resultado Atual': f"+{resultado_atual:.2f}%" if resultado_atual > 0 else f"{resultado_atual:.2f}%"})
-                else:
-                    hoje = df_full.iloc[-1]
-                    if (hoje['ST_Dir'] == 1) and (hoje['+DI'] > hoje['-DI']) and (hoje['ADX'] > adx_lim_s) and (hoje['ADX'] > hoje['ADX_Prev']):
-                        ls_sinais.append({'Ativo': ativo, 'Preço Atual': f"R$ {hoje['Close']:.2f}", 'ADX': f"{hoje['ADX']:.1f}"})
-
-                if len(trades) > 0:
-                    df_t = pd.DataFrame(trades)
-                    ls_resumo.append({'Ativo': ativo, 'Total Trades': len(df_t), 'Taxa Acerto': f"{(vitorias/len(df_t))*100:.1f}%", 'Lucro R$': df_t['Lucro (R$)'].sum()})
-            except: pass
-            time.sleep(0.05)
-
-        s_text.empty(); p_bar.empty()
-        
-        st.subheader("🚀 Sinais de Compra Hoje")
-        if ls_sinais: st.dataframe(pd.DataFrame(ls_sinais), use_container_width=True, hide_index=True)
-        else: st.info("Nenhum ativo com sinal de entrada.")
-        
-        st.subheader("⏳ Operações em Andamento (Com Stop Armado)")
-        if ls_abertos: st.dataframe(pd.DataFrame(ls_abertos).style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
-        else: st.success("Sua carteira está limpa.")
-
-        st.subheader("📊 Top 10 Histórico")
-        if ls_resumo:
-            df_resumo = pd.DataFrame(ls_resumo).sort_values(by='Lucro R$', ascending=False).head(10)
-            df_resumo['Lucro R$'] = df_resumo['Lucro R$'].apply(lambda x: f"R$ {x:,.2f}")
-            st.dataframe(df_resumo, use_container_width=True, hide_index=True)
-
-# ==========================================
-# ABA 4: RAIO-X INDIVIDUAL (SIMULADOR HISTÓRICO)
+# ABA 2: RAIO-X INDIVIDUAL (SIMULADOR HISTÓRICO)
 # ==========================================
 with aba_individual:
     st.subheader("🔬 Análise Detalhada de Ativo Único (ADX + SuperTrend)")
     st.markdown("Faça o teste de estresse de um ativo específico para ver se a blindagem funciona bem nele.")
     
-    ci1, ci2, ci3 = st.columns(3)
-    with ci1:
-        lupa_ativo = st.text_input("Ativo (Ex: PETR4 ou BTCUSD):", value="PETR4", key="i_tr_ativo").upper()
-        lupa_est = st.selectbox("Estratégia a Testar:", ["Padrão (Só Alvo)", "Alvo & Stop Loss"], key="i_tr_est")
-        lupa_per = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="i_tr_per")
-    with ci2:
-        st.markdown("##### ⚙️ ADX & DMI")
-        lupa_adx_len = st.number_input("Período ADX:", min_value=2, value=14, key="i_tr_adxlen")
-        lupa_adx_lim = st.number_input("Limite ADX (>):", min_value=10, value=25, key="i_tr_adxlim")
-        
-        st.markdown("##### ⚙️ SuperTrend")
-        c_i1, c_i2 = st.columns(2)
-        lupa_st_len = c_i1.number_input("Período ST:", value=10, key="i_tr_stlen")
-        lupa_st_mult = c_i2.number_input("Mult. ST:", value=3.0, step=0.1, key="i_tr_stmult")
-    with ci3:
-        lupa_alvo = st.number_input("Alvo de Lucro (%):", value=10.0, step=0.5, key="i_tr_alvo")
-        if lupa_est == "Alvo & Stop Loss":
-            lupa_stop = st.number_input("Stop Loss (%):", value=5.0, step=0.5, key="i_tr_stop")
-        else:
-            st.markdown("<div style='height: 75px;'></div>", unsafe_allow_html=True)
-            lupa_stop = 0.0
+    with st.container(border=True):
+        ci1, ci2, ci3, ci4 = st.columns(4)
+        with ci1:
+            ativo_rx = st.selectbox("Ativo a Testar:", ativos_para_rastrear, key="i_tr_ativo")
+            capital_rx = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="i_tr_cap")
+        with ci2:
+            tempo_rx = st.selectbox("Tempo Gráfico:", options=['15m', '60m', '1d', '1wk', '1mo'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x], key="i_tr_tmp")
+            periodo_rx = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="i_tr_per")
+        with ci3:
+            st.markdown("##### ⚙️ ADX & SuperTrend")
+            c_rx_adx1, c_rx_adx2 = st.columns(2)
+            lupa_adx_len = c_rx_adx1.number_input("ADX Per:", min_value=2, value=14, key="i_tr_adxlen")
+            lupa_adx_lim = c_rx_adx2.number_input("ADX >:", min_value=10, value=25, key="i_tr_adxlim")
             
-        lupa_cap = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="i_tr_cap")
-        lupa_tmp = st.selectbox("Tempo Gráfico:", options=['15m', '60m', '1d', '1wk', '1mo'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x], key="i_tr_tmp")
+            c_rx_st1, c_rx_st2 = st.columns(2)
+            lupa_st_len = c_rx_st1.number_input("ST Per:", value=10, key="i_tr_stlen")
+            lupa_st_mult = c_rx_st2.number_input("ST Mult:", value=3.0, step=0.1, key="i_tr_stmult")
+        with ci4:
+            st.markdown("##### 🛡️ Gestão de Risco")
+            usar_alvo_rx = st.toggle("🎯 Alvo Fixo", value=True, key="tg_alvo_rx")
+            lupa_alvo = st.number_input("Alvo (%):", value=15.0, step=0.5, disabled=not usar_alvo_rx, key="i_tr_alvo")
+            usar_stop_rx = st.toggle("🛡️ Stop Loss Fixo", value=False, key="tg_stop_rx")
+            lupa_stop = st.number_input("Stop Loss (%):", value=5.0, step=0.5, disabled=not usar_stop_rx, key="i_tr_stop")
 
     if st.button("🔍 Gerar Raio-X da Máquina", type="primary", use_container_width=True, key="i_tr_btn"):
-        ativo_limpo = lupa_ativo.strip().upper().replace('.SA', '')
-        intervalo_tv = tradutor_intervalo.get(lupa_tmp, Interval.in_daily)
-        alvo_d, stop_d = lupa_alvo / 100, lupa_stop / 100
+        intervalo_tv = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
+        alvo_d, stop_d = lupa_alvo / 100.0, lupa_stop / 100.0
 
-        with st.spinner(f'Processando matemática pesada para {ativo_limpo}...'):
+        with st.spinner(f'Processando matemática pesada para {ativo_rx}...'):
             try:
                 # Caso o usuário digite cripto, muda a exchange temporariamente
-                exc = 'BITSTAMP' if 'BTC' in ativo_limpo else 'BMFBOVESPA'
-                df_full = tv.get_hist(symbol=ativo_limpo, exchange=exc, interval=intervalo_tv, n_bars=5000)
+                exc = 'BITSTAMP' if 'BTC' in ativo_rx else 'BMFBOVESPA'
+                df_full = tv.get_hist(symbol=ativo_rx, exchange=exc, interval=intervalo_tv, n_bars=5000)
                 
                 if df_full is not None and len(df_full) > 50:
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
@@ -368,7 +309,7 @@ with aba_individual:
                     if df_full is not None:
                         data_atual_dt = df_full.index[-1]
                         offset_map = {'1mo': 1, '3mo': 3, '6mo': 6, '1y': 12, '2y': 24, '5y': 60}
-                        data_corte = data_atual_dt - pd.DateOffset(months=offset_map.get(lupa_per, 120)) if lupa_per != 'max' else df_full.index[0]
+                        data_corte = data_atual_dt - pd.DateOffset(months=offset_map.get(periodo_rx, 120)) if periodo_rx != 'max' else df_full.index[0]
 
                         df_b = df_full[df_full.index >= data_corte].copy().reset_index()
                         col_dt = df_b.columns[0]
@@ -384,22 +325,26 @@ with aba_individual:
                                     d_ent = df_b[col_dt].iloc[i]
                                     p_ent = df_b['Close'].iloc[i]
                                     min_na_op = p_ent 
-                                    cap_inv = float(lupa_cap)
+                                    cap_inv = float(capital_rx)
                                     take_p = p_ent * (1 + alvo_d)
                                     stop_p = p_ent * (1 - stop_d)
                                     posicao_atual = {'Data': d_ent, 'PM': p_ent, 'Cap': cap_inv}
                             else:
                                 if df_b['Low'].iloc[i] < min_na_op: min_na_op = df_b['Low'].iloc[i]
                                 
+                                bateu_alvo = usar_alvo_rx and (df_b['High'].iloc[i] >= take_p)
+                                bateu_stop = usar_stop_rx and (df_b['Low'].iloc[i] <= stop_p)
+                                reverteu_st = df_b['ST_Dir'].iloc[i] == -1
+                                
                                 saiu = False
-                                if df_b['High'].iloc[i] >= take_p:
-                                    lucro = float(lupa_cap) * alvo_d
-                                    vitorias += 1; situacao = "Gain ✅"; saiu = True
-                                elif lupa_est == "Alvo & Stop Loss" and df_b['Low'].iloc[i] <= stop_p:
-                                    lucro = -(float(lupa_cap) * stop_d)
+                                if bateu_stop:
+                                    lucro = -(float(capital_rx) * stop_d)
                                     derrotas += 1; situacao = "Stop ❌"; saiu = True
-                                elif lupa_est == "Padrão (Só Alvo)" and df_b['ST_Dir'].iloc[i] == -1: # Saiu por reversão do SuperTrend
-                                    lucro = float(lupa_cap) * ((df_b['Close'].iloc[i] / p_ent) - 1)
+                                elif bateu_alvo:
+                                    lucro = float(capital_rx) * alvo_d
+                                    vitorias += 1; situacao = "Alvo ✅"; saiu = True
+                                elif reverteu_st:
+                                    lucro = float(capital_rx) * ((df_b['Close'].iloc[i] / p_ent) - 1)
                                     if lucro > 0: vitorias += 1; situacao = "Saída ST ✅"
                                     else: derrotas += 1; situacao = "Reversão ❌"
                                     saiu = True
@@ -413,7 +358,7 @@ with aba_individual:
                         # STATUS ATUAL
                         st.divider()
                         if em_pos and posicao_atual:
-                            st.warning(f"⚠️ **OPERAÇÃO EM CURSO: {ativo_limpo} ({lupa_tmp})**")
+                            st.warning(f"⚠️ **OPERAÇÃO EM CURSO: {ativo_rx} ({tempo_rx})**")
                             cotacao_atual = df_b['Close'].iloc[-1]
                             dias_em_op = (pd.Timestamp.today().normalize() - posicao_atual['Data']).days
                             res_pct = ((cotacao_atual / posicao_atual['PM']) - 1) * 100
@@ -431,11 +376,11 @@ with aba_individual:
                             c5.metric("Prejuízo Máximo (DD)", f"{prej_max:.2f}%")
                             c6.metric("Resultado Atual", f"{res_pct:.2f}%", delta=f"R$ {res_rs:.2f}")
                         else:
-                            st.success(f"✅ **{ativo_limpo}: Aguardando Alinhamento do SuperTrend + DMI + ADX**")
+                            st.success(f"✅ **{ativo_rx}: Aguardando Alinhamento do SuperTrend + DMI + ADX**")
 
                         if trades:
                             df_res = pd.DataFrame(trades)
-                            st.markdown(f"### 📊 Resultado Consolidado: {ativo_limpo}")
+                            st.markdown(f"### 📊 Resultado Consolidado: {ativo_rx}")
                             
                             m1, m2, m3, m4 = st.columns(4)
                             m1.metric("Lucro Total Estimado", f"R$ {df_res['Lucro (R$)'].sum():,.2f}")
@@ -453,12 +398,16 @@ with aba_individual:
                             st.dataframe(df_res.style.map(colorir_res_indiv, subset=['Situação']), use_container_width=True, hide_index=True)
                         else:
                             st.info("Nenhum trade fechado no período de estudo selecionado.")
+                        
+                        st.divider()
+                        st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
+                        renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
                 else:
                     st.error("Base de dados vazia para este ativo no TradingView.")
             except Exception as e: st.error(f"Erro no processamento: {e}")
 
 # ==========================================
-# ABA 5: RAIO-X FUTUROS (DAY TRADE / WIN e WDO)
+# ABA 3: RAIO-X FUTUROS (DAY TRADE / WIN e WDO)
 # ==========================================
 with aba_futuros:
     st.subheader("📉 Raio-X Mercado Futuro (O Trator do Intraday)")
@@ -503,7 +452,7 @@ with aba_futuros:
                     df_full = calcular_indicadores_trend(df_full, f_adx_len, f_st_len, f_st_mult)
                     
                     if df_full is not None:
-                        trades, posicao = [], 0 # 0: Fora, 1: Comprado, -1: Vendido
+                        trades, posicao = [], 0 
                         vits, derrs = 0, 0
                         df_b = df_full.reset_index()
                         col_dt = df_b.columns[0]
@@ -525,18 +474,18 @@ with aba_futuros:
                                 posicao = 0
 
                             # GESTÃO
-                            if posicao == 1: # COMPRADO
+                            if posicao == 1: 
                                 if df_b['High'].iloc[i] >= take_p:
                                     luc = f_alvo * f_contratos * f_multi
                                     trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Tipo': 'Compra 🟢', 'Pontos': f_alvo, 'Lucro (R$)': luc, 'Status': 'Gain ✅'})
                                     vits += 1; posicao = 0
-                                elif df_b['ST_Dir'].iloc[i] == -1: # Reversão Supertrend (Stop)
+                                elif df_b['ST_Dir'].iloc[i] == -1: 
                                     pts = (df_b['Close'].iloc[i] - p_ent)
                                     luc = pts * f_contratos * f_multi
                                     trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Tipo': 'Compra 🟢', 'Pontos': pts, 'Lucro (R$)': luc, 'Status': 'Reversão ❌'})
                                     derrs += 1; posicao = 0
                                     
-                            elif posicao == -1: # VENDIDO
+                            elif posicao == -1: 
                                 if df_b['Low'].iloc[i] <= take_p:
                                     luc = f_alvo * f_contratos * f_multi
                                     trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Tipo': 'Venda 🔴', 'Pontos': f_alvo, 'Lucro (R$)': luc, 'Status': 'Gain ✅'})
