@@ -59,7 +59,7 @@ st.markdown("Setup direcional explosivo baseado no cruzamento simultâneo das m�
 aba_radar, aba_individual = st.tabs(["🌐 Radar Global (Scanner & Top 20)", "🔬 Raio-X Individual (Backtest)"])
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO (DIDI CLONE DO PINESCRIPT)
+# 3. MOTOR MATEMÁTICO (DIDI INDEX - CORRIGIDO VISUAL)
 # ==========================================
 def calcular_didi(df, usar_adx=True, limite_adx=20):
     if df.empty or len(df) < 60: return pd.DataFrame()
@@ -67,12 +67,12 @@ def calcular_didi(df, usar_adx=True, limite_adx=20):
         df.columns = df.columns.get_level_values(0)
     df.index = df.index.tz_localize(None)
     
-    # Médias Móveis Simples
+    # Médias Móveis Simples (Clássicas do Didi)
     df['SMA3'] = df['Close'].rolling(window=3).mean()
     df['SMA8'] = df['Close'].rolling(window=8).mean()
     df['SMA20'] = df['Close'].rolling(window=20).mean()
     
-    # Linhas do Didi Index (Razão sobre a Média 8)
+    # Linhas do Didi Index (Razão sobre a Média 8, que vira a linha 1.00 do indicador)
     df['D3'] = df['SMA3'] / df['SMA8']
     df['D20'] = df['SMA20'] / df['SMA8']
     
@@ -84,18 +84,23 @@ def calcular_didi(df, usar_adx=True, limite_adx=20):
     else:
         df['ADX'] = 0
 
-    # CLONE DO PINESCRIPT: crossover(curta, longa) -> Ponto Verde
-    cruzou_compra = (df['D3'] > df['D20']) & (df['D3'].shift(1) <= df['D20'].shift(1))
+    # =========================================================
+    # O GATILHO EXATO DO TRADINGVIEW
+    # =========================================================
+    # A linha verde (D3) cruza a linha preta (1.0) para CIMA no candle atual.
+    cruzou_d3_alta = (df['D3'] > 1.0) & (df['D3'].shift(1) <= 1.0)
     
-    # CLONE DO PINESCRIPT: crossunder(curta, longa) -> Ponto Vermelho
-    cruzou_venda = (df['D3'] < df['D20']) & (df['D3'].shift(1) >= df['D20'].shift(1))
+    # A linha vermelha (D20) precisa estar ABAIXO da linha preta (1.0).
+    condicao_agulhada = cruzou_d3_alta & (df['D20'] < 1.0)
     
+    # Aplica o filtro ADX dinâmico
     if usar_adx:
-        df['Cruzou_Compra'] = cruzou_compra & (df['ADX'] >= limite_adx)
+        df['Cruzou_Compra'] = condicao_agulhada & (df['ADX'] >= limite_adx)
     else:
-        df['Cruzou_Compra'] = cruzou_compra
-        
-    df['Cruzou_Venda'] = cruzou_venda
+        df['Cruzou_Compra'] = condicao_agulhada
+    
+    # Lógica de Saída (Quando a Média 3 cruza a Média 8 para baixo)
+    df['Cruzou_Venda'] = (df['D3'] < 1.0) & (df['D3'].shift(1) >= 1.0)
     
     return df.dropna()
 
@@ -127,7 +132,7 @@ def renderizar_grafico_tv(symbol):
     components.html(html_code, height=600)
 
 def exibir_explicacao_estrategia():
-    st.info("🪡 **A Estratégia (Clone TV Didi Index):** Baseado na leitura visual das linhas D3 (Verde) e D20 (Vermelha).\n\n🟢 **Gatilho de Compra:** Ocorre exatamente no momento em que a Linha Rápida (Verde) cruza a Linha Lenta (Vermelha) para CIMA. \n\n🔴 **Gatilho de Saída (Defesa):** O trade encerra se a Linha Rápida (Verde) cruzar a Lenta (Vermelha) para BAIXO, ou quando atinge seus stops/alvos fixos.")
+    st.info("🪡 **A Estratégia (Agulhada do Didi):** O coração do sistema trabalha com as médias de 3, 8 e 20, onde a de 8 se torna o 'eixo zero' central (Valor 1.00). \n\n🟢 **Gatilho de Compra:** Ocorre exatamente no candle em que a Média Rápida (3) fura a Média 8 para CIMA, enquanto a Média Lenta (20) está posicionada para BAIXO. Opcionalmente, exige-se o filtro ADX (>20) confirmando que a explosão direcional tem volume real. \n\n🔴 **Gatilho de Saída (Defesa):** O trade encerra se a Média Rápida (3) cruzar a de 8 para baixo (devolvendo o ganho), ou quando atinge seus stops/alvos de capital.")
 
 # ==========================================
 # ABA 1: RADAR GLOBAL (SCANNER + TOP 20)
@@ -166,7 +171,7 @@ with aba_radar:
     else: ativos_alvo = bdrs_elite + ibrx_selecao
     ativos_alvo = sorted(list(set([a.replace('.SA', '') for a in ativos_alvo])))
 
-    btn_iniciar_global = st.button("🚀 Iniciar Varredura de Agulhadas", type="primary", use_container_width=True)
+    btn_iniciar_global = st.button("🚀 Iniciar Varredura de Agulhadas (tvDatafeed)", type="primary", use_container_width=True)
 
     if btn_iniciar_global:
         intervalo_tv = tradutor_intervalo.get(tempo_grafico_global, Interval.in_daily)
@@ -176,7 +181,7 @@ with aba_radar:
         s_text = st.empty()
         
         for i, ativo in enumerate(ativos_alvo):
-            s_text.text(f"Mapeando Agulhadas: {ativo} ({i+1}/{len(ativos_alvo)})")
+            s_text.text(f"Mapeando Agulhadas via TV: {ativo} ({i+1}/{len(ativos_alvo)})")
             p_bar.progress((i + 1) / len(ativos_alvo))
             try:
                 df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
@@ -285,12 +290,12 @@ with aba_individual:
             capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
             tempo_rx = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="rx_tmp")
         with c3:
-            usar_adx_rx = st.toggle("📈 Filtro ADX Ativo", value=False, key="tg_adx_rx")
+            usar_adx_rx = st.toggle("📈 Filtro ADX Ativo", value=True, key="tg_adx_rx")
             limite_adx_rx = st.number_input("Nível ADX (>):", value=20, step=1, key="val_adx_rx", disabled=not usar_adx_rx)
         with c4:
-            usar_alvo_rx = st.toggle("🎯 Habilitar Alvo", value=False, key="tg_alvo_rx")
+            usar_alvo_rx = st.toggle("🎯 Habilitar Alvo", value=True, key="tg_alvo_rx")
             alvo_rx = st.number_input("Alvo (%):", value=8.00, step=0.50, key="rx_alvo", disabled=not usar_alvo_rx)
-            usar_stop_rx = st.toggle("🛡️ Habilitar Stop Loss", value=False, key="tg_stop_rx")
+            usar_stop_rx = st.toggle("🛡️ Habilitar Stop Loss", value=True, key="tg_stop_rx")
             stop_rx = st.number_input("Stop Loss (%):", value=4.00, step=0.50, key="rx_stop", disabled=not usar_stop_rx)
             
         exibir_explicacao_estrategia()
@@ -299,7 +304,7 @@ with aba_individual:
     
     if btn_rx:
         intervalo_tv_rx = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
-        with st.spinner(f"Processando Clone Didi Index para {ativo_rx} via tvDatafeed..."):
+        with st.spinner(f"Processando Didi Index para {ativo_rx} via tvDatafeed..."):
             try:
                 df_full = tv.get_hist(symbol=ativo_rx.replace('.SA', ''), exchange='BMFBOVESPA', interval=intervalo_tv_rx, n_bars=5000)
                 
@@ -351,7 +356,7 @@ with aba_individual:
                                         motivo = "Alvo (Gain)"
                                     else:
                                         preco_saida = linha['Close']
-                                        motivo = "Sinal de Venda (D3 < D20)"
+                                        motivo = "Perdeu MM8 (Virada)"
 
                                     lucro_pct = (preco_saida / em_aberto['entrada_preco']) - 1
                                     lucro_rs = capital_rx * lucro_pct
@@ -371,9 +376,9 @@ with aba_individual:
                             st.info(f"⏳ **{ativo_rx}: Em Operação** (Posicionado desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
                         else:
                             if df_ativo['Cruzou_Compra'].iloc[-1]:
-                                st.success(f"🪡 **{ativo_rx}: SINAL DE COMPRA ATIVADO HOJE!** (ADX >= {limite_adx_rx if usar_adx_rx else 'Desativado'})")
+                                st.success(f"🪡 **{ativo_rx}: AGULHADA DE COMPRA ATIVADA HOJE!** (ADX >= {limite_adx_rx if usar_adx_rx else 'Desativado'})")
                             else:
-                                st.success(f"✅ **{ativo_rx}: Aguardando Sinal**")
+                                st.success(f"✅ **{ativo_rx}: Aguardando Formação da Agulhada**")
 
                         st.markdown(f"### 📊 Resultado Consolidado: {ativo_rx}")
                         if trades_fechados:
@@ -394,7 +399,7 @@ with aba_individual:
                                 return ''
                             st.dataframe(df_show.style.map(colorir_tabela), use_container_width=True, hide_index=True)
                         else:
-                            st.warning("Nenhuma operação concluída no período com os parâmetros selecionados.")
+                            st.warning("Nenhuma Agulhada concluída no período com os parâmetros selecionados.")
 
                         st.divider()
                         st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
