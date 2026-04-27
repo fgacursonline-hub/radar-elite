@@ -4,8 +4,11 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 import pandas as pd
 from datetime import datetime
+import time  # <--- A PEÇA QUE FALTAVA!
 import sys
 import os
+
+warnings.filterwarnings('ignore') if 'warnings' in sys.modules else None # Evita warnings se não estiver importado
 
 # ==========================================
 # 1. IMPORTAÇÃO CENTRALIZADA DOS ATIVOS
@@ -127,7 +130,7 @@ if btn_farejar:
         with st.spinner(f"Interceptando comunicações sobre {termo_final.replace(' ações OR mercado', '')}..."):
             # Executa o motor
             noticias = buscar_noticias_google(termo_final, dias)
-            time.sleep(0.5) # Charme de carregamento
+            time.sleep(0.5) # Agora o relógio está importado e funciona!
             
             if noticias:
                 st.success(f"✅ Varredura Concluída! Encontramos {len(noticias)} boletins importantes no radar.")
