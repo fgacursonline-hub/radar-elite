@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from tvDatafeed import TvDatafeed, Interval
 import sys
 import os
 from datetime import time as dt_time
@@ -14,7 +13,7 @@ if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.stop()
 
 # ==========================================
-# IMPORTAÇÃO CENTRALIZADA DOS ATIVOS
+# IMPORTAÇÃO CENTRALIZADA DOS ATIVOS E MOTOR
 # ==========================================
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 try:
@@ -23,10 +22,12 @@ except ImportError:
     st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
     st.stop()
 
-# Inicializa o TradingView
-if 'tv' not in st.session_state:
-    st.session_state.tv = TvDatafeed()
-tv = st.session_state.tv
+# 🔥 NOVO: IMPORTANDO O MOTOR BLINDADO
+try:
+    from motor_dados import puxar_dados_blindados
+except ImportError:
+    st.error("❌ Arquivo 'motor_dados.py' não encontrado na raiz do projeto. Crie o Bunker de Dados primeiro.")
+    st.stop()
 
 st.title("⚡ Radar & Backtest de Rompimento")
 st.markdown("Identifique e valide rompimentos históricos de Máximas e Fechamentos.")
@@ -67,7 +68,8 @@ with aba_rad_p:
         for idx, ativo in enumerate(lista_ativos):
             barra.progress((idx + 1) / len(lista_ativos), text=f"🔍 Analisando {ativo}...")
             try:
-                df_d = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=300)
+                # 🔥 MOTOR BLINDADO AQUI
+                df_d = puxar_dados_blindados(ativo, tempo_grafico='1d', barras=350)
                 
                 if df_d is not None and len(df_d) > 260:
                     df_d.columns = [c.capitalize() for c in df_d.columns]
@@ -80,8 +82,9 @@ with aba_rad_p:
                     elif tempo_grafico == "Mensal":
                         ref_val = df_d[col_ref].iloc[-45:-22].max()
                     elif tempo_grafico == "60m":
-                        df_h = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_1_hour, n_bars=3)
-                        if df_h is not None:
+                        # 🔥 MOTOR BLINDADO AQUI (Substituindo get_hist)
+                        df_h = puxar_dados_blindados(ativo, tempo_grafico='60m', barras=5)
+                        if df_h is not None and not df_h.empty:
                             df_h.columns = [c.capitalize() for c in df_h.columns]
                             ref_val = df_h[col_ref].iloc[-2]
                         else:
@@ -167,7 +170,8 @@ with aba_backtest:
         for idx, ativo in enumerate(ativos):
             barra_bk.progress((idx + 1) / len(ativos), text=f"Calculando métricas para {ativo}...")
             try:
-                df = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=hist_bk)
+                # 🔥 MOTOR BLINDADO AQUI
+                df = puxar_dados_blindados(ativo, tempo_grafico='1d', barras=int(hist_bk))
                 if df is None or len(df) <= janela:
                     continue
                     
@@ -182,23 +186,19 @@ with aba_backtest:
                 
                 for i in range(janela, len(df)):
                     if not em_trade:
-                        # Gatilho de Entrada: Fechamento atual cruza a referência móvel
                         if df['Close'].iloc[i] > df['Max_Ref'].iloc[i]:
                             em_trade = True
                             p_in = df['Close'].iloc[i]
                             p_gain = p_in * (1 + (alvo_bk / 100))
                             p_loss = p_in * (1 - (stop_bk / 100))
                     else:
-                        # Monitoramento de Saída
                         if df['High'].iloc[i] >= p_gain:
                             lucros.append(alvo_bk)
                             em_trade = False
-                        # --- TRAVA DO STOP LOSS APLICADA AQUI ---
                         elif usar_stop_bk and df['Low'].iloc[i] <= p_loss:
                             prejuizos.append(stop_bk)
                             em_trade = False
                             
-                # Cálculos Finais
                 total_ops = len(lucros) + len(prejuizos)
                 if total_ops > 0:
                     acertos = len(lucros)
@@ -269,7 +269,9 @@ with aba_raio_x:
     if st.button("⚙️ Rodar Simulação do Ativo", type="primary", use_container_width=True, key="btn_rx"):
         try:
             at_rx_limpo = at_rx.replace('.SA', '')
-            df = tv.get_hist(symbol=at_rx_limpo, exchange='BMFBOVESPA', interval=Interval.in_daily, n_bars=hist_rx)
+            
+            # 🔥 MOTOR BLINDADO AQUI
+            df = puxar_dados_blindados(at_rx_limpo, tempo_grafico='1d', barras=int(hist_rx))
             janela_rx = 252 if tempo_rx == "Anual" else (21 if tempo_rx == "Mensal" else 5)
             
             if df is not None and len(df) > janela_rx:
@@ -283,21 +285,17 @@ with aba_raio_x:
                 
                 for i in range(janela_rx, len(df)):
                     if not em_trade:
-                        # Gatilho de entrada no rompimento da referência
                         if df['Close'].iloc[i] > df['Max_Ref'].iloc[i]:
                             em_trade = True
                             p_entrada = df['Close'].iloc[i]
                             p_alvo = p_entrada * (1 + (alvo_rx / 100))
                             p_stop = p_entrada * (1 - (stop_rx / 100)) if usar_stop_rx else 0
                             data_entrada = df.index[i]
-                            
                             preco_minimo_op = p_entrada
                     else:
-                        # Rastreia o menor preço alcançado durante o trade
                         if df['Low'].iloc[i] < preco_minimo_op:
                             preco_minimo_op = df['Low'].iloc[i]
                             
-                        # Monitora Saída (Gain)
                         if df['High'].iloc[i] >= p_alvo:
                             dias_op = (df.index[i] - data_entrada).days
                             queda_max = ((preco_minimo_op / p_entrada) - 1) * 100
@@ -313,7 +311,6 @@ with aba_raio_x:
                             })
                             em_trade = False
                             
-                        # Monitora Saída (Loss / Stop)
                         elif usar_stop_rx and df['Low'].iloc[i] <= p_stop:
                             dias_op = (df.index[i] - data_entrada).days
                             queda_max = ((preco_minimo_op / p_entrada) - 1) * 100
@@ -330,7 +327,6 @@ with aba_raio_x:
                             em_trade = False
                 
                 if trades:
-                    # --- CÁLCULO DAS MÉTRICAS QUANTITATIVAS ---
                     total_ops = len(trades)
                     acertos = sum(1 for t in trades if 'GAIN' in t['Resultado'])
                     erros = sum(1 for t in trades if 'LOSS' in t['Resultado'])
@@ -346,7 +342,6 @@ with aba_raio_x:
                     
                     st.success(f"Simulação concluída para {at_rx}!")
                     
-                    # --- PAINEL DE MÉTRICAS (DASHBOARD) ---
                     st.divider()
                     m1, m2, m3, m4, m5, m6 = st.columns(6)
                     m1.metric("Total de Operações", total_ops)
@@ -357,7 +352,6 @@ with aba_raio_x:
                     m6.metric("💰 Acumulado", f"{acumulado:.1f}%", delta=f"{acumulado:.1f}%", delta_color="normal" if acumulado >= 0 else "inverse")
                     st.divider()
                     
-                    # --- TABELA DE TRADES ---
                     df_trades = pd.DataFrame(trades)
                     
                     def colorir_resultado(val):
@@ -422,12 +416,10 @@ with aba_futuros:
     btn_fut = st.button("🚀 Gerar Raio-X", type="primary", use_container_width=True, key="f_brk_btn")
 
     if btn_fut:
-        tradutor_intervalo = {'15m': Interval.in_15_minute, '60m': Interval.in_1_hour, '1d': Interval.in_daily}
-        intervalo_tv = tradutor_intervalo.get(f_tmp, Interval.in_15_minute)
-
         with st.spinner(f'Testando rompimento no {f_selecionado}...'):
             try:
-                df = tv.get_hist(symbol=f_ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                # 🔥 MOTOR BLINDADO AQUI
+                df = puxar_dados_blindados(f_ativo, tempo_grafico=f_tmp, barras=5000)
 
                 if df is not None and not df.empty:
                     df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
@@ -566,7 +558,7 @@ with aba_futuros:
                                     trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': data_hora.strftime('%d/%m %H:%M'), 'Resultado': 'Loss 🔴', 'Tipo': 'Venda', 'Pontos': pts, 'Lucro (R$)': luc, 'Status': 'Stop (Máx 1º Candle)'})
                                     derrs += 1; posicao = 0
                                     
-                            # 3. GATILHO DE ENTRADA (Apenas até 15h)
+                            # 3. GATILHO DE ENTRADA (Apenas até limite definido)
                             if posicao == 0 and hora_atual <= f_limite_entrada:
                                 if f_dir != "Apenas Venda" and linha['Close'] > orb_high:
                                     posicao, d_ent, p_ent = 1, data_hora, linha['Close']
