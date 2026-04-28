@@ -67,7 +67,7 @@ def calcular_indicadores_trend(df, adx_len=14, st_len=10, st_mult=3.0):
         df.columns = df.columns.get_level_values(0)
     df.index = df.index.tz_localize(None)
     
-    # 1. Calcula ADX e DMI usando pandas_ta (Testado e estavel)
+    # 1. Calcula ADX e DMI 
     adx_df = ta.adx(df['High'], df['Low'], df['Close'], length=adx_len)
     if adx_df is None or adx_df.empty: return None
     
@@ -89,11 +89,10 @@ def calcular_indicadores_trend(df, adx_len=14, st_len=10, st_mult=3.0):
     df['SuperTrend'] = st_df[col_st]
     df['ST_Dir'] = st_df[col_st_dir] # 1 (Alta) ou -1 (Baixa)
     
-    # Memórias de ontem para calcular o Alinhamento Perfeito
+    # Memórias de ontem para calcular o cruzamento EXATO
     df['ADX_Prev'] = df['ADX'].shift(1)
     df['-DI_Prev'] = df['-DI'].shift(1)
     df['+DI_Prev'] = df['+DI'].shift(1)
-    df['ST_Dir_Prev'] = df['ST_Dir'].shift(1)
     return df.dropna()
 
 def renderizar_grafico_tv(symbol):
@@ -124,7 +123,7 @@ def renderizar_grafico_tv(symbol):
     components.html(html_code, height=600)
 
 st.title("🤖 Máquina de Tendência (ADX + SuperTrend)")
-st.info("📊 **Estratégia (Trend Following Extremo):** Um sistema blindado contra ruídos laterais. \n\n🟢 **Gatilho de Compra (Alinhamento):** O ADX (Preto) precisa estar acima do DI- (Vermelho) **+** a linha DI+ (Verde) acima da DI- (Vermelho) **+** SuperTrend verde. A compra ocorre no EXATO dia em que as 3 coisas ficam verdadeiras simultaneamente. \n🔴 **Defesas:** Você pode montar o seu escudo desativando ou ativando a Saída pela Reversão do SuperTrend, Reversão do DMI, Alvo de Lucro ou Stop Loss fixo.")
+st.info("📊 **Estratégia (Trend Following Extremo):** Um sistema blindado contra ruídos laterais. \n\n🟢 **Gatilho de Compra:** A compra só é acionada no EXATO momento em que o ADX (Preto) cruza o DI- (Vermelho) para cima. Para validar, o DI+ (Verde) tem que estar acima do DI- e o SuperTrend tem que estar verde. \n🔴 **Defesas:** Você pode montar o seu escudo desativando ou ativando a Saída pela Reversão do SuperTrend, Reversão do DMI, Alvo de Lucro ou Stop Loss fixo.")
 
 aba_padrao, aba_individual, aba_futuros = st.tabs([
     "📡 Radar Padrão", "🔬 Raio-X Individual", "📉 Raio-X Futuros"
@@ -198,19 +197,13 @@ with aba_padrao:
                 stop_d = stop_g / 100.0
 
                 for i in range(1, len(df_back)):
-                    # === LÓGICA DE ALINHAMENTO ===
-                    adx_ok = df_back['ADX'].iloc[i] > df_back['-DI'].iloc[i]
-                    dmi_ok = df_back['+DI'].iloc[i] > df_back['-DI'].iloc[i]
-                    st_ok = df_back['ST_Dir'].iloc[i] == 1
-                    hoje_alinhado = adx_ok and dmi_ok and st_ok
                     
-                    adx_ok_ontem = df_back['ADX_Prev'].iloc[i] > df_back['-DI_Prev'].iloc[i]
-                    dmi_ok_ontem = df_back['+DI_Prev'].iloc[i] > df_back['-DI_Prev'].iloc[i]
-                    st_ok_ontem = df_back['ST_Dir_Prev'].iloc[i] == 1
-                    ontem_alinhado = adx_ok_ontem and dmi_ok_ontem and st_ok_ontem
+                    # === GATILHO ESTrito DE COMPRA ===
+                    adx_cruzou_di_menos = (df_back['ADX'].iloc[i] > df_back['-DI'].iloc[i]) and (df_back['ADX_Prev'].iloc[i] <= df_back['-DI_Prev'].iloc[i])
+                    di_mais_acima = df_back['+DI'].iloc[i] > df_back['-DI'].iloc[i]
+                    st_verde = df_back['ST_Dir'].iloc[i] == 1
                     
-                    # O sinal é verdadeiro se HOJE alinhou e ONTEM estava desalinhado
-                    sinal_compra = hoje_alinhado and not ontem_alinhado
+                    sinal_compra = adx_cruzou_di_menos and di_mais_acima and st_verde
                     
                     if em_pos:
                         if df_back['Low'].iloc[i] < min_price_in_trade: min_price_in_trade = df_back['Low'].iloc[i]
@@ -254,9 +247,9 @@ with aba_padrao:
                     })
                 else:
                     hoje = df_full.iloc[-1]
-                    hoje_ok = (hoje['ADX'] > hoje['-DI']) and (hoje['+DI'] > hoje['-DI']) and (hoje['ST_Dir'] == 1)
-                    ontem_ok = (hoje['ADX_Prev'] > hoje['-DI_Prev']) and (hoje['+DI_Prev'] > hoje['-DI_Prev']) and (hoje['ST_Dir_Prev'] == 1)
-                    if hoje_ok and not ontem_ok:
+                    adx_cruzou_di_menos_hoje = (hoje['ADX'] > hoje['-DI']) and (hoje['ADX_Prev'] <= hoje['-DI_Prev'])
+                    sinal_hoje = adx_cruzou_di_menos_hoje and (hoje['+DI'] > hoje['-DI']) and (hoje['ST_Dir'] == 1)
+                    if sinal_hoje:
                         ls_sinais.append({'Ativo': ativo, 'Preço Atual': f"R$ {hoje['Close']:.2f}", 'ADX (Força)': f"{hoje['ADX']:.1f}", 'SuperTrend': "Verde 🟢"})
 
                 if len(trades) > 0:
@@ -269,7 +262,7 @@ with aba_padrao:
 
         st.subheader(f"🚀 Sinais Confirmados Hoje")
         if len(ls_sinais) > 0: st.dataframe(pd.DataFrame(ls_sinais), use_container_width=True, hide_index=True)
-        else: st.info("Nenhum ativo atingiu o Alinhamento Perfeito hoje.")
+        else: st.info("Nenhum ativo atingiu o cruzamento triplo perfeito hoje.")
 
         st.subheader("⏳ Operações em Andamento")
         if len(ls_abertos) > 0:
@@ -339,18 +332,12 @@ with aba_individual:
                         trades, em_pos, vitorias, derrotas, posicao_atual = [], False, 0, 0, None
 
                         for i in range(1, len(df_b)):
-                            # === LÓGICA DE ALINHAMENTO ABA 2 ===
-                            adx_ok = df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i]
-                            dmi_ok = df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]
-                            st_ok = df_b['ST_Dir'].iloc[i] == 1
-                            hoje_alinhado = adx_ok and dmi_ok and st_ok
+                            # === GATILHO ESTrito DE COMPRA (Aba 2) ===
+                            adx_cruzou_di_menos = (df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i]) and (df_b['ADX_Prev'].iloc[i] <= df_b['-DI_Prev'].iloc[i])
+                            di_mais_acima = df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]
+                            st_verde = df_b['ST_Dir'].iloc[i] == 1
                             
-                            adx_ok_ontem = df_b['ADX_Prev'].iloc[i] > df_b['-DI_Prev'].iloc[i]
-                            dmi_ok_ontem = df_b['+DI_Prev'].iloc[i] > df_b['-DI_Prev'].iloc[i]
-                            st_ok_ontem = df_b['ST_Dir_Prev'].iloc[i] == 1
-                            ontem_alinhado = adx_ok_ontem and dmi_ok_ontem and st_ok_ontem
-                            
-                            sinal = hoje_alinhado and not ontem_alinhado
+                            sinal = adx_cruzou_di_menos and di_mais_acima and st_verde
                             
                             if not em_pos:
                                 if sinal:
@@ -494,31 +481,17 @@ with aba_futuros:
                         for i in range(1, len(df_b)):
                             d_at, d_ant = df_b[col_dt].iloc[i], df_b[col_dt].iloc[i-1]
                             
-                            # === LÓGICA DE ALINHAMENTO COMPRA ===
-                            adx_ok = df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i]
-                            dmi_ok = df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]
-                            st_ok = df_b['ST_Dir'].iloc[i] == 1
-                            hoje_alinhado = adx_ok and dmi_ok and st_ok
+                            # === GATILHO ESTrito DE COMPRA ===
+                            adx_cruzou_di_menos = (df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i]) and (df_b['ADX_Prev'].iloc[i] <= df_b['-DI_Prev'].iloc[i])
+                            di_mais_acima = df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]
+                            st_verde = df_b['ST_Dir'].iloc[i] == 1
+                            sinal_compra = adx_cruzou_di_menos and di_mais_acima and st_verde
                             
-                            adx_ok_ontem = df_b['ADX_Prev'].iloc[i] > df_b['-DI_Prev'].iloc[i]
-                            dmi_ok_ontem = df_b['+DI_Prev'].iloc[i] > df_b['-DI_Prev'].iloc[i]
-                            st_ok_ontem = df_b['ST_Dir_Prev'].iloc[i] == 1
-                            ontem_alinhado = adx_ok_ontem and dmi_ok_ontem and st_ok_ontem
-                            
-                            sinal_compra = hoje_alinhado and not ontem_alinhado
-                            
-                            # === LÓGICA DE ALINHAMENTO VENDA ===
-                            adx_v_ok = df_b['ADX'].iloc[i] > df_b['+DI'].iloc[i]
-                            dmi_v_ok = df_b['-DI'].iloc[i] > df_b['+DI'].iloc[i]
-                            st_v_ok = df_b['ST_Dir'].iloc[i] == -1
-                            hoje_v_alinhado = adx_v_ok and dmi_v_ok and st_v_ok
-                            
-                            adx_v_ok_ontem = df_b['ADX_Prev'].iloc[i] > df_b['+DI_Prev'].iloc[i]
-                            dmi_v_ok_ontem = df_b['-DI_Prev'].iloc[i] > df_b['+DI_Prev'].iloc[i]
-                            st_v_ok_ontem = df_b['ST_Dir_Prev'].iloc[i] == -1
-                            ontem_v_alinhado = adx_v_ok_ontem and dmi_v_ok_ontem and st_v_ok_ontem
-                            
-                            sinal_venda = hoje_v_alinhado and not ontem_v_alinhado
+                            # === GATILHO ESTrito DE VENDA ===
+                            adx_cruzou_di_mais = (df_b['ADX'].iloc[i] > df_b['+DI'].iloc[i]) and (df_b['ADX_Prev'].iloc[i] <= df_b['+DI_Prev'].iloc[i])
+                            di_menos_acima = df_b['-DI'].iloc[i] > df_b['+DI'].iloc[i]
+                            st_vermelho = df_b['ST_Dir'].iloc[i] == -1
+                            sinal_venda = adx_cruzou_di_mais and di_menos_acima and st_vermelho
 
                             if posicao != 0 and f_zerar and d_at.date() != d_ant.date():
                                 p_sai = df_b['Close'].iloc[i-1]
@@ -585,5 +558,5 @@ with aba_futuros:
                             
                             st.dataframe(df_res, use_container_width=True, hide_index=True)
                         else:
-                            st.warning("A Máquina não disparou nenhum tiro no período (Nenhum Alinhamento Perfeito encontrado).")
+                            st.warning("A Máquina não disparou nenhum tiro no período (Nenhum alinhamento exato de Cruzamento ADX+SuperTrend encontrado).")
             except Exception as e: st.error(f"Erro no processamento da blindagem: {e}")
