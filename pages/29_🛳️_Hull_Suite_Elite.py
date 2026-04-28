@@ -249,7 +249,7 @@ with aba_radar:
 # ==========================================
 # ABA 2: RAIO-X INDIVIDUAL
 # ==========================================
-with aba_raio_x:
+with aba_raiox:
     st.subheader("🔬 Raio-X Detalhado: Backtest Hull Suite")
     
     col1, col2, col3 = st.columns(3)
