@@ -12,7 +12,7 @@ from datetime import datetime
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# 1. IMPORTAÇÃO CENTRALIZADA DOS ATIVOS
+# 1. IMPORTAÇÃO CENTRALIZADA DOS ATIVOS E MOTOR
 # ==========================================
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 try:
@@ -21,23 +21,23 @@ except ImportError:
     st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
     st.stop()
 
+# 🔥 NOVO: IMPORTANDO O MOTOR BLINDADO
+try:
+    from motor_dados import puxar_dados_blindados
+except ImportError:
+    st.error("❌ Arquivo 'motor_dados.py' não encontrado na raiz do projeto. Crie o Bunker de Dados primeiro.")
+    st.stop()
+
 ativos_para_rastrear = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
 
 # ==========================================
-# 2. CONFIGURAÇÃO DA PÁGINA & TVDATAFEED
+# 2. CONFIGURAÇÃO DA PÁGINA
 # ==========================================
 st.set_page_config(page_title="Radar TPV Elite", layout="wide", page_icon="🎯")
 
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, faça login na página inicial (Home).")
     st.stop()
-
-# Conexão com o TradingView
-@st.cache_resource
-def get_tv_connection():
-    return TvDatafeed()
-
-tv = get_tv_connection()
 
 tradutor_periodo_nome = {
     '1mo': '1 Mês', '3mo': '3 Meses', '6mo': '6 Meses',
@@ -138,7 +138,7 @@ with aba_radar:
     else: ativos_alvo = bdrs_elite + ibrx_selecao
     ativos_alvo = sorted(list(set([a.replace('.SA', '') for a in ativos_alvo])))
 
-    btn_iniciar_global = st.button("🚀 Iniciar Varredura Global (tvDatafeed)", type="primary", use_container_width=True)
+    btn_iniciar_global = st.button("🚀 Iniciar Varredura Global", type="primary", use_container_width=True)
 
     if btn_iniciar_global:
         intervalo_tv = tradutor_intervalo.get(tempo_grafico_global, Interval.in_daily)
@@ -148,12 +148,14 @@ with aba_radar:
         s_text = st.empty()
         
         for i, ativo in enumerate(ativos_alvo):
-            s_text.text(f"Varrendo via TV: {ativo} ({i+1}/{len(ativos_alvo)})")
+            s_text.text(f"Varrendo via Motor Blindado: {ativo} ({i+1}/{len(ativos_alvo)})")
             p_bar.progress((i + 1) / len(ativos_alvo))
             try:
-                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                # 🔥 NOVO: MOTOR BLINDADO EM AÇÃO NO RADAR GLOBAL
+                df_full = puxar_dados_blindados(ativo, tempo_grafico=tempo_grafico_global, barras=5000)
                 if df_full is None or len(df_full) < 50: continue
 
+                # Padronizando colunas só por garantia, embora o motor já entregue capitalizado
                 df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
                 df_full = df_full.dropna()
                 
@@ -287,10 +289,10 @@ with aba_individual:
     btn_rx = st.button("🔍 Rodar Análise Completa", type="primary", use_container_width=True)
     
     if btn_rx:
-        intervalo_tv_rx = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
-        with st.spinner(f"Dissecando o histórico de {ativo_rx} com Média de {periodo_ma_rx} via tvDatafeed..."):
+        with st.spinner(f"Dissecando o histórico de {ativo_rx} com Média de {periodo_ma_rx} via Motor Blindado..."):
             try:
-                df_full = tv.get_hist(symbol=ativo_rx.replace('.SA', ''), exchange='BMFBOVESPA', interval=intervalo_tv_rx, n_bars=5000)
+                # 🔥 NOVO: MOTOR BLINDADO EM AÇÃO NO RAIO-X
+                df_full = puxar_dados_blindados(ativo_rx.replace('.SA', ''), tempo_grafico=tempo_rx, barras=5000)
                 
                 if df_full is not None and len(df_full) > 50:
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
@@ -403,6 +405,6 @@ with aba_individual:
                     else:
                         st.error("Sem dados suficientes no período de corte.")
                 else:
-                    st.error("Não foi possível coletar dados do TradingView para este ativo.")
+                    st.error("Não foi possível coletar dados para este ativo.")
             except Exception as e:
-                st.error(f"Erro no processamento via tvDatafeed: {e}")
+                st.error(f"Erro no processamento: {e}")
