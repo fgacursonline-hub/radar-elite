@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import pandas_ta as ta
 import time
@@ -40,7 +41,27 @@ tradutor_periodo_nome = {
 def colorir_lucro(row):
     if 'Resultado Atual' in row and isinstance(row['Resultado Atual'], str) and row['Resultado Atual'].startswith('+'):
         return ['color: #00FF00; font-weight: bold'] * len(row)
+    if 'Situação' in row and isinstance(row['Situação'], str) and 'Gain' in row['Situação']:
+        return ['color: #2eeb5c; font-weight: bold'] * len(row)
     return [''] * len(row)
+
+# --- FUNÇÃO DO GRÁFICO (QUE ESTAVA FALTANDO) ---
+def renderizar_grafico_tv(simbolo_tv, altura=600):
+    html_tv = f"""
+    <div class="tradingview-widget-container">
+      <div id="tradingview_ifr"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+      <script type="text/javascript">
+      new TradingView.widget({{
+      "width": "100%", "height": {altura}, "symbol": "{simbolo_tv}",
+      "interval": "D", "timezone": "America/Sao_Paulo", "theme": "dark",
+      "style": "1", "locale": "br", "enable_publishing": false,
+      "allow_symbol_change": true, "container_id": "tradingview_ifr"
+    }});
+      </script>
+    </div>
+    """
+    components.html(html_tv, height=altura)
 
 # 3. INTERFACE DE ABAS
 col_titulo, col_botao = st.columns([4, 1])
@@ -54,7 +75,6 @@ with col_botao:
 
 st.info("📊 **Estratégia (Retorno à Média):** O setup foca em comprar o pânico (toque na banda inferior) e vender a euforia (toque na banda superior), aproveitando o conceito de retorno à média. **Atenção:** Keltner brilha em mercados laterais, mas operar contra tendências muito fortes pode gerar falsos rompimentos. É altamente recomendado o uso de filtros de contexto (como MM200, ADX ou divergência de IFR) antes de acionar a compra cega na banda inferior.")
 
-# ABA DE STOP EXCLUIDA AQUI
 aba_padrao, aba_pm, aba_individual, aba_futuros = st.tabs([
     "📡 Radar (Padrão)", "📡 Radar (PM)", "🔬 Raio-X Individual", "📉 Raio-X Futuros"
 ])
@@ -337,12 +357,15 @@ with aba_individual:
         lupa_periodo = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=2, key="l2k_per")
     with col2:
         lupa_alvo = st.number_input("Alvo (%):", value=3.0, step=0.5, key="l2k_alvo")
+        
+        # --- LÓGICA DINÂMICA DA INTERFACE ---
         if lupa_estrategia == "PM Dinâmico":
             lupa_pm_drop = st.number_input("Queda para novo PM (%):", value=10.0, step=1.0, key="l2k_drop")
             lupa_stop = 0.0
         else:
             lupa_stop = st.number_input("Stop Loss (%):", value=5.0, step=0.5, key="l2k_stop", help="0.0 para ignorar") 
             lupa_pm_drop = 10.0
+            
         lupa_capital = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="l2k_cap")
     with col3:
         lupa_tempo = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="l2k_tmp")
@@ -351,13 +374,14 @@ with aba_individual:
         btn_raiox = st.button("🔍 Gerar Raio-X", type="primary", use_container_width=True, key="l2k_btn")
 
     if btn_raiox:
-        ativo = lupa_ativo
+        ativo = lupa_ativo.strip().upper()
         with st.spinner(f'Testando Backtest ({lupa_estrategia}) em {ativo}...'):
             try:
                 df_full = puxar_dados_blindados(ativo, tempo_grafico=lupa_tempo, barras=5000)
                 if df_full is None or len(df_full) < 50:
                     st.error("Dados insuficientes no TradingView para este ativo.")
                 else:
+                    # --- CÁLCULO DO KELTNER ---
                     kc = ta.kc(df_full['High'], df_full['Low'], df_full['Close'], length=20, scalar=lupa_keltner)
                     coluna_inferior = [c for c in kc.columns if c.startswith('KCL')][0]
                     df_full['Keltner_Inf'] = kc[coluna_inferior]
@@ -414,7 +438,7 @@ with aba_individual:
                                 if df_back['High'].iloc[i] >= take_profit:
                                     d_sai = df_back[col_data].iloc[i]
                                     lucro_rs = capital_total * alvo_decimal
-                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Duração': (d_sai - d_ent).days, 'Lucro (R$)': lucro_rs, 'Queda Máx': f"{((min_price_in_trade / preco_entrada_inicial) - 1) * 100:.2f}%", 'Fez PM?': f"Sim ({qtd_pms}x)" if qtd_pms > 0 else 'Não'})
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': d_sai.strftime('%d/%m/%Y'), 'Duração': (d_sai - d_ent).days, 'Lucro (R$)': lucro_rs, 'Queda Máx': f"{((min_price_in_trade / preco_entrada_inicial) - 1) * 100:.2f}%", 'Situação': 'Gain ✅'})
                                     vitorias += 1; em_pos = False; continue
                                     
                                 if df_back['Low'].iloc[i] <= next_pm_price:
@@ -453,9 +477,9 @@ with aba_individual:
                         else:
                             mc4.metric("Pior Queda", f"{df_t['Queda Máx'].min() if 'Queda Máx' in df_t.columns else 'N/A'}")
                         
-                        st.dataframe(df_t, use_container_width=True, hide_index=True)
+                        st.dataframe(df_t.style.apply(colorir_lucro, axis=1), use_container_width=True, hide_index=True)
                     else:
-                        st.warning("Nenhuma operação concluída.")
+                        st.warning("Nenhuma operação concluída usando essa estratégia neste período.")
                         
                     st.divider()
                     st.markdown(f"### 📈 Gráfico Interativo: {ativo}")
@@ -521,7 +545,12 @@ with aba_futuros:
                             p_en_c = preco_medio if fut_estrategia == "PM Dinâmico" else preco_entrada
                             qtd_c = contratos_atuais if fut_estrategia == "PM Dinâmico" else fut_contratos
                             luc = (p_sai - p_en_c) * qtd_c * fut_multiplicador
-                            trades.append({'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 'Saída': d_ant.strftime('%d/%m/%Y %H:%M'), 'Lucro (R$)': luc, 'Situação': 'Zerad. Fim Dia ✅' if luc > 0 else 'Zerad. Fim Dia ❌'})
+                            trades.append({
+                                'Entrada': d_ent.strftime('%d/%m/%Y %H:%M'), 
+                                'Saída': d_ant.strftime('%d/%m/%Y %H:%M'), 
+                                'Lucro (R$)': luc, 
+                                'Situação': 'Zerad. Fim Dia ✅' if luc > 0 else 'Zerad. Fim Dia ❌'
+                            })
                             if luc > 0: vitorias += 1
                             else: derrotas += 1
                             em_pos = False
@@ -562,6 +591,8 @@ with aba_futuros:
                         df_t = pd.DataFrame(trades)
                         st.divider()
                         st.markdown(f"### 📊 Resultado: {fut_selecionado}")
+                        st.caption(f"📅 Período: {df.index[0].strftime('%d/%m/%Y')} até {df.index[-1].strftime('%d/%m/%Y')}")
+                        
                         l_total = df_t['Lucro (R$)'].sum()
                         vits_df = df_t[df_t['Lucro (R$)'] > 0]
                         derrs_df = df_t[df_t['Lucro (R$)'] <= 0]
