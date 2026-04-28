@@ -1,20 +1,28 @@
 import streamlit as st, pandas as pd, pandas_ta as ta, numpy as np, sys, os
-from datetime import datetime
-import plotly.graph_objects as go # <-- Biblioteca para o Gráfico
-import warnings
+import plotly.graph_objects as go
+import warnings, traceback
 
-# Importação do Motor de Busca Central
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from bunker import motor_busca
+try:
+    from bunker import motor_busca
+except Exception as e:
+    st.error("Erro ao importar o Bunker. Verifique se o arquivo existe.")
 
 warnings.filterwarnings('ignore')
-
-# Configuração da Página
-st.set_page_config(page_title="Máquina Profit V5", layout="wide", page_icon="🛡️")
+st.set_page_config(page_title="Máquina Profit V6", layout="wide", page_icon="🛡️")
 
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("Por favor, faça login na Home.")
     st.stop()
+
+# --- TRADUTOR DE COLUNAS (O ESCUDO ANTI-ERRO SILENCIOSO) ---
+def padronizar_df(df):
+    if df is None or df.empty: return None
+    # Converte tudo para minúsculo para evitar erro de Case
+    df.columns = df.columns.str.lower()
+    # Se o Bunker mandar em português, traduz pro inglês
+    df.rename(columns={'abertura':'open', 'maxima':'high', 'minima':'low', 'fechamento':'close', 'fech':'close'}, inplace=True)
+    return df
 
 # --- MOTOR MATEMÁTICO ---
 def calc_rma(series, length):
@@ -29,10 +37,13 @@ def calc_rma(series, length):
     return rma
 
 def processar_estrategia(df, p_di, p_adx, s_adx, m_adx, p_st, m_st):
+    df = padronizar_df(df)
     if df is None or len(df) < 50: return None
     
     # 1. DMI 
     dmi_raw = ta.adx(df['high'], df['low'], df['close'], length=p_di)
+    if dmi_raw is None or dmi_raw.empty: return None
+    
     df['pDI'] = dmi_raw.iloc[:, 1] 
     df['mDI'] = dmi_raw.iloc[:, 2] 
     
@@ -45,7 +56,7 @@ def processar_estrategia(df, p_di, p_adx, s_adx, m_adx, p_st, m_st):
     # 3. SuperTrend
     st_df = ta.supertrend(df['high'], df['low'], df['close'], length=p_st, multiplier=m_st)
     df['st_dir'] = st_df.iloc[:, 1]
-    df['st_value'] = st_df.iloc[:, 0] # A linha do indicador para desenharmos no gráfico
+    df['st_value'] = st_df.iloc[:, 0] 
     
     # Memória
     df['adx_o'] = df['adx_line'].shift(1)
@@ -55,54 +66,46 @@ def processar_estrategia(df, p_di, p_adx, s_adx, m_adx, p_st, m_st):
 # --- FUNÇÃO DO GRÁFICO INTERATIVO ---
 def plotar_grafico(df_b, trades_df):
     fig = go.Figure()
+    col_data = df_b.columns[0] # Pega a coluna de data, independente do nome
 
     # 1. Os Candles
     fig.add_trace(go.Candlestick(
-        x=df_b.iloc[:, 0], # A coluna 0 é a data no bunker
-        open=df_b['open'],
-        high=df_b['high'],
-        low=df_b['low'],
-        close=df_b['close'],
+        x=df_b[col_data],
+        open=df_b['open'], high=df_b['high'], low=df_b['low'], close=df_b['close'],
         name='Preço'
     ))
 
-    # 2. A Linha do SuperTrend
+    # 2. SuperTrend (Base Branca)
     fig.add_trace(go.Scatter(
-        x=df_b.iloc[:, 0],
-        y=df_b['st_value'],
-        mode='lines',
-        name='SuperTrend',
-        line=dict(width=2, color='rgba(255, 255, 255, 0.5)'), # Linha branca semi-transparente
-        hoverinfo='skip'
+        x=df_b[col_data], y=df_b['st_value'], mode='lines',
+        name='SuperTrend', line=dict(width=1, color='rgba(255, 255, 255, 0.3)'), hoverinfo='skip'
     ))
 
-    # 3. Colorindo o SuperTrend (Verde e Vermelho)
+    # 3. Colorindo o SuperTrend
     st_verde = df_b.copy()
     st_verde.loc[st_verde['st_dir'] == -1, 'st_value'] = np.nan
-    
     st_vermelho = df_b.copy()
     st_vermelho.loc[st_vermelho['st_dir'] == 1, 'st_value'] = np.nan
 
-    fig.add_trace(go.Scatter(x=st_verde.iloc[:, 0], y=st_verde['st_value'], mode='lines', line=dict(color='lime', width=3), name='ST Alta'))
-    fig.add_trace(go.Scatter(x=st_vermelho.iloc[:, 0], y=st_vermelho['st_value'], mode='lines', line=dict(color='red', width=3), name='ST Baixa'))
+    fig.add_trace(go.Scatter(x=st_verde[col_data], y=st_verde['st_value'], mode='lines', line=dict(color='lime', width=3), name='ST Alta'))
+    fig.add_trace(go.Scatter(x=st_vermelho[col_data], y=st_vermelho['st_value'], mode='lines', line=dict(color='red', width=3), name='ST Baixa'))
 
-    # 4. Marcando as Entradas (Se houver)
+    # 4. Marcando as Entradas
     if not trades_df.empty:
-        # Precisamos pegar o preço de fechamento no dia exato da entrada para colocar a seta
-        entradas_plot = df_b[df_b.iloc[:, 0].dt.strftime('%d/%m/%Y').isin(trades_df['Entrada'])]
-        
-        fig.add_trace(go.Scatter(
-            x=entradas_plot.iloc[:, 0],
-            y=entradas_plot['low'] * 0.98, # A seta fica 2% abaixo da mínima do dia
-            mode='markers',
-            marker=dict(symbol='triangle-up', size=14, color='cyan', line=dict(width=2, color='white')),
-            name='Entrada ADX'
-        ))
+        try:
+            entradas_plot = df_b[df_b[col_data].dt.strftime('%d/%m/%Y').isin(trades_df['Entrada'])]
+            fig.add_trace(go.Scatter(
+                x=entradas_plot[col_data],
+                y=entradas_plot['low'] * 0.98,
+                mode='markers',
+                marker=dict(symbol='triangle-up', size=14, color='cyan', line=dict(width=2, color='white')),
+                name='Sinal de Compra'
+            ))
+        except: pass
 
-    # Ajustes Visuais do Gráfico
     fig.update_layout(
-        title='Visualização SuperTrend + Entradas do Robô',
-        yaxis_title='Preço',
+        title='Visão Gráfica: Ação do Preço + SuperTrend + Entradas do Robô',
+        yaxis_title='Cotação',
         xaxis_rangeslider_visible=False,
         template='plotly_dark',
         height=600,
@@ -110,12 +113,9 @@ def plotar_grafico(df_b, trades_df):
     )
     return fig
 
+# --- INTERFACE PRINCIPAL ---
+st.title("🛡️ MÁQUINA PROFIT V6 (Resiliência Total)")
 
-# --- INTERFACE ---
-st.title("🛡️ MÁQUINA PROFIT V5 (Com Gráfico e Bunker)")
-st.markdown("---")
-
-# Barra Lateral
 with st.sidebar:
     st.header("⚙️ Calibragem Profit")
     p_di = st.number_input("DI Período (13)", value=13)
@@ -127,57 +127,62 @@ with st.sidebar:
     p_st = st.number_input("ST Período:", value=10)
     m_st = st.number_input("ST Multiplicador:", value=3.0)
 
-# Abas
-aba_rx, aba_radar = st.tabs(["🔬 Raio-X Bunker", "📡 Radar"])
+aba_rx, aba_radar = st.tabs(["🔬 Raio-X com Gráfico", "📡 Em breve..."])
 
 with aba_rx:
     c1, c2, c3 = st.columns(3)
     at_escolhido = c1.text_input("Ativo (Ex: GOGL34):", value="GOGL34").upper()
-    tf_escolhido = c2.selectbox("Tempo:", ['1d', '60m', '15m'], index=0)
-    cap_inv = c3.number_input("Capital (R$):", value=10000.0)
+    tf_escolhido = c2.selectbox("Tempo Gráfico:", ['1d', '60m', '15m'], index=0)
+    cap_inv = c3.number_input("Capital P/ Trade (R$):", value=10000.0)
 
-    if st.button("🔍 EXECUTAR ANÁLISE", use_container_width=True, type="primary"):
-        with st.spinner("Bunker processando dados e desenhando o gráfico..."):
-            df = motor_busca(at_escolhido, tf_escolhido)
-            
-            if df is not None:
-                df = processar_estrategia(df, p_di, p_adx, s_adx, m_adx, p_st, m_st)
-                df_b = df.reset_index()
+    if st.button("🔍 PROCESSAR E DESENHAR GRÁFICO", use_container_width=True, type="primary"):
+        with st.spinner("Conectando ao Bunker e renderizando os dados..."):
+            try:
+                df = motor_busca(at_escolhido, tf_escolhido)
                 
-                trades = []
-                em_pos = False
-                
-                for i in range(1, len(df_b)):
-                    # GATILHO: Preto cruzou Vermelho pra cima
-                    cruzou = (df_b['adx_o'].iloc[i] <= df_b['mdi_o'].iloc[i]) and (df_b['adx_line'].iloc[i] > df_b['mDI'].iloc[i])
-                    cond_compra = cruzou and (df_b['pDI'].iloc[i] > df_b['mDI'].iloc[i]) and (df_b['st_dir'].iloc[i] == 1)
+                if df is not None and not df.empty:
+                    df = processar_estrategia(df, p_di, p_adx, s_adx, m_adx, p_st, m_st)
                     
-                    if not em_pos and cond_compra:
-                        em_pos = True
-                        data_e, preco_e = df_b.iloc[i, 0], df_b['close'].iloc[i]
-                    
-                    elif em_pos and (df_b['st_dir'].iloc[i] == -1 or i == len(df_b)-1):
-                        lucro = cap_inv * ((df_b['close'].iloc[i] / preco_e) - 1)
-                        trades.append({
-                            'Entrada': data_e.strftime('%d/%m/%Y'),
-                            'Saída': df_b.iloc[i, 0].strftime('%d/%m/%Y'),
-                            'Lucro R$': round(lucro, 2),
-                            'Status': '✅' if lucro > 0 else '❌'
-                        })
-                        em_pos = False
-                
-                trades_df = pd.DataFrame(trades)
-                
-                # --- EXIBIÇÃO DO GRÁFICO E DADOS ---
-                # Cortamos os últimos 180 candles apenas para o gráfico não ficar espremido e feio na tela.
-                # A matemática rodou no histórico todo, isso é só visual!
-                corte_visual = df_b.tail(180) 
-                
-                st.plotly_chart(plotar_grafico(corte_visual, trades_df), use_container_width=True)
+                    if df is None:
+                        st.warning("O motor processou os dados, mas não havia histórico suficiente (mínimo 50 candles).")
+                    else:
+                        df_b = df.reset_index()
+                        col_dt = df_b.columns[0]
+                        trades, em_pos = [], False
+                        
+                        for i in range(1, len(df_b)):
+                            cruzou = (df_b['adx_o'].iloc[i] <= df_b['mdi_o'].iloc[i]) and (df_b['adx_line'].iloc[i] > df_b['mDI'].iloc[i])
+                            cond_compra = cruzou and (df_b['pDI'].iloc[i] > df_b['mDI'].iloc[i]) and (df_b['st_dir'].iloc[i] == 1)
+                            
+                            if not em_pos and cond_compra:
+                                em_pos, data_e, preco_e = True, df_b[col_dt].iloc[i], df_b['close'].iloc[i]
+                            
+                            elif em_pos and (df_b['st_dir'].iloc[i] == -1 or i == len(df_b)-1):
+                                lucro = cap_inv * ((df_b['close'].iloc[i] / preco_e) - 1)
+                                trades.append({
+                                    'Entrada': data_e.strftime('%d/%m/%Y'),
+                                    'Saída': df_b[col_dt].iloc[i].strftime('%d/%m/%Y'),
+                                    'Lucro R$': round(lucro, 2),
+                                    'Status': '✅' if lucro > 0 else '❌'
+                                })
+                                em_pos = False
+                        
+                        trades_df = pd.DataFrame(trades)
+                        
+                        # Exibe o Gráfico primeiro
+                        corte_visual = df_b.tail(200) # Mostra os últimos 200 candles pra não pesar
+                        st.plotly_chart(plotar_grafico(corte_visual, trades_df), use_container_width=True)
 
-                if trades:
-                    st.dataframe(trades_df, use_container_width=True)
-                    total = sum([t['Lucro R$'] for t in trades])
-                    st.metric("Resultado Final", f"R$ {total:,.2f}", delta=f"{((total/cap_inv)*100):.2f}%")
+                        # Exibe a Tabela
+                        if trades:
+                            st.dataframe(trades_df, use_container_width=True)
+                            total = sum([t['Lucro R$'] for t in trades])
+                            st.metric("Resultado Final Estimado", f"R$ {total:,.2f}")
+                        else:
+                            st.info("O gráfico foi renderizado, mas não houveram cruzamentos do ADX válidos neste período.")
                 else:
-                    st.warning("Nenhum sinal detectado com esta calibragem no período estudado.")
+                    st.error(f"O Bunker não retornou dados para o ativo {at_escolhido}. Verifique o ticker.")
+                    
+            except Exception as e:
+                st.error("🚨 Ocorreu um erro interno. Capture a tela abaixo para diagnosticarmos:")
+                st.code(traceback.format_exc())
