@@ -89,6 +89,7 @@ def calcular_indicadores_trend(df, adx_len=14, st_len=10, st_mult=3.0):
     df['SuperTrend'] = st_df[col_st]
     df['ST_Dir'] = st_df[col_st_dir] # 1 (Alta) ou -1 (Baixa)
     
+    # Memórias de ontem para calcular o cruzamento
     df['ADX_Prev'] = df['ADX'].shift(1)
     df['-DI_Prev'] = df['-DI'].shift(1)
     df['+DI_Prev'] = df['+DI'].shift(1)
@@ -122,7 +123,7 @@ def renderizar_grafico_tv(symbol):
     components.html(html_code, height=600)
 
 st.title("🤖 Máquina de Tendência (ADX + SuperTrend)")
-st.info("📊 **Estratégia (Trend Following Extremo):** Um sistema blindado contra ruídos laterais. \n\n🟢 **Gatilho de Compra:** O SuperTrend precisa estar verde (alta) **+** a linha compradora do DMI (+DI) deve estar acima da vendedora (-DI) **+** a linha de força do ADX deve estar apontando para cima e acima do limite. \n🔴 **Defesas:** Você pode montar o seu escudo desativando ou ativando a Saída pela Reversão do SuperTrend, Alvo de Lucro ou Stop Loss fixo.")
+st.info("📊 **Estratégia (Trend Following Extremo):** Um sistema blindado contra ruídos laterais. \n\n🟢 **Gatilho de Compra:** O ADX cruza o DI- para cima **+** a linha compradora (+DI) está acima da vendedora (-DI) **+** SuperTrend verde. \n🔴 **Defesas:** Você pode montar o seu escudo desativando ou ativando a Saída pela Reversão do SuperTrend, Reversão do DMI, Alvo de Lucro ou Stop Loss fixo.")
 
 aba_padrao, aba_individual, aba_futuros = st.tabs([
     "📡 Radar Padrão", "🔬 Raio-X Individual", "📉 Raio-X Futuros"
@@ -145,7 +146,7 @@ with aba_padrao:
             st.markdown("##### ⚙️ ADX & SuperTrend")
             c_adx1, c_adx2 = st.columns(2)
             adx_len = c_adx1.number_input("Período ADX:", min_value=2, value=14, step=1, key="tr_adx_len")
-            adx_limiar = c_adx2.number_input("ADX (>):", min_value=10, value=20, step=1, key="tr_adx_lim")
+            adx_limiar = c_adx2.number_input("ADX (>):", min_value=10, value=20, step=1, key="tr_adx_lim") # Mantido apenas por estética na interface, o gatilho agora é o cruzamento
             
             c_st1, c_st2 = st.columns(2)
             st_len = c_st1.number_input("ST Período:", min_value=2, value=10, step=1, key="tr_st_len")
@@ -197,8 +198,15 @@ with aba_padrao:
                 stop_d = stop_g / 100.0
 
                 for i in range(1, len(df_back)):
-                    cruzou_adx = (df_back['ADX'].iloc[i] > df_back['-DI'].iloc[i]) and (df_back['ADX_Prev'].iloc[i] <= df_back['-DI_Prev'].iloc[i])
-                    sinal_compra = cruzou_adx and (df_back['+DI'].iloc[i] > df_back['-DI'].iloc[i]) and (df_back['ST_Dir'].iloc[i] == 1)
+                    # Lógica EXATA do Sinal de Compra:
+                    # 1. ADX cruza DI- de baixo para cima
+                    adx_cruzou_di_menos = (df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i]) and (df_b['ADX_Prev'].iloc[i] <= df_b['-DI_Prev'].iloc[i])
+                    # 2. DI+ está acima do DI-
+                    di_mais_acima = df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]
+                    # 3. SuperTrend está Verde
+                    st_verde = df_b['ST_Dir'].iloc[i] == 1
+                    
+                    sinal_compra = adx_cruzou_di_menos and di_mais_acima and st_verde
                     
                     if em_pos:
                         if df_back['Low'].iloc[i] < min_price_in_trade: min_price_in_trade = df_back['Low'].iloc[i]
@@ -242,8 +250,8 @@ with aba_padrao:
                     })
                 else:
                     hoje = df_full.iloc[-1]
-                    cruzou_adx_hoje = (hoje['ADX'] > hoje['-DI']) and (hoje['ADX_Prev'] <= hoje['-DI_Prev'])
-                    sinal_hoje = cruzou_adx_hoje and (hoje['+DI'] > hoje['-DI']) and (hoje['ST_Dir'] == 1)
+                    adx_cruzou_di_menos_hoje = (hoje['ADX'] > hoje['-DI']) and (hoje['ADX_Prev'] <= hoje['-DI_Prev'])
+                    sinal_hoje = adx_cruzou_di_menos_hoje and (hoje['+DI'] > hoje['-DI']) and (hoje['ST_Dir'] == 1)
                     if sinal_hoje:
                         ls_sinais.append({'Ativo': ativo, 'Preço Atual': f"R$ {hoje['Close']:.2f}", 'ADX (Força)': f"{hoje['ADX']:.1f}", 'SuperTrend': "Verde 🟢"})
 
@@ -257,7 +265,7 @@ with aba_padrao:
 
         st.subheader(f"🚀 Sinais Confirmados Hoje")
         if len(ls_sinais) > 0: st.dataframe(pd.DataFrame(ls_sinais), use_container_width=True, hide_index=True)
-        else: st.info("Nenhum ativo com alinhamento triplo de tendência hoje.")
+        else: st.info("Nenhum ativo com o alinhamento triplo (ADX cruzando) hoje.")
 
         st.subheader("⏳ Operações em Andamento")
         if len(ls_abertos) > 0:
@@ -329,8 +337,12 @@ with aba_individual:
                         trades, em_pos, vitorias, derrotas, posicao_atual = [], False, 0, 0, None
 
                         for i in range(1, len(df_b)):
-                            cruzou_adx = (df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i]) and (df_b['ADX_Prev'].iloc[i] <= df_b['-DI_Prev'].iloc[i])
-                            sinal = cruzou_adx and (df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]) and (df_b['ST_Dir'].iloc[i] == 1)
+                            # Lógica EXATA do Sinal de Compra:
+                            adx_cruzou_di_menos = (df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i]) and (df_b['ADX_Prev'].iloc[i] <= df_b['-DI_Prev'].iloc[i])
+                            di_mais_acima = df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]
+                            st_verde = df_b['ST_Dir'].iloc[i] == 1
+                            
+                            sinal = adx_cruzou_di_menos and di_mais_acima and st_verde
                             
                             if not em_pos:
                                 if sinal:
@@ -475,11 +487,17 @@ with aba_futuros:
                         for i in range(1, len(df_b)):
                             d_at, d_ant = df_b[col_dt].iloc[i], df_b[col_dt].iloc[i-1]
                             
-                            cruz_compra = (df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i]) and (df_b['ADX_Prev'].iloc[i] <= df_b['-DI_Prev'].iloc[i])
-                            sinal_compra = cruz_compra and (df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]) and (df_b['ST_Dir'].iloc[i] == 1)
+                            # Lógica para Compra
+                            adx_cruzou_di_menos = (df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i]) and (df_b['ADX_Prev'].iloc[i] <= df_b['-DI_Prev'].iloc[i])
+                            di_mais_acima = df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]
+                            st_verde = df_b['ST_Dir'].iloc[i] == 1
+                            sinal_compra = adx_cruzou_di_menos and di_mais_acima and st_verde
                             
-                            cruz_venda = (df_b['ADX'].iloc[i] > df_b['+DI'].iloc[i]) and (df_b['ADX_Prev'].iloc[i] <= df_b['+DI_Prev'].iloc[i])
-                            sinal_venda = cruz_venda and (df_b['-DI'].iloc[i] > df_b['+DI'].iloc[i]) and (df_b['ST_Dir'].iloc[i] == -1)
+                            # Lógica para Venda (Operando Vendido nos Futuros)
+                            adx_cruzou_di_mais = (df_b['ADX'].iloc[i] > df_b['+DI'].iloc[i]) and (df_b['ADX_Prev'].iloc[i] <= df_b['+DI_Prev'].iloc[i])
+                            di_menos_acima = df_b['-DI'].iloc[i] > df_b['+DI'].iloc[i]
+                            st_vermelho = df_b['ST_Dir'].iloc[i] == -1
+                            sinal_venda = adx_cruzou_di_mais and di_menos_acima and st_vermelho
 
                             # REGRA DE DAY TRADE
                             if posicao != 0 and f_zerar and d_at.date() != d_ant.date():
@@ -549,5 +567,5 @@ with aba_futuros:
                             
                             st.dataframe(df_res, use_container_width=True, hide_index=True)
                         else:
-                            st.warning("A Máquina não disparou nenhum tiro no período (Nenhum alinhamento ADX+SuperTrend encontrado).")
+                            st.warning("A Máquina não disparou nenhum tiro no período (Nenhum alinhamento exato de Cruzamento ADX+SuperTrend encontrado).")
             except Exception as e: st.error(f"Erro no processamento da blindagem: {e}")
