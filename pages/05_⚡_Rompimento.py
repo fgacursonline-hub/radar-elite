@@ -22,12 +22,14 @@ except ImportError:
     st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
     st.stop()
 
-# 🔥 NOVO: IMPORTANDO O MOTOR BLINDADO
 try:
     from motor_dados import puxar_dados_blindados
 except ImportError:
     st.error("❌ Arquivo 'motor_dados.py' não encontrado na raiz do projeto. Crie o Bunker de Dados primeiro.")
     st.stop()
+
+# 🔥 NOVO: Lista unificada para os menus suspensos
+todos_ativos = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
 
 st.title("⚡ Radar & Backtest de Rompimento")
 st.markdown("Identifique e valide rompimentos históricos de Máximas e Fechamentos.")
@@ -68,7 +70,6 @@ with aba_rad_p:
         for idx, ativo in enumerate(lista_ativos):
             barra.progress((idx + 1) / len(lista_ativos), text=f"🔍 Analisando {ativo}...")
             try:
-                # 🔥 MOTOR BLINDADO AQUI
                 df_d = puxar_dados_blindados(ativo, tempo_grafico='1d', barras=350)
                 
                 if df_d is not None and len(df_d) > 260:
@@ -82,7 +83,6 @@ with aba_rad_p:
                     elif tempo_grafico == "Mensal":
                         ref_val = df_d[col_ref].iloc[-45:-22].max()
                     elif tempo_grafico == "60m":
-                        # 🔥 MOTOR BLINDADO AQUI (Substituindo get_hist)
                         df_h = puxar_dados_blindados(ativo, tempo_grafico='60m', barras=5)
                         if df_h is not None and not df_h.empty:
                             df_h.columns = [c.capitalize() for c in df_h.columns]
@@ -170,7 +170,6 @@ with aba_backtest:
         for idx, ativo in enumerate(ativos):
             barra_bk.progress((idx + 1) / len(ativos), text=f"Calculando métricas para {ativo}...")
             try:
-                # 🔥 MOTOR BLINDADO AQUI
                 df = puxar_dados_blindados(ativo, tempo_grafico='1d', barras=int(hist_bk))
                 if df is None or len(df) <= janela:
                     continue
@@ -255,7 +254,8 @@ with aba_raio_x:
     
     rx1, rx2, rx3, rx4 = st.columns(4)
     with rx1: 
-        at_rx = st.text_input("Ativo para Teste:", value="AURA33", key="rx_ativo").upper()
+        # 🔥 MENU DE ATIVOS AQUI EM VEZ DE CAMPO DE TEXTO
+        at_rx = st.selectbox("Ativo para Teste:", todos_ativos, index=todos_ativos.index('PETR4') if 'PETR4' in todos_ativos else 0, key="rx_ativo")
         tipo_romp_rx = st.radio("Romper por:", ["Máxima", "Fechamento"], horizontal=True, key="rx_tipo")
     with rx2: 
         tempo_rx = st.selectbox("Tempo Gráfico:", ["Semanal", "Mensal", "Anual"], index=2, key="rx_tmp")
@@ -270,7 +270,6 @@ with aba_raio_x:
         try:
             at_rx_limpo = at_rx.replace('.SA', '')
             
-            # 🔥 MOTOR BLINDADO AQUI
             df = puxar_dados_blindados(at_rx_limpo, tempo_grafico='1d', barras=int(hist_rx))
             janela_rx = 252 if tempo_rx == "Anual" else (21 if tempo_rx == "Mensal" else 5)
             
@@ -405,7 +404,7 @@ with aba_futuros:
 
     if f_estrategia == "1º Candle do Dia (ORB)":
         f_hora_zeragem = st.time_input("Zeragem Compulsória:", value=dt_time(17, 0), key="f_brk_zcomp")
-        f_zerar = True # Day trade obrigatório
+        f_zerar = True 
     else:
         f_zerar = st.checkbox("⏰ Zeragem Automática no Fim do Dia", value=True, key="f_brk_zerar")
         tipo_romp_f = st.radio("Romper por:", ["Máxima/Mínima", "Fechamento"], horizontal=True, key="f_brk_tipo")
@@ -418,7 +417,6 @@ with aba_futuros:
     if btn_fut:
         with st.spinner(f'Testando rompimento no {f_selecionado}...'):
             try:
-                # 🔥 MOTOR BLINDADO AQUI
                 df = puxar_dados_blindados(f_ativo, tempo_grafico=f_tmp, barras=5000)
 
                 if df is not None and not df.empty:
@@ -426,7 +424,7 @@ with aba_futuros:
                     df.index = pd.to_datetime(df.index)
 
                     trades = []
-                    posicao = 0 # 0: Fora, 1: Comprado, -1: Vendido
+                    posicao = 0 
                     vits, derrs = 0, 0
 
                     if f_estrategia == "Padrão (Janela de Velas)":
@@ -448,7 +446,6 @@ with aba_futuros:
                             for i in range(f_janela, len(df_b)):
                                 d_at, d_ant = df_b[col_dt].iloc[i], df_b[col_dt].iloc[i-1]
 
-                                # 1. ZERAGEM NO FIM DO DIA
                                 if posicao != 0 and f_zerar and d_at.date() != d_ant.date():
                                     p_sai = df_b['Close'].iloc[i-1]
                                     pts = (p_sai - p_ent) if posicao == 1 else (p_ent - p_sai)
@@ -462,7 +459,6 @@ with aba_futuros:
                                     else: derrs += 1
                                     posicao = 0
 
-                                # 2. MONITORAMENTO DE ALVO E STOP
                                 if posicao == 1:
                                     if df_b['High'].iloc[i] >= take_p:
                                         luc = f_alvo * f_contratos * f_multi
@@ -483,7 +479,6 @@ with aba_futuros:
                                         trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': d_at.strftime('%d/%m %H:%M'), 'Resultado': 'Loss 🔴', 'Tipo': 'Venda', 'Pontos': -f_stop, 'Lucro (R$)': luc, 'Status': 'Stop'})
                                         derrs += 1; posicao = 0
 
-                                # 3. GATILHO DE ENTRADA (Rompimento)
                                 if posicao == 0 and not pd.isna(df_b['Max_Ref'].iloc[i]) and not pd.isna(df_b['Min_Ref'].iloc[i]):
                                     if f_dir != "Apenas Venda" and df_b['Close'].iloc[i] > df_b['Max_Ref'].iloc[i]:
                                         posicao, d_ent, p_ent = 1, d_at, df_b['Close'].iloc[i]
@@ -493,7 +488,6 @@ with aba_futuros:
                                         take_p, stop_p = p_ent - f_alvo, p_ent + f_stop
 
                     elif f_estrategia == "1º Candle do Dia (ORB)":
-                        # LÓGICA DO OPENING RANGE BREAKOUT
                         current_day = None
                         orb_high, orb_low = None, None
                         orb_active = False
@@ -504,14 +498,12 @@ with aba_futuros:
                             data_atual = data_hora.date()
                             hora_atual = data_hora.time()
                             
-                            # Identifica o primeiro candle do novo dia
                             if data_atual != current_day:
                                 current_day = data_atual
                                 orb_high = linha['High']
                                 orb_low = linha['Low']
                                 orb_active = True
                                 
-                                # Se estivesse posicionado de ontem (segurança extra), zera na abertura
                                 if posicao != 0:
                                     p_sai = linha['Open']
                                     pts = (p_sai - p_ent) if posicao == 1 else (p_ent - p_sai)
@@ -524,7 +516,6 @@ with aba_futuros:
                             
                             if not orb_active: continue
                                 
-                            # 1. ZERAGEM NO FIM DO DIA (17h ou hora definida)
                             if posicao != 0 and hora_atual >= f_hora_zeragem:
                                 p_sai = linha['Close']
                                 pts = (p_sai - p_ent) if posicao == 1 else (p_ent - p_sai)
@@ -533,10 +524,9 @@ with aba_futuros:
                                 if luc > 0: vits += 1
                                 else: derrs += 1
                                 posicao = 0
-                                orb_active = False # Encerrou o dia
+                                orb_active = False 
                                 continue
                                 
-                            # 2. MONITORAMENTO DE ALVO E STOP (Com stop no lado oposto do candle)
                             if posicao == 1:
                                 if linha['High'] >= take_p:
                                     luc = f_alvo * f_contratos * f_multi
@@ -558,18 +548,16 @@ with aba_futuros:
                                     trades.append({'Entrada': d_ent.strftime('%d/%m %H:%M'), 'Saída': data_hora.strftime('%d/%m %H:%M'), 'Resultado': 'Loss 🔴', 'Tipo': 'Venda', 'Pontos': pts, 'Lucro (R$)': luc, 'Status': 'Stop (Máx 1º Candle)'})
                                     derrs += 1; posicao = 0
                                     
-                            # 3. GATILHO DE ENTRADA (Apenas até limite definido)
                             if posicao == 0 and hora_atual <= f_limite_entrada:
                                 if f_dir != "Apenas Venda" and linha['Close'] > orb_high:
                                     posicao, d_ent, p_ent = 1, data_hora, linha['Close']
                                     take_p, stop_p = p_ent + f_alvo, orb_low
-                                    orb_active = False # Trava para não dar nova entrada no mesmo dia
+                                    orb_active = False 
                                 elif f_dir != "Apenas Compra" and linha['Close'] < orb_low:
                                     posicao, d_ent, p_ent = -1, data_hora, linha['Close']
                                     take_p, stop_p = p_ent - f_alvo, orb_high
                                     orb_active = False
 
-                    # --- RENDERIZAÇÃO DOS RESULTADOS ---
                     st.divider()
                     if trades:
                         df_res = pd.DataFrame(trades)
