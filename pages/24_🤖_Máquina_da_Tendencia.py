@@ -6,6 +6,7 @@ import time
 import warnings
 import sys
 import os
+import plotly.graph_objects as go # IMPORTAÇÃO DO GERADOR DE GRÁFICOS
 
 warnings.filterwarnings('ignore')
 
@@ -48,7 +49,7 @@ def colorir_lucro(row):
     return [''] * len(row)
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO: O CRUZAMENTO DO PROFIT
+# 3. MOTOR MATEMÁTICO E GERADOR DE GRÁFICO
 # ==========================================
 def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0):
     if df is None or len(df) < max(di_len, adx_len, st_len) * 2:
@@ -59,7 +60,6 @@ def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0)
         df.columns = df.columns.get_level_values(0)
     df.index = df.index.tz_localize(None)
 
-    # --- FUNÇÃO MATEMÁTICA DE SUAVIZAÇÃO (WILDER) ---
     def wilder_rma(series, length):
         rma = np.full_like(series, np.nan, dtype=float)
         valid_idx = np.where(~np.isnan(series))[0]
@@ -73,20 +73,17 @@ def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0)
 
     high, low, close = df['High'].values, df['Low'].values, df['Close'].values
     
-    # Movimento Direcional Básico
     up = np.append(0, high[1:] - high[:-1])
     down = np.append(0, low[:-1] - low[1:])
     pdm = np.where((up > down) & (up > 0), up, 0.0)
     mdm = np.where((down > up) & (down > 0), down, 0.0)
     
-    # True Range
     tr_a = np.abs(high - low)
     tr_b = np.abs(high - np.append(0, close[:-1]))
     tr_c = np.abs(low - np.append(0, close[:-1]))
     tr = np.maximum(tr_a, np.maximum(tr_b, tr_c))
     tr[0] = np.nan
 
-    # --- 1. DMI PARA AS LINHAS VERDE E VERMELHA ---
     tr_di = wilder_rma(tr, di_len)
     pdm_di = wilder_rma(pdm, di_len)
     mdm_di = wilder_rma(mdm, di_len)
@@ -94,7 +91,6 @@ def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0)
     df['+DI'] = 100 * (pdm_di / np.where(tr_di == 0, 1e-10, tr_di))
     df['-DI'] = 100 * (mdm_di / np.where(tr_di == 0, 1e-10, tr_di))
 
-    # --- 2. ADX PARA A LINHA PRETA NERVOSA ---
     tr_adx = wilder_rma(tr, adx_len)
     pdm_adx = wilder_rma(pdm, adx_len)
     mdm_adx = wilder_rma(mdm, adx_len)
@@ -105,21 +101,58 @@ def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0)
     dx_adx = 100 * np.abs(pdi_adx - mdi_adx) / np.where((pdi_adx + mdi_adx) == 0, 1e-10, (pdi_adx + mdi_adx))
     df['ADX'] = wilder_rma(dx_adx, adx_len)
 
-    # --- 3. SUPERTREND ---
     st_df = ta.supertrend(df['High'], df['Low'], df['Close'], length=st_len, multiplier=st_mult)
     if st_df is not None and not st_df.empty:
         df['SuperTrend'] = st_df[[col for col in st_df.columns if col.startswith('SUPERT_')][0]]
         df['ST_Dir'] = st_df[[col for col in st_df.columns if col.startswith('SUPERTd_')][0]]
 
-    # --- MEMÓRIAS PARA CAÇAR O CRUZAMENTO ---
     df['ADX_Prev'] = df['ADX'].shift(1)
     df['-DI_Prev'] = df['-DI'].shift(1)
     df['+DI_Prev'] = df['+DI'].shift(1)
 
     return df.dropna()
 
-st.title("🤖 Máquina de Tendência (Regra Estrita)")
-st.info("📊 **A Regra Pura e Simples:** \n\n🟢 **Gatilho de Compra:** Ocorre APENAS SE o ADX (Preto) cruzar o DI- (Vermelho) de baixo para cima HOJE. Se cruzou, o robô exige que NESTE MESMO DIA o DI+ esteja maior que o DI- e que o SuperTrend esteja Verde.")
+def plotar_grafico_supertrend(df, trades_df):
+    fig = go.Figure()
+    col_dt = df.columns[0]
+
+    # 1. Os Candles
+    fig.add_trace(go.Candlestick(
+        x=df[col_dt], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Preço'
+    ))
+
+    # 2. SuperTrend Dividido por Cores
+    st_verde = df.copy()
+    st_verde.loc[st_verde['ST_Dir'] == -1, 'SuperTrend'] = np.nan
+    st_vermelho = df.copy()
+    st_vermelho.loc[st_vermelho['ST_Dir'] == 1, 'SuperTrend'] = np.nan
+
+    fig.add_trace(go.Scatter(x=st_verde[col_dt], y=st_verde['SuperTrend'], mode='lines', line=dict(color='lime', width=3), name='ST Alta'))
+    fig.add_trace(go.Scatter(x=st_vermelho[col_dt], y=st_vermelho['SuperTrend'], mode='lines', line=dict(color='red', width=3), name='ST Baixa'))
+
+    # 3. Setas de Entrada do Robô
+    if trades_df is not None and not trades_df.empty:
+        try:
+            entradas = df[df[col_dt].dt.strftime('%d/%m/%Y').isin(trades_df['Entrada'])]
+            fig.add_trace(go.Scatter(
+                x=entradas[col_dt], y=entradas['Low'] * 0.98, mode='markers',
+                marker=dict(symbol='triangle-up', size=14, color='cyan', line=dict(width=2, color='white')),
+                name='Entrada ADX'
+            ))
+        except: pass
+
+    fig.update_layout(
+        title='Ação do Preço + SuperTrend', yaxis_title='Cotação',
+        xaxis_rangeslider_visible=False, template='plotly_dark',
+        height=550, margin=dict(l=20, r=20, t=50, b=20)
+    )
+    return fig
+
+# ==========================================
+# INTERFACE PRINCIPAL
+# ==========================================
+st.title("🤖 Máquina de Tendência (Com Gráfico Interativo)")
+st.info("📊 **Regra Estrita:** O robô entra na operação APENAS SE o ADX cruzar o DI- para cima **no mesmo dia** em que o DI+ está maior que o DI- e o SuperTrend está Verde.")
 
 aba_padrao, aba_individual, aba_futuros = st.tabs(["📡 Radar Padrão", "🔬 Raio-X Individual", "📉 Raio-X Futuros"])
 
@@ -187,11 +220,9 @@ with aba_padrao:
                 alvo_d, stop_d = alvo_g / 100.0, stop_g / 100.0
 
                 for i in range(1, len(df_back)):
-                    # A REGRA EXATA DO CRUZAMENTO NO MESMO CANDLE
                     cruzou_adx = (df_back['ADX_Prev'].iloc[i] <= df_back['-DI_Prev'].iloc[i]) and (df_back['ADX'].iloc[i] > df_back['-DI'].iloc[i])
                     di_ok = df_back['+DI'].iloc[i] > df_back['-DI'].iloc[i]
                     st_ok = df_back['ST_Dir'].iloc[i] == 1
-                    
                     sinal_compra = cruzou_adx and di_ok and st_ok
                     
                     if em_pos:
@@ -261,7 +292,7 @@ with aba_padrao:
         else: st.warning("Nenhuma operação finalizada.")
 
 # ==========================================
-# ABA 2: RAIO-X INDIVIDUAL
+# ABA 2: RAIO-X INDIVIDUAL (COM GRÁFICO!)
 # ==========================================
 with aba_individual:
     st.subheader("🔬 Análise Detalhada de Ativo Único (ADX + SuperTrend)")
@@ -311,7 +342,6 @@ with aba_individual:
                         trades, em_pos, vitorias, derrotas, posicao_atual = [], False, 0, 0, None
 
                         for i in range(1, len(df_b)):
-                            # REGRA ESTRITA NO MESMO CANDLE
                             cruzou_adx = (df_b['ADX_Prev'].iloc[i] <= df_b['-DI_Prev'].iloc[i]) and (df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i])
                             di_ok = df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]
                             st_ok = df_b['ST_Dir'].iloc[i] == 1
@@ -359,6 +389,14 @@ with aba_individual:
                                     em_pos, posicao_atual = False, None
 
                         st.divider()
+                        
+                        # ---> RENDERIZA O GRÁFICO INTERATIVO AQUI <---
+                        st.markdown("### 📈 Visualização do Gráfico (SuperTrend)")
+                        df_trades_plot = pd.DataFrame(trades) if trades else pd.DataFrame()
+                        corte_grafico = df_b.tail(250) # Mostra os últimos 250 dias no gráfico pra não ficar pesado
+                        st.plotly_chart(plotar_grafico_supertrend(corte_grafico, df_trades_plot), use_container_width=True)
+                        st.divider()
+
                         if em_pos and posicao_atual:
                             st.warning(f"⚠️ **OPERAÇÃO EM CURSO: {ativo_rx} ({tempo_rx})**")
                             cotacao_atual = df_b['Close'].iloc[-1]
@@ -449,11 +487,9 @@ with aba_futuros:
                         for i in range(1, len(df_b)):
                             d_at, d_ant = df_b[col_dt].iloc[i], df_b[col_dt].iloc[i-1]
                             
-                            # COMPRA ESTRITA NO MESMO CANDLE
                             cruz_compra = (df_b['ADX_Prev'].iloc[i] <= df_b['-DI_Prev'].iloc[i]) and (df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i])
                             sinal_compra = cruz_compra and (df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]) and (df_b['ST_Dir'].iloc[i] == 1)
                             
-                            # VENDA ESTRITA NO MESMO CANDLE
                             cruz_venda = (df_b['ADX_Prev'].iloc[i] <= df_b['+DI_Prev'].iloc[i]) and (df_b['ADX'].iloc[i] > df_b['+DI'].iloc[i])
                             sinal_venda = cruz_venda and (df_b['-DI'].iloc[i] > df_b['+DI'].iloc[i]) and (df_b['ST_Dir'].iloc[i] == -1)
 
