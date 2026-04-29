@@ -77,13 +77,18 @@ def calcular_hull_suite(df, mode, length, src_col='Close'):
             df['HULL'] = ta.ema(raw_hull, length=sqrt_len)
             
         elif mode == 'THMA (Tripla Suavizada)':
-            third_len = max(1, int(length / 3))
-            half_len = max(1, int(length / 2))
+            # CORREÇÃO: O Pine Script divide o length original por 2 para a THMA
+            length_thma = max(1, int(length / 2)) 
+            
+            third_len = max(1, int(length_thma / 3))
+            half_len = max(1, int(length_thma / 2))
+            
             wma3 = ta.wma(src, length=third_len)
             wma2 = ta.wma(src, length=half_len)
-            wma1 = ta.wma(src, length=length)
+            wma1 = ta.wma(src, length=length_thma)
             raw_hull = (wma3 * 3) - wma2 - wma1
-            df['HULL'] = ta.wma(raw_hull, length=length)
+            
+            df['HULL'] = ta.wma(raw_hull, length=length_thma)
             
         # Lógica de Gatilho do PineScript: HULL[0] > HULL[2]
         df['HULL_2'] = df['HULL'].shift(2)
@@ -121,7 +126,7 @@ with col_botao:
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     st.link_button("📖 Ler Manual", "https://seusite.com/manual_hull", use_container_width=True)
 
-st.info("📊 **Trend Following sem Atraso:** A Hull Suite elimina a lentidão das médias tradicionais. O robô dispara compra no momento em que a inclinação da linha vira para cima (fica verde). A saída ocorre no Alvo de Lucro ou se a linha virar para baixo (sinal vermelho), o que atua como um Stop Loss técnico dinâmico.")
+st.info("📊 **Trend Following sem Atraso:** A Hull Suite elimina a lentidão das médias tradicionais. O robô dispara compra no momento em que a inclinação da linha vira para cima (fica verde). A saída ocorre no Alvo de Lucro ou, caso ativado, se a linha virar para baixo (sinal vermelho), o que atua como um Stop Loss técnico dinâmico.")
 
 aba_radar, aba_raiox = st.tabs(["📡 Radar (Caçador de Tendências)", "🔬 Raio-X Individual"])
 
@@ -141,6 +146,9 @@ with aba_radar:
         alvo_lucro = st.number_input("Alvo de Lucro (%):", value=10.0, step=1.0, key="h_alvo")
         capital_trade = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="h_cap")
         tempo_grafico = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="h_tmp")
+
+    # NOVA OPÇÃO DE STOP OPCIONAL
+    usar_stop_radar = st.checkbox("🛑 Usar Stop Técnico (Sair se a média virar para baixo)", value=True, key="h_stop_r", help="Se desmarcado, a operação só fecha quando atingir o alvo de lucro.")
 
     btn_iniciar = st.button("🚀 Iniciar Varredura Hull", type="primary", use_container_width=True)
 
@@ -184,14 +192,15 @@ with aba_radar:
                             trades.append({'Lucro (R$)': float(capital_trade) * alvo_dec, 'Situação': 'Gain'})
                             vit += 1; em_pos = False; continue
                             
-                        # 2. Checa Stop Técnico (Linha virou pra baixo: HULL < HULL[2])
-                        virou_venda = linha['HULL'] < linha['HULL_2']
-                        if virou_venda:
-                            resultado_saida = (linha['Close'] / preco_entrada) - 1
-                            trades.append({'Lucro (R$)': float(capital_trade) * resultado_saida, 'Situação': 'Stop Técnico'})
-                            if resultado_saida > 0: vit += 1
-                            else: der += 1
-                            em_pos = False; continue
+                        # 2. Checa Stop Técnico (Se ativado pelo usuário)
+                        if usar_stop_radar:
+                            virou_venda = linha['HULL'] < linha['HULL_2']
+                            if virou_venda:
+                                resultado_saida = (linha['Close'] / preco_entrada) - 1
+                                trades.append({'Lucro (R$)': float(capital_trade) * resultado_saida, 'Situação': 'Stop Técnico'})
+                                if resultado_saida > 0: vit += 1
+                                else: der += 1
+                                em_pos = False; continue
 
                     # Gatilho de Entrada: Linha virou para cima (Era vermelha, ficou verde)
                     era_vermelha = linha['HULL_Prev'] <= linha['HULL_2_Prev']
@@ -255,16 +264,20 @@ with aba_raiox:
     col1, col2, col3 = st.columns(3)
     with col1:
         rx_ativo = st.selectbox("Selecione o Ativo:", todos_ativos, index=todos_ativos.index('PETR4') if 'PETR4' in todos_ativos else 0)
-        rx_modo = st.selectbox("Motor da Hull:", ["HMA (Padrão)", "EHMA (Exponencial Rápida)", "THMA (Tripla Suavizada)"])
-        rx_periodo = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3)
+        rx_modo = st.selectbox("Motor da Hull:", ["HMA (Padrão)", "EHMA (Exponencial Rápida)", "THMA (Tripla Suavizada)", key="h_rx_modo")
+        rx_periodo = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="h_rx_per")
     with col2:
-        rx_alvo = st.number_input("Alvo de Lucro (%):", value=10.0, step=1.0)
-        rx_len = st.number_input("Período da Linha:", min_value=2, max_value=300, value=55, step=1)
+        rx_alvo = st.number_input("Alvo de Lucro (%):", value=10.0, step=1.0, key="h_rx_alvo")
+        rx_len = st.number_input("Período da Linha:", min_value=2, max_value=300, value=55, step=1, key="h_rx_len")
     with col3:
-        rx_cap = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0)
-        rx_tmp = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk', '1mo'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x])
-        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-        btn_rx = st.button("🔍 Rodar Análise Completa", type="primary", use_container_width=True)
+        rx_cap = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="h_rx_cap")
+        rx_tmp = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk', '1mo'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x], key="h_rx_tmp")
+        
+    # NOVA OPÇÃO DE STOP OPCIONAL PARA O RAIO X
+    usar_stop_rx = st.checkbox("🛑 Usar Stop Técnico (Sair se a média virar para baixo)", value=True, key="h_stop_rx", help="Se desmarcado, a operação só fecha quando atingir o alvo.")
+    
+    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+    btn_rx = st.button("🔍 Rodar Análise Completa", type="primary", use_container_width=True)
 
     if btn_rx:
         with st.spinner(f'Calculando matemática Hull para {rx_ativo}...'):
@@ -295,18 +308,20 @@ with aba_raiox:
                                 trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': linha[col_dt].strftime('%d/%m/%Y'), 'Duração': duracao, 'Lucro (R$)': lucro, 'Situação': 'Gain ✅ (Alvo)'})
                                 vitorias += 1; em_pos = False; continue
 
-                            if linha['HULL'] < linha['HULL_2']:
-                                perc_saida = (linha['Close'] / p_ent) - 1
-                                lucro = float(rx_cap) * perc_saida
-                                duracao = (linha[col_dt] - d_ent).days
-                                if lucro > 0:
-                                    sit = 'Gain ✅ (Saída Téc.)'
-                                    vitorias += 1
-                                else:
-                                    sit = 'Loss 🔴 (Stop Téc.)'
-                                    derrotas += 1
-                                trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': linha[col_dt].strftime('%d/%m/%Y'), 'Duração': duracao, 'Lucro (R$)': lucro, 'Situação': sit})
-                                em_pos = False; continue
+                            # 2. Checa Stop Técnico (Se ativado pelo usuário)
+                            if usar_stop_rx:
+                                if linha['HULL'] < linha['HULL_2']:
+                                    perc_saida = (linha['Close'] / p_ent) - 1
+                                    lucro = float(rx_cap) * perc_saida
+                                    duracao = (linha[col_dt] - d_ent).days
+                                    if lucro > 0:
+                                        sit = 'Gain ✅ (Saída Téc.)'
+                                        vitorias += 1
+                                    else:
+                                        sit = 'Loss 🔴 (Stop Téc.)'
+                                        derrotas += 1
+                                    trades.append({'Entrada': d_ent.strftime('%d/%m/%Y'), 'Saída': linha[col_dt].strftime('%d/%m/%Y'), 'Duração': duracao, 'Lucro (R$)': lucro, 'Situação': sit})
+                                    em_pos = False; continue
 
                         era_verm = linha['HULL_Prev'] <= linha['HULL_2_Prev']
                         ficou_vd = linha['HULL'] > linha['HULL_2']
