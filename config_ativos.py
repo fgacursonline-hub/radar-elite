@@ -72,4 +72,5 @@ macro_elite = {
     'BRN1!': 'TVC',        # Petróleo Brent Contínuo
     'XAUUSD': 'OANDA',     # Ouro Global
     'EWZ': 'AMEX'          # ETF MSCI Brazil
+    'BTCUSDT': 'BINANCE'   # Bitcoin vs Tether (Referência Cripto Global)
 }
