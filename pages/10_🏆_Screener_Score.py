@@ -170,12 +170,14 @@ with aba_radar:
         
         st.subheader(f"🎯 TIROS AUTORIZADOS HOJE (Score >= {score_min}%)")
         if ls_entradas:
-            st.dataframe(pd.DataFrame(ls_entradas).style.applymap(colorir_bias, subset=['Bias']), use_container_width=True, hide_index=True)
+            # Trocamos applymap por map aqui 👇
+            st.dataframe(pd.DataFrame(ls_entradas).style.map(colorir_bias, subset=['Bias']), use_container_width=True, hide_index=True)
         else: st.info("Nenhum ativo alinhou as engrenagens perfeitamente hoje.")
             
         st.subheader("🔥 Top Ativos em Tendência Brutal (Score >= 85%)")
         if ls_fortes:
-            st.dataframe(pd.DataFrame(ls_fortes).style.applymap(colorir_bias, subset=['Bias']), use_container_width=True, hide_index=True)
+            # E trocamos applymap por map aqui também 👇
+            st.dataframe(pd.DataFrame(ls_fortes).style.map(colorir_bias, subset=['Bias']), use_container_width=True, hide_index=True)
 
 with aba_raiox:
     st.header("Análise Detalhada (Backtest e Alvos)")
