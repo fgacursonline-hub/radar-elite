@@ -1,6 +1,4 @@
 import streamlit as st
-from tvDatafeed import TvDatafeed, Interval
-import streamlit.components.v1 as components
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
@@ -12,20 +10,7 @@ import os
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# 1. IMPORTAÇÃO CENTRALIZADA DOS ATIVOS E BUNKER
-# ==========================================
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-try:
-    from config_ativos import bdrs_elite, ibrx_selecao
-    from bunker import motor_busca  # <-- IMPORTAÇÃO DO MOTOR DE BUSCA INSERIDA AQUI
-except ImportError:
-    st.error("❌ Arquivo 'config_ativos.py' ou 'bunker.py' não encontrado na raiz do projeto.")
-    st.stop()
-
-ativos_para_rastrear = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
-
-# ==========================================
-# 2. CONFIGURAÇÃO DA PÁGINA
+# 1. SEGURANÇA E CONFIGURAÇÃO DA PÁGINA
 # ==========================================
 st.set_page_config(page_title="Trend Machine", layout="wide", page_icon="🤖")
 
@@ -33,19 +18,28 @@ if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, faça login na página inicial (Home).")
     st.stop()
 
-# Removida a inicialização direta do TvDatafeed aqui, pois o motor_busca fará isso.
+# ==========================================
+# 2. IMPORTAÇÃO CENTRALIZADA (ATIVOS E MOTOR)
+# ==========================================
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+try:
+    from config_ativos import bdrs_elite, ibrx_selecao
+except ImportError:
+    st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
+    st.stop()
+
+try:
+    from motor_dados import puxar_dados_blindados
+except ImportError:
+    st.error("❌ Arquivo 'motor_dados.py' não encontrado na raiz do projeto. Crie o Bunker de Dados primeiro.")
+    st.stop()
+
+ativos_para_rastrear = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
 
 tradutor_periodo_nome = {
     '1mo': '1 Mês', '3mo': '3 Meses', '6mo': '6 Meses',
     '1y': '1 Ano', '2y': '2 Anos', '5y': '5 Anos',
     'max': 'Máximo', '60d': '60 Dias'
-}
-
-tradutor_intervalo = {
-    '15m': Interval.in_15_minute,
-    '60m': Interval.in_1_hour,
-    '1d': Interval.in_daily,
-    '1wk': Interval.in_weekly
 }
 
 def colorir_lucro(row):
@@ -59,16 +53,18 @@ def colorir_lucro(row):
 def calcular_indicadores_trend(df, di_len=13, adx_len=14, st_len=10, st_mult=3.0):
     if df is None or len(df) < max(di_len, adx_len, st_len) * 2:
         return None
+        
+    # Garante que as colunas vindas do motor_dados estejam no padrão correto para o pandas_ta
+    df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+    
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     df.index = df.index.tz_localize(None)
 
     # 1. ADX e DMI com parâmetros separados (Idêntico ao ProfitPro)
-    # length = DI Period, lensig = ADX Period
     adx_df = ta.adx(df['High'], df['Low'], df['Close'], length=di_len, lensig=adx_len)
     if adx_df is None or adx_df.empty: return None
 
-    # O pandas_ta muda o nome da coluna dependendo do input, por isso buscamos pelo prefixo
     df['ADX'] = adx_df[[col for col in adx_df.columns if col.startswith('ADX')][0]]
     df['+DI'] = adx_df[[col for col in adx_df.columns if col.startswith('DMP')][0]]
     df['-DI'] = adx_df[[col for col in adx_df.columns if col.startswith('DMN')][0]]
@@ -137,13 +133,10 @@ with aba_padrao:
             p_bar.progress((idx + 1) / len(ativos_tr))
 
             try:
-                # SUBSTITUIÇÃO: Busca guiada pelo motor central Bunker
-                df_full = motor_busca(ativo, tempo_tr)
-                if df_full is None or len(df_full) < 50: continue
+                # SUBSTITUIÇÃO: Busca guiada pelo motor de dados blindado
+                df_full = puxar_dados_blindados(ativo, tempo_tr)
                 
-                # Para garantir que as colunas estejam no padrão que seu código usa
-                df_full.columns = df_full.columns.str.lower()
-                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                if df_full is None or len(df_full) < 50: continue
                 
                 df_full = calcular_indicadores_trend(df_full, di_len_g, adx_len_g, st_len_g, st_mult_g)
                 if df_full is None: continue
@@ -269,12 +262,10 @@ with aba_individual:
 
         with st.spinner(f'Processando matemática para {ativo_rx}...'):
             try:
-                # SUBSTITUIÇÃO: Busca guiada pelo motor central Bunker
-                df_full = motor_busca(ativo_rx, tempo_rx)
+                # SUBSTITUIÇÃO: Busca guiada pelo motor de dados blindado
+                df_full = puxar_dados_blindados(ativo_rx, tempo_rx)
                 
                 if df_full is not None and len(df_full) > 50:
-                    df_full.columns = df_full.columns.str.lower()
-                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     df_full = calcular_indicadores_trend(df_full, di_len_rx, adx_len_rx, st_len_rx, st_mult_rx)
                     
                     if df_full is not None:
@@ -375,7 +366,7 @@ with aba_individual:
                             
                             st.dataframe(df_res.style.map(colorir_res_indiv, subset=['Situação']), use_container_width=True, hide_index=True)
                         else: st.info("Nenhum trade fechado no período de estudo selecionado.")
-                else: st.error("Base de dados vazia para este ativo no Motor Busca.")
+                else: st.error("Base de dados vazia para este ativo no motor_dados.")
             except Exception as e: st.error(f"Erro no processamento: {e}")
 
 # ==========================================
@@ -411,12 +402,10 @@ with aba_futuros:
     if btn_fut:
         with st.spinner(f'Simulando Tanque de Guerra em {f_selecionado}...'):
             try:
-                # SUBSTITUIÇÃO: Busca guiada pelo motor central Bunker
-                df_full = motor_busca(f_ativo, f_tmp)
+                # SUBSTITUIÇÃO: Busca guiada pelo motor de dados blindado
+                df_full = puxar_dados_blindados(f_ativo, f_tmp)
                 
                 if df_full is not None:
-                    df_full.columns = df_full.columns.str.lower()
-                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     df_full = calcular_indicadores_trend(df_full, f_di_len, f_adx_len, f_st_len, f_st_mult)
                     
                     if df_full is not None:
