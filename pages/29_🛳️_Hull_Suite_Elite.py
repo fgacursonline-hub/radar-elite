@@ -3,6 +3,7 @@ import streamlit.components.v1 as components
 import pandas as pd
 import pandas_ta as ta
 import numpy as np
+import plotly.graph_objects as go
 import time
 import warnings
 import sys
@@ -48,7 +49,7 @@ def colorir_lucro(row):
     return [''] * len(row)
 
 # ==========================================
-# 2. MOTORES MATEMÁTICOS (HULL SUITE)
+# 2. MOTORES MATEMÁTICOS E GRÁFICO NATIVO
 # ==========================================
 def calcular_hull_suite(df, mode, length, src_col='Close'):
     """
@@ -101,21 +102,39 @@ def calcular_hull_suite(df, mode, length, src_col='Close'):
         
     return df
 
-def renderizar_grafico_tv(simbolo_tv, altura=600):
-    html_tv = f"""
-    <div class="tradingview-widget-container">
-      <div id="tradingview_hull"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-      <script type="text/javascript">
-      new TradingView.widget({{
-      "width": "100%", "height": {altura}, "symbol": "{simbolo_tv}", "interval": "D", 
-      "timezone": "America/Sao_Paulo", "theme": "dark", "style": "1", "locale": "br", 
-      "enable_publishing": false, "allow_symbol_change": true, "container_id": "tradingview_hull"
-      }});
-      </script>
-    </div>
-    """
-    components.html(html_tv, height=altura)
+def renderizar_grafico_hull(df, ativo, modo, col_data):
+    fig = go.Figure()
+
+    # Plota os Candlesticks
+    fig.add_trace(go.Candlestick(
+        x=df[col_data], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
+        name='Preço', increasing_line_color='#26a69a', decreasing_line_color='#ef5350'
+    ))
+
+    # Separa a linha em duas (Verde para Alta, Vermelha para Baixa)
+    linha_alta = df['HULL'].where(df['HULL'] > df['HULL_2'], np.nan)
+    linha_baixa = df['HULL'].where(df['HULL'] <= df['HULL_2'], np.nan)
+
+    fig.add_trace(go.Scatter(
+        x=df[col_data], y=linha_alta, mode='lines', 
+        line=dict(color='#00ff00', width=3), name='Hull (Alta)'
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=df[col_data], y=linha_baixa, mode='lines', 
+        line=dict(color='#ff0000', width=3), name='Hull (Baixa)'
+    ))
+
+    # Formata o layout
+    fig.update_layout(
+        template='plotly_dark',
+        xaxis_rangeslider_visible=False,
+        height=600,
+        margin=dict(l=0, r=0, t=30, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
 
 # ==========================================
 # 3. INTERFACE DA PÁGINA
@@ -147,7 +166,6 @@ with aba_radar:
         capital_trade = st.number_input("Capital por Trade (R$):", value=10000.0, step=1000.0, key="h_cap")
         tempo_grafico = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="h_tmp")
 
-    # NOVA OPÇÃO DE STOP OPCIONAL
     usar_stop_radar = st.checkbox("🛑 Usar Stop Técnico (Sair se a média virar para baixo)", value=True, key="h_stop_r", help="Se desmarcado, a operação só fecha quando atingir o alvo de lucro.")
 
     btn_iniciar = st.button("🚀 Iniciar Varredura Hull", type="primary", use_container_width=True)
@@ -264,6 +282,7 @@ with aba_raiox:
     col1, col2, col3 = st.columns(3)
     with col1:
         rx_ativo = st.selectbox("Selecione o Ativo:", todos_ativos, index=todos_ativos.index('PETR4') if 'PETR4' in todos_ativos else 0)
+        # CORRIGIDO: Colchete adicionado no final da lista
         rx_modo = st.selectbox("Motor da Hull:", ["HMA (Padrão)", "EHMA (Exponencial Rápida)", "THMA (Tripla Suavizada)"], key="h_rx_modo")
         rx_periodo = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="h_rx_per")
     with col2:
@@ -273,7 +292,6 @@ with aba_raiox:
         rx_cap = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="h_rx_cap")
         rx_tmp = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk', '1mo'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x], key="h_rx_tmp")
         
-    # NOVA OPÇÃO DE STOP OPCIONAL PARA O RAIO X
     usar_stop_rx = st.checkbox("🛑 Usar Stop Técnico (Sair se a média virar para baixo)", value=True, key="h_stop_rx", help="Se desmarcado, a operação só fecha quando atingir o alvo.")
     
     st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
@@ -367,6 +385,7 @@ with aba_raiox:
                         
                     st.divider()
                     st.markdown(f"### 📈 Gráfico Interativo: {rx_ativo}")
-                    renderizar_grafico_tv(f"BMFBOVESPA:{rx_ativo}")
+                    # Usando o novo gráfico interativo nativo gerado pelo Plotly!
+                    renderizar_grafico_hull(df_b, rx_ativo, rx_modo, col_dt)
                 else: st.error("Dados insuficientes para este ativo.")
             except Exception as e: st.error(f"Erro ao processar: {e}")
