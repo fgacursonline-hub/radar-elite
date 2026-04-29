@@ -264,7 +264,7 @@ with aba_raiox:
     col1, col2, col3 = st.columns(3)
     with col1:
         rx_ativo = st.selectbox("Selecione o Ativo:", todos_ativos, index=todos_ativos.index('PETR4') if 'PETR4' in todos_ativos else 0)
-        rx_modo = st.selectbox("Motor da Hull:", ["HMA (Padrão)", "EHMA (Exponencial Rápida)", "THMA (Tripla Suavizada)", key="h_rx_modo")
+        rx_modo = st.selectbox("Motor da Hull:", ["HMA (Padrão)", "EHMA (Exponencial Rápida)", "THMA (Tripla Suavizada)"], key="h_rx_modo")
         rx_periodo = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=3, key="h_rx_per")
     with col2:
         rx_alvo = st.number_input("Alvo de Lucro (%):", value=10.0, step=1.0, key="h_rx_alvo")
