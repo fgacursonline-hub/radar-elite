@@ -48,35 +48,66 @@ def colorir_lucro(row):
     return [''] * len(row)
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO: GATILHO SIMPLES E PURO
+# 3. MOTOR MATEMÁTICO: MATEMÁTICA PURA DESACOPLADA (PROFIT)
 # ==========================================
-def calcular_indicadores_trend(df, di_len=13, adx_len=14, st_len=10, st_mult=3.0):
+def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0):
     if df is None or len(df) < max(di_len, adx_len, st_len) * 2:
         return None
         
-    # Garante que as colunas vindas do motor_dados estejam no padrão correto para o pandas_ta
     df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-    
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     df.index = df.index.tz_localize(None)
 
-    # 1. ADX e DMI com parâmetros separados (Idêntico ao ProfitPro)
-    adx_df = ta.adx(df['High'], df['Low'], df['Close'], length=di_len, lensig=adx_len)
-    if adx_df is None or adx_df.empty: return None
+    # --- 1. DMI E ADX (CÁLCULO MANUAL PARA BATER COM O PROFIT) ---
+    def wilder_rma(series, length):
+        rma = np.full_like(series, np.nan, dtype=float)
+        valid_idx = np.where(~np.isnan(series))[0]
+        if len(valid_idx) == 0: return rma
+        start = valid_idx[0]
+        rma[start + length - 1] = np.mean(series[start : start + length])
+        alpha = 1.0 / length
+        for i in range(start + length, len(series)):
+            rma[i] = alpha * series[i] + (1 - alpha) * rma[i-1]
+        return rma
 
-    df['ADX'] = adx_df[[col for col in adx_df.columns if col.startswith('ADX')][0]]
-    df['+DI'] = adx_df[[col for col in adx_df.columns if col.startswith('DMP')][0]]
-    df['-DI'] = adx_df[[col for col in adx_df.columns if col.startswith('DMN')][0]]
+    high, low, close = df['High'].values, df['Low'].values, df['Close'].values
+    
+    # Movimento Direcional
+    up = np.append(0, high[1:] - high[:-1])
+    down = np.append(0, low[:-1] - low[1:])
+    pdm = np.where((up > down) & (up > 0), up, 0.0)
+    mdm = np.where((down > up) & (down > 0), down, 0.0)
+    
+    # True Range
+    tr_a = np.abs(high - low)
+    tr_b = np.abs(high - np.append(0, close[:-1]))
+    tr_c = np.abs(low - np.append(0, close[:-1]))
+    tr = np.maximum(tr_a, np.maximum(tr_b, tr_c))
+    tr[0] = np.nan
 
-    # 2. SuperTrend 
+    # Suavização (Período DI = 13)
+    tr_rma = wilder_rma(tr, di_len)
+    pdm_rma = wilder_rma(pdm, di_len)
+    mdm_rma = wilder_rma(mdm, di_len)
+
+    # Criação das Linhas Verde (+DI) e Vermelha (-DI)
+    df['+DI'] = 100 * (pdm_rma / np.where(tr_rma == 0, 1e-10, tr_rma))
+    df['-DI'] = 100 * (mdm_rma / np.where(tr_rma == 0, 1e-10, tr_rma))
+
+    # Diferença Direcional (DX)
+    dx = 100 * np.abs(df['+DI'] - df['-DI']) / np.where((df['+DI'] + df['-DI']) == 0, 1e-10, (df['+DI'] + df['-DI']))
+    
+    # Criação da Linha Preta (ADX) - Profit suaviza com Média Exponencial (Período ADX = 8)
+    df['ADX'] = ta.ema(pd.Series(dx), length=adx_len) 
+
+    # --- 2. SUPERTREND (Idêntico ao Pine Script) ---
     st_df = ta.supertrend(df['High'], df['Low'], df['Close'], length=st_len, multiplier=st_mult)
-    if st_df is None or st_df.empty: return None
+    if st_df is not None and not st_df.empty:
+        df['SuperTrend'] = st_df[[col for col in st_df.columns if col.startswith('SUPERT_')][0]]
+        df['ST_Dir'] = st_df[[col for col in st_df.columns if col.startswith('SUPERTd_')][0]]
 
-    df['SuperTrend'] = st_df[[col for col in st_df.columns if col.startswith('SUPERT_')][0]]
-    df['ST_Dir'] = st_df[[col for col in st_df.columns if col.startswith('SUPERTd_')][0]]
-
-    # 3. Memória do dia anterior para encontrar o cruzamento exato de baixo para cima
+    # --- 3. MEMÓRIAS PARA O CRUZAMENTO ---
     df['ADX_Prev'] = df['ADX'].shift(1)
     df['-DI_Prev'] = df['-DI'].shift(1)
     df['+DI_Prev'] = df['+DI'].shift(1)
