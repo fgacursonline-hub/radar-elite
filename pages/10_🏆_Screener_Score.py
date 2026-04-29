@@ -119,7 +119,6 @@ def calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_type, p_adx, thresh_adx, 
 
     return df.dropna()
 
-
 # ==========================================
 # 4. INTERFACE PRINCIPAL
 # ==========================================
@@ -152,7 +151,6 @@ with st.container(border=True):
         st.markdown("**Institucional (Vol & VWAP)**")
         p_vol = st.number_input("Média de Volume:", value=20, step=1)
         p_vwap = st.number_input("Período VWAP (Proxy):", value=20, step=1)
-
 
 aba_radar, aba_raiox = st.tabs(["📡 Radar de Mercado", "🔬 Raio-X Clínico"])
 
@@ -192,25 +190,24 @@ with aba_radar:
                     })
                     
                 elif hoje['MA_Fast'] > hoje['MA_Slow'] and hoje['Bull_Pct'] >= 85:
-                    ls_É super normal essa confusão! A gente acaba usando o jargão técnico do "financês" e de programação quantitativa sem perceber. 
+                    ls_fortes.append({
+                        'Ativo': ativo, 'Cotação': f"R$ {hoje['Close']:.2f}",
+                        'Bull Score': f"{hoje['Bull_Pct']:.0f}%", 'Bias': hoje['Bias']
+                    })
+            except: pass
+            time.sleep(0.05)
+            
+        s_text.empty(); p_bar.empty()
+        
+        st.subheader(f"🎯 TIROS AUTORIZADOS HOJE (Score >= {score_min}%)")
+        if ls_entradas:
+            st.dataframe(pd.DataFrame(ls_entradas).style.map(colorir_bias, subset=['Bias']), use_container_width=True, hide_index=True)
+        else: st.info("Nenhum ativo alinhou as engrenagens perfeitamente hoje.")
+            
+        st.subheader("🔥 Top Ativos em Tendência Brutal (Score >= 85%)")
+        if ls_fortes:
+            st.dataframe(pd.DataFrame(ls_fortes).style.map(colorir_bias, subset=['Bias']), use_container_width=True, hide_index=True)
 
-Esses termos são as regras de **Gestão de Risco** que o robô usou para encerrar a operação. No backtest atual, o robô está programado para calcular o risco com base na volatilidade (o ATR) e criar uma "caixa" de proteção ao redor do preço de entrada.
-
-Vou te explicar o que cada um significa e, em seguida, vou te dar o código com a **legenda bonitinha já inserida na tela do site**, para você nunca mais esquecer.
-
-### O Dicionário do Robô:
-*   **Hit SL ❌ (Stop Loss):** O preço caiu e bateu no seu limite máximo de perda aceitável. O robô abortou a missão para proteger seu capital antes que o prejuízo ficasse gigante.
-*   **Hit Alvo 1:2 ✅ (Take Profit):** O preço subiu e bateu no seu alvo de lucro! E por que "1:2"? Significa que o robô buscou um lucro que é **2 vezes maior** que o risco que você correu. (Ex: Arriscou perder R$ 100 para ganhar R$ 200).
-*   **Saída Cruzamento ✅ / Cruzou P/ Baixo ❌:** O preço não bateu nem no Alvo de Lucro lá em cima, nem no Stop Loss lá embaixo. Em vez disso, a tendência simplesmente perdeu força e a Média Rápida cruzou a Média Lenta para baixo. O robô entendeu que a "festa acabou" e encerrou a operação no meio do caminho (com lucro ou com um pequeno prejuízo).
-
-### A Atualização com a Legenda na Tela
-Vamos colocar essa legenda direto no seu Dashboard para ficar profissional. 
-
-Procure a parte final do seu código, **logo acima de onde a tabela de Backtest é desenhada** (lá pela linha 285, logo depois daquele bloco `st.markdown("### 📊 Backtest Histórico de Tiros")`), e adicione o bloco de `st.caption` com a legenda. 
-
-Para facilitar, aqui está o **bloco completo da Aba Raio-X** (da linha 230 até o final) já com a legenda embutida. Só copiar e substituir a parte debaixo do seu código:
-
-```python
 # --- ABA 2: RAIO-X E ESTADO CLÍNICO ---
 with aba_raiox:
     c1, c2, c3 = st.columns([1.5, 1, 1])
@@ -262,12 +259,11 @@ with aba_raiox:
                         # ==================================================
                         st.markdown("### 📊 Backtest Histórico de Tiros")
                         
-                        # ---> LEGENDA ADICIONADA AQUI <---
                         st.caption("""
                         **📖 Legenda de Saídas:**
                         * **Hit Alvo 1:2 ✅**: O preço atingiu o Alvo de Lucro (lucro 2x maior que o risco).
                         * **Hit SL ❌**: O preço bateu no Stop Loss (limite de perda de proteção).
-                        * **Saída/Cruzamento ❌✅**: As médias inverteram a tendência e o robô encerrou a operação no meio do caminho.
+                        * **Saída Cruzamento ❌✅**: As médias inverteram a tendência e o robô encerrou a operação no meio do caminho.
                         """)
                         
                         trades = []
