@@ -71,5 +71,6 @@ macro_elite = {
     'FEF2!': 'SGX',        # Minério de Ferro (Singapura)
     'BRN1!': 'TVC',        # Petróleo Brent Contínuo
     'XAUUSD': 'OANDA',     # Ouro Global
-    'EWZ': 'AMEX'          # ETF MSCI Brazil
+    'EWZ': 'AMEX',         # ETF MSCI Brazil
+    'BTCUSDT': 'BINANCE'   # Bitcoin vs Tether (Referência Cripto Global)
 }
