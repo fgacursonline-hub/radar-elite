@@ -10,7 +10,6 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
-    # Agora importamos também o macro_elite
     from config_ativos import bdrs_elite, ibrx_selecao, pares_elite, benchmarks_elite, macro_elite
 except ImportError:
     st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
@@ -41,12 +40,10 @@ tradutor_intervalo = {
 }
 
 # --- MAPEAMENTO INTELIGENTE DE BOLSAS (EXCHANGES) ---
-# Ações, BDRs e Benchmarks são da B3. Os Macros têm suas bolsas específicas.
 b3_symbols = [a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao + benchmarks_elite)]
 mapa_exchanges = {sym: 'BMFBOVESPA' for sym in b3_symbols}
 mapa_exchanges.update(macro_elite)
 
-# Lista unificada para o Multiselect
 lista_geral = sorted(list(mapa_exchanges.keys()))
 
 # ==========================================
@@ -64,7 +61,7 @@ with tab_geral:
     st.subheader("⚙️ Configurações do Duelo")
     c1, c2, c3 = st.columns([2, 1, 1])
     with c1:
-        ativos_comp = st.multiselect("Selecione até 6 ativos:", options=lista_geral, default=["PETR4", "BRN1!", "WIN1!"], max_selections=6)
+        ativos_comp = st.multiselect("Selecione até 6 ativos:", options=lista_geral, default=["PETR4", "BRN1!"], max_selections=6)
     with c2:
         tempo_comp = st.selectbox("Tempo Gráfico:", ['1d', '60m'], index=0, key="t_geral")
     with c3:
@@ -77,26 +74,35 @@ with tab_geral:
     if st.button("🚀 Gerar Comparativo de Performance", type="primary", use_container_width=True):
         with st.spinner("Analisando e nivelando as cotações..."):
             df_final = pd.DataFrame()
+            
             for t in ativos_comp:
                 try:
-                    # O segredo: Busca o Exchange correto no dicionário
                     bolsa_correta = mapa_exchanges.get(t, 'BMFBOVESPA')
-                    
                     df_at = tv.get_hist(symbol=t, exchange=bolsa_correta, interval=tradutor_intervalo[tempo_comp], n_bars=periodo_comp)
                     
                     if df_at is not None and not df_at.empty:
-                        # Ponto zero (Nivelamento em Porcentagem)
+                        # --- O SEGREDO DA SINCRONIA GLOBAL ---
+                        # 1. Tira o fuso horário para alinhar o mundo todo
+                        df_at.index = pd.to_datetime(df_at.index).tz_localize(None)
+                        # 2. No gráfico diário, zera as horas, deixando apenas as datas (ex: 29/04/2026)
+                        if tempo_comp == '1d': 
+                            df_at.index = df_at.index.normalize()
+
                         inicio = df_at['close'].iloc[0]
                         df_at[t] = ((df_at['close'] / inicio) - 1) * 100
                         
                         if df_final.empty: 
                             df_final = df_at[[t]]
                         else: 
-                            df_final = df_final.join(df_at[t], how='inner')
+                            # Usa OUTER join para não perder dados por causa de feriados distintos
+                            df_final = df_final.join(df_at[t], how='outer')
                 except Exception as e: 
                     pass
             
             if not df_final.empty:
+                # Preenche eventuais buracos de feriados repetindo o preço do dia anterior (ffill)
+                df_final = df_final.ffill().bfill()
+                
                 st.line_chart(df_final)
                 ult = df_final.iloc[-1].sort_values(ascending=False)
                 st.info(f"🏆 Liderança do Período: **{ult.index[0]}** com **{ult.iloc[0]:.2f}%**. Diferença para o último colocado: **{ult.max()-ult.min():.2f}%**.")
