@@ -70,18 +70,15 @@ def calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_type, p_adx, thresh_adx, 
     df['RSI_Slow'] = ta.rsi(df['Close'], length=p_rsi_slow)
     df['RSI_Fast'] = ta.rsi(df['Close'], length=p_rsi_fast)
     
-    # MACD (Mantido Clássico 12,26,9, mas você pode parametrizar no futuro se quiser)
     macd = ta.macd(df['Close'], fast=12, slow=26, signal=9)
     df['MACD_Line'] = macd.iloc[:, 0]
     df['MACD_Signal'] = macd.iloc[:, 2]
     
-    # ADX e DMI
     adx_df = ta.adx(df['High'], df['Low'], df['Close'], length=p_adx)
     df['ADX'] = adx_df.iloc[:, 0]
     df['+DI'] = adx_df.iloc[:, 1]
     df['-DI'] = adx_df.iloc[:, 2]
     
-    # Volume Médio
     df['Vol_Avg'] = ta.sma(df['Volume'], length=p_vol)
 
     # --- 3. SCORE DINÂMICO ---
@@ -107,7 +104,6 @@ def calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_type, p_adx, thresh_adx, 
     )
     df['Bear_Pct'] = (r_score / 7) * 100
 
-    # Viés de Mercado
     conditions = [
         (df['Bull_Pct'] - df['Bear_Pct']) >= 40,
         (df['Bear_Pct'] - df['Bull_Pct']) >= 40,
@@ -116,7 +112,6 @@ def calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_type, p_adx, thresh_adx, 
     choices = ["STRONG BULL", "STRONG BEAR", "MILD BULL"]
     df['Bias'] = np.select(conditions, choices, default="MILD BEAR")
 
-    # Gatilhos
     df['MA_Fast_Prev'] = df['MA_Fast'].shift(1)
     df['MA_Slow_Prev'] = df['MA_Slow'].shift(1)
     df['Buy_Cross'] = (df['MA_Fast_Prev'] <= df['MA_Slow_Prev']) & (df['MA_Fast'] > df['MA_Slow'])
@@ -124,35 +119,40 @@ def calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_type, p_adx, thresh_adx, 
 
     return df.dropna()
 
-# ==========================================
-# 4. BARRA LATERAL: O CONTROLE DO QUANT
-# ==========================================
-with st.sidebar:
-    st.header("⚙️ Calibragem Quant")
-    st.markdown("Ajuste as engrenagens da sua estratégia.")
-    
-    st.subheader("1. Médias Móveis")
-    ma_tipo = st.selectbox("Tipo de Média:", ['EMA (Exponencial)', 'RMA (Welles Wilder)', 'SMA (Simples)'])
-    p_fast = st.number_input("Período Rápido:", value=9, step=1)
-    p_slow = st.number_input("Período Lento:", value=21, step=1)
-    
-    st.subheader("2. Filtros de Força (ADX & RSI)")
-    p_adx = st.number_input("Período ADX:", value=14, step=1)
-    thresh_adx = st.slider("Corte ADX (Força Mínima):", 15, 50, 25)
-    
-    p_rsi_slow = st.number_input("Período RSI Padrão:", value=14, step=1)
-    p_rsi_fast = st.number_input("Período RSI Rápido:", value=5, step=1)
-    thresh_rsi = st.slider("Linha d'água do RSI:", 40, 60, 50)
-    
-    st.subheader("3. Volume & VWAP")
-    p_vol = st.number_input("Média de Volume:", value=20, step=1)
-    p_vwap = st.number_input("Período VWAP (Proxy):", value=20, step=1)
 
 # ==========================================
-# 5. INTERFACE PRINCIPAL
+# 4. INTERFACE PRINCIPAL
 # ==========================================
 st.title("🎯 Sniper Confluence (Pro Edition)")
-st.info("💡 **Sistema Dinâmico:** Você está no controle absoluto. Os cálculos de Confluência agora respeitam os parâmetros da Barra Lateral.")
+st.info("💡 **Sistema Dinâmico:** Ajuste as engrenagens da estratégia abaixo. A pontuação de Confluência será calculada em tempo real com base nos seus critérios.")
+
+# --- BLOCO GLOBAL DE PARÂMETROS ---
+with st.container(border=True):
+    st.markdown("#### ⚙️ Calibragem Quant (Parâmetros Globais)")
+    c_ma, c_adx, c_rsi, c_vol = st.columns(4)
+    
+    with c_ma:
+        st.markdown("**Médias Móveis**")
+        ma_tipo = st.selectbox("Tipo de Média:", ['EMA (Exponencial)', 'RMA (Welles Wilder)', 'SMA (Simples)'])
+        p_fast = st.number_input("Período Rápido:", value=9, step=1)
+        p_slow = st.number_input("Período Lento:", value=21, step=1)
+        
+    with c_adx:
+        st.markdown("**Força Direcional (ADX)**")
+        p_adx = st.number_input("Período ADX:", value=14, step=1)
+        thresh_adx = st.number_input("Corte ADX (Força Mínima):", value=25, step=1)
+        
+    with c_rsi:
+        st.markdown("**Momentum (RSI)**")
+        p_rsi_slow = st.number_input("Período RSI Padrão:", value=14, step=1)
+        p_rsi_fast = st.number_input("Período RSI Rápido:", value=5, step=1)
+        thresh_rsi = st.number_input("Linha D'água RSI:", value=50, step=1)
+        
+    with c_vol:
+        st.markdown("**Institucional (Vol & VWAP)**")
+        p_vol = st.number_input("Média de Volume:", value=20, step=1)
+        p_vwap = st.number_input("Período VWAP (Proxy):", value=20, step=1)
+
 
 aba_radar, aba_raiox = st.tabs(["📡 Radar de Mercado", "🔬 Raio-X Clínico"])
 
@@ -177,7 +177,7 @@ with aba_radar:
             try:
                 df = puxar_dados_blindados(ativo, tempo_r)
                 if df is None: continue
-                # PASSANDO TODOS OS PARÂMETROS DA SIDEBAR
+                # Passa todas as variáveis do container principal
                 df = calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_tipo, p_adx, thresh_adx, p_rsi_slow, p_rsi_fast, thresh_rsi, p_vwap, p_vol)
                 if df is None: continue
                 
@@ -222,18 +222,17 @@ with aba_raiox:
             try:
                 df_full = puxar_dados_blindados(atv_rx, tmp_rx)
                 if df_full is not None:
-                    # Roda o motor com as configs do usuário
+                    # Passa todas as variáveis do container principal
                     df = calcular_khan_saab_dinamico(df_full, p_fast, p_slow, ma_tipo, p_adx, thresh_adx, p_rsi_slow, p_rsi_fast, thresh_rsi, p_vwap, p_vol)
                     
                     if df is not None:
                         hoje = df.iloc[-1]
                         
                         # ==================================================
-                        # O NOVO DASHBOARD: ESTADO CLÍNICO DO ATIVO HOJE
+                        # DASHBOARD: ESTADO CLÍNICO DO ATIVO HOJE
                         # ==================================================
                         st.markdown(f"### 🩺 Estado Clínico: {atv_rx} (Hoje)")
                         
-                        # Criando uma tabela organizada para os indicadores
                         dados_clinicos = [
                             {"Indicador": "Preço x VWAP", "Valor Exato": f"Preço: R${hoje['Close']:.2f} | VWAP: R${hoje['VWAP_Proxy']:.2f}", "Status": "🟢 Acima (Bull)" if hoje['Close'] > hoje['VWAP_Proxy'] else "🔴 Abaixo (Bear)"},
                             {"Indicador": f"Média Rápida x Lenta ({p_fast}/{p_slow})", "Valor Exato": f"Ráp: R${hoje['MA_Fast']:.2f} | Len: R${hoje['MA_Slow']:.2f}", "Status": "🟢 Comprado (Bull)" if hoje['MA_Fast'] > hoje['MA_Slow'] else "🔴 Vendido (Bear)"},
@@ -271,14 +270,13 @@ with aba_raiox:
                             candle = df_b.iloc[i]
                             
                             if not em_posicao:
-                                # Entrada (Usa o score mínimo de 70% fixo para o backtest de qualidade)
                                 if candle['Buy_Cross'] and candle['Bull_Pct'] >= 70:
                                     em_posicao = True
                                     p_ent = candle['Close']
                                     d_ent = candle[col_dt]
                                     risco = candle['ATR'] * mult_atr
                                     sl = p_ent - risco
-                                    tp_alvo = p_ent + (risco * 2) # Assume Alvo Padrão 1:2 no Backtest Rápido
+                                    tp_alvo = p_ent + (risco * 2) 
                             else:
                                 se_bateu_sl = candle['Low'] <= sl
                                 se_bateu_tp = candle['High'] >= tp_alvo
