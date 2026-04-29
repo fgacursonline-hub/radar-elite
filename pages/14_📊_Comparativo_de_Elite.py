@@ -1,4 +1,5 @@
 import streamlit as st
+from tvDatafeed import TvDatafeed, Interval
 import pandas as pd
 import numpy as np
 import warnings
@@ -17,13 +18,13 @@ except ImportError:
 try:
     from motor_dados import puxar_dados_blindados
 except ImportError:
-    st.error("❌ Arquivo 'motor_dados.py' não encontrado. O Comparador precisa dele para buscar os dados.")
+    st.error("❌ Arquivo 'motor_dados.py' não encontrado.")
     st.stop()
 
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# 1. SEGURANÇA E CONFIGURAÇÃO DA PÁGINA
+# 1. SEGURANÇA E CONEXÃO GERAL
 # ==========================================
 st.set_page_config(page_title="Comparador de Elite", layout="wide")
 
@@ -31,37 +32,80 @@ if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, inicie sessão na página inicial (Home).")
     st.stop()
 
-# --- MAPEAMENTO DA LISTA GERAL ---
+@st.cache_resource
+def get_tv_connection():
+    return TvDatafeed()
+
+tv = get_tv_connection()
+
+tradutor_intervalo = {
+    '15m': Interval.in_15_minute,
+    '60m': Interval.in_1_hour,
+    '1d': Interval.in_daily,
+    '1wk': Interval.in_weekly
+}
+
+# --- MAPEAMENTO INTELIGENTE DE BOLSAS (EXCHANGES) ---
 b3_symbols = [a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao + benchmarks_elite)]
-lista_geral = sorted(list(set(b3_symbols + list(macro_elite.keys()))))
+mapa_exchanges = {sym: 'BMFBOVESPA' for sym in b3_symbols}
+mapa_exchanges.update(macro_elite)
+
+lista_geral = sorted(list(mapa_exchanges.keys()))
 
 # ==========================================
-# 2. FUNÇÃO DE LIMPEZA E PADRONIZAÇÃO
+# 2. FUNÇÕES HÍBRIDAS E DE LIMPEZA
 # ==========================================
+def buscar_dados_hibrido(simbolo, tempo, periodo):
+    """
+    Tenta o motor cego da B3. Se falhar (ativo gringo), usa conexão internacional.
+    """
+    bolsa = mapa_exchanges.get(simbolo, 'BMFBOVESPA')
+    
+    # Tratamento especial para Dólar e Stocks no Duelo Internacional
+    if simbolo == 'USDBRL': bolsa = 'FX_IDC'
+    elif simbolo in pares_elite.values(): bolsa = 'NYSE'
+        
+    # 1. Tenta usar o motor_dados blindado
+    try:
+        df_cru = puxar_dados_blindados(simbolo, tempo)
+        if df_cru is not None and not df_cru.empty:
+            return df_cru
+    except:
+        pass
+        
+    # 2. Se falhou (Gringo ou erro), vai na conexão direta
+    try:
+        intervalo_tv = tradutor_intervalo.get(tempo, Interval.in_daily)
+        df_cru = tv.get_hist(symbol=simbolo, exchange=bolsa, interval=intervalo_tv, n_bars=periodo + 20)
+        
+        # Se for NYSE e falhar, tenta NASDAQ
+        if df_cru is None and bolsa == 'NYSE':
+            df_cru = tv.get_hist(symbol=simbolo, exchange='NASDAQ', interval=intervalo_tv, n_bars=periodo + 20)
+            
+        return df_cru
+    except:
+        return None
+
 def processar_ativo_comparador(df, simbolo, tempo, periodo):
-    """Limpa o fuso horário, normaliza os nomes das colunas e alinha as datas."""
+    """Limpa fuso horário, normaliza nomes e resolve problemas de feriado."""
     if df is None or df.empty:
         return None
     
-    # Padroniza as colunas (o motor pode retornar 'close' ou 'Close')
     df.columns = [c.capitalize() for c in df.columns]
     if 'Close' not in df.columns:
         return None
         
-    # Corta para a janela desejada
-    df = df.tail(periodo)
+    df = df.tail(periodo).copy()
     
-    # Remove Fuso Horário (Resolve os conflitos B3 vs Mundo)
+    # Remove fuso horário para bater as datas do Brasil com o Exterior
     if df.index.tz is not None:
         df.index = df.index.tz_localize(None)
         
-    # Se for gráfico diário, zera as horas (ex: 29/04/2026 00:00:00)
+    # No gráfico diário, apaga a hora pra cruzar perfeito (ex: 29/04/2026)
     if tempo == '1d': 
         df.index = df.index.normalize()
         
-    # Garante que não tem índices duplicados
     df = df[~df.index.duplicated(keep='last')]
-    
     return df
 
 # ==========================================
@@ -79,7 +123,7 @@ with tab_geral:
     st.subheader("⚙️ Configurações do Duelo")
     c1, c2, c3 = st.columns([2, 1, 1])
     with c1:
-        ativos_comp = st.multiselect("Selecione até 6 ativos:", options=lista_geral, default=["PETR4", "BRN1!"], max_selections=6)
+        ativos_comp = st.multiselect("Selecione até 6 ativos:", options=lista_geral, default=["IBOV", "EWZ"], max_selections=6)
     with c2:
         tempo_comp = st.selectbox("Tempo Gráfico:", ['1d', '60m', '15m'], index=0, key="t_geral")
     with c3:
@@ -90,37 +134,46 @@ with tab_geral:
             st.caption(f"🕒 **Referência:** {periodo_comp} barras ≈ {int(periodo_comp/7)} dias.")
 
     if st.button("🚀 Gerar Comparativo de Performance", type="primary", use_container_width=True):
-        with st.spinner("Analisando e nivelando as cotações via Motor de Dados..."):
-            df_final = pd.DataFrame()
-            
-            for t in ativos_comp:
-                try:
-                    # Usa o seu motor de dados cego
-                    df_at_cru = puxar_dados_blindados(t, tempo_comp)
+        if len(ativos_comp) < 2:
+            st.warning("⚠️ Selecione pelo menos 2 ativos para fazer uma comparação justa.")
+        else:
+            with st.spinner("Analisando e nivelando as cotações..."):
+                df_final = pd.DataFrame()
+                sucessos = []
+                falhas = []
+                
+                for t in ativos_comp:
+                    df_at_cru = buscar_dados_hibrido(t, tempo_comp, periodo_comp)
                     df_at = processar_ativo_comparador(df_at_cru, t, tempo_comp, periodo_comp)
                     
                     if df_at is not None and not df_at.empty:
-                        # Ponto zero (Nivelamento em Porcentagem)
+                        # Ponto zero percentual
                         inicio = df_at['Close'].dropna().iloc[0]
                         df_at[t] = ((df_at['Close'] / inicio) - 1) * 100
                         
                         if df_final.empty: 
                             df_final = df_at[[t]]
                         else: 
-                            # OUTER JOIN: Junta os calendários. Se a B3 for feriado, cria um "buraco" pra ela.
+                            # OUTER JOIN junta as duas linhas mesmo com feriados desencontrados
                             df_final = df_final.join(df_at[[t]], how='outer')
-                except Exception as e: 
-                    pass
-            
-            if not df_final.empty:
-                # FFILL: Preenche os "buracos" de feriados/horários com o último preço conhecido
-                df_final = df_final.ffill().fillna(0)
+                        sucessos.append(t)
+                    else:
+                        falhas.append(t)
                 
-                st.line_chart(df_final)
-                ult = df_final.iloc[-1].sort_values(ascending=False)
-                st.info(f"🏆 Liderança do Período: **{ult.index[0]}** com **{ult.iloc[0]:.2f}%**. Diferença para o último colocado: **{ult.max()-ult.min():.2f}%**.")
-            else: 
-                st.error("Falha ao buscar dados no motor_dados ou não houve sobreposição compatível.")
+                if falhas:
+                    st.warning(f"⚠️ Não foi possível conectar aos seguintes ativos: **{', '.join(falhas)}**. Eles foram removidos do gráfico.")
+
+                if not df_final.empty and len(sucessos) > 0:
+                    # FFILL preenche o "buraco" de um feriado brasileiro copiando o preço de ontem
+                    df_final = df_final.ffill().fillna(0)
+                    
+                    st.line_chart(df_final)
+                    
+                    if len(df_final.columns) > 1:
+                        ult = df_final.iloc[-1].sort_values(ascending=False)
+                        st.info(f"🏆 Liderança do Período: **{ult.index[0]}** com **{ult.iloc[0]:.2f}%**. Diferença para o último colocado: **{ult.max()-ult.min():.2f}%**.")
+                else: 
+                    st.error("Falha ao montar o gráfico. Nenhum dado compatível foi encontrado.")
 
     st.markdown("---")
     st.markdown("### 📖 Glossário do Comparador")
@@ -150,12 +203,11 @@ with tab_inter:
             st.caption(f"🕒 **Referência:** {periodo_inter} barras ≈ {int(periodo_inter/7)} dias.")
 
     if st.button("📈 Gerar Análise de Arbitragem", type="primary", use_container_width=True):
-        with st.spinner("Sincronizando mercados globais via Motor de Dados..."):
+        with st.spinner("Sincronizando mercados globais pelo Motor Híbrido..."):
             
-            # Puxa tudo pelo seu motor
-            df_bdr_cru = puxar_dados_blindados(bdr_sel, tempo_inter)
-            df_stock_cru = puxar_dados_blindados(stock_sel, tempo_inter)
-            df_dolar_cru = puxar_dados_blindados('USDBRL', tempo_inter)
+            df_bdr_cru = buscar_dados_hibrido(bdr_sel, tempo_inter, periodo_inter)
+            df_stock_cru = buscar_dados_hibrido(stock_sel, tempo_inter, periodo_inter)
+            df_dolar_cru = buscar_dados_hibrido('USDBRL', tempo_inter, periodo_inter)
 
             df_bdr = processar_ativo_comparador(df_bdr_cru, bdr_sel, tempo_inter, periodo_inter)
             df_stock = processar_ativo_comparador(df_stock_cru, stock_sel, tempo_inter, periodo_inter)
@@ -163,12 +215,12 @@ with tab_inter:
 
             if all(v is not None for v in [df_bdr, df_stock, df_dolar]):
                 
-                # Nivelamento em Porcentagem
+                # Nivelamento %
                 df_bdr[bdr_sel] = ((df_bdr['Close'] / df_bdr['Close'].iloc[0]) - 1) * 100
                 df_stock[stock_sel] = ((df_stock['Close'] / df_stock['Close'].iloc[0]) - 1) * 100
                 df_dolar['DÓLAR'] = ((df_dolar['Close'] / df_dolar['Close'].iloc[0]) - 1) * 100
 
-                # Junta os DataFrames preservando os feriados (outer join) e preenche vazios (ffill)
+                # Outer join para lidar com os feriados dos EUA x Brasil
                 df_prova = pd.DataFrame()
                 df_prova = df_prova.join(df_bdr[[bdr_sel]], how='outer')\
                                    .join(df_stock[[stock_sel]], how='outer')\
@@ -202,9 +254,9 @@ with tab_inter:
                     else:
                         st.success(f"✅ EFICIÊNCIA: Desvio de {desvio:.2f}%")
                         st.write("O mercado está em simetria perfeita. O preço da BDR reflete exatamente a Stock + Câmbio.")
-                else: st.error("Sincronização das datas falhou.")
+                else: st.error("Sincronização das datas falhou. Tente uma janela de observação maior.")
             else:
-                st.error("O motor_dados falhou em puxar os ativos gringos ou o dólar. Verifique a conexão.")
+                st.error("O sistema falhou ao puxar um dos ativos internacionais. A corretora pode estar offline ou o código da Stock alterado.")
 
     st.markdown("---")
     st.markdown("### 📖 Glossário da Prova Real")
