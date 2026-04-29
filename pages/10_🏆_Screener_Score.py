@@ -157,20 +157,26 @@ with st.container(border=True):
 
 # --- BLOCO DE GESTÃO DE RISCO E SAÍDAS ---
 with st.container(border=True):
-    st.markdown("#### 🛡️ Gestão de Risco e Saídas")
+    st.markdown("#### 🛡️ Gestão de Risco e Saídas (Backtest)")
     c_sl, c_tp, c_trail = st.columns(3)
     
     with c_sl:
-        usar_sl = st.toggle("🛡️ Usar Stop Loss (ATR)", value=True)
-        mult_atr = st.number_input("Multiplicador do Stop (ATR):", value=1.5, step=0.1, disabled=not usar_sl)
+        usar_sl = st.toggle("🛡️ Usar Stop Loss", value=True)
+        tipo_sl = st.selectbox("Base do Stop:", ["ATR (Volatilidade)", "Percentual (%)"], disabled=not usar_sl)
+        val_sl = st.number_input("Valor do Stop:", value=1.5 if tipo_sl == "ATR (Volatilidade)" else 5.0, step=0.1 if tipo_sl == "ATR (Volatilidade)" else 0.5, disabled=not usar_sl)
         
     with c_tp:
-        usar_tp = st.toggle("🎯 Usar Take Profit Fixo", value=True)
-        rel_risco_retorno = st.selectbox("Risco : Retorno (Alvo)", ["1:1", "1:2", "1:3", "1:4", "1:5"], index=1, disabled=not usar_tp)
-        tp_mult = int(rel_risco_retorno.split(":")[1]) # Extrai o multiplicador (ex: "1:2" -> 2)
-        
+        usar_tp = st.toggle("🎯 Usar Take Profit", value=True)
+        tipo_tp = st.selectbox("Base do Alvo:", ["Risco:Retorno (ATR)", "Percentual (%)"], disabled=not usar_tp)
+        if tipo_tp == "Risco:Retorno (ATR)":
+            val_tp_atr = st.selectbox("Proporção Risco:Retorno", ["1:1", "1:2", "1:3", "1:4", "1:5"], index=1, disabled=not usar_tp)
+            tp_mult = int(val_tp_atr.split(":")[1])
+        else:
+            val_tp_pct = st.number_input("Alvo (%):", value=15.0, step=0.5, disabled=not usar_tp)
+            
     with c_trail:
-        usar_cruzamento = st.toggle("📉 Saída por Cruzamento Inverso", value=True, help="Encerra o trade se a Média Rápida cruzar a Lenta para baixo, independentemente dos alvos.")
+        usar_cruzamento = st.toggle("📉 Saída por Cruzamento Inverso", value=True)
+        st.caption("Encerra a operação se a Média Rápida cruzar a Lenta para baixo, ignorando os alvos fixos.")
 
 
 aba_radar, aba_raiox = st.tabs(["📡 Radar de Mercado", "🔬 Raio-X Clínico"])
@@ -278,12 +284,18 @@ with aba_raiox:
                         # ==================================================
                         st.markdown("### 📊 Backtest Histórico de Tiros")
                         
-                        # Legenda Dinâmica de acordo com o que está ligado
+                        # Legenda que se adapta ao que você ativou/desativou
                         texto_legenda = "**📖 Legenda de Saídas Ativas:**\n"
-                        if usar_tp: texto_legenda += f"* **Hit Alvo {rel_risco_retorno} ✅**: O preço atingiu o Alvo de Lucro programado.\n"
-                        if usar_sl: texto_legenda += "* **Hit SL ❌**: O preço bateu no Stop Loss de proteção.\n"
-                        if usar_cruzamento: texto_legenda += "* **Saída Cruzamento ❌✅**: As médias inverteram a tendência e o robô encerrou a operação.\n"
-                        if not usar_tp and not usar_sl and not usar_cruzamento: texto_legenda += "* ⚠️ **Atenção:** Nenhuma regra de saída habilitada! As operações nunca serão encerradas."
+                        if usar_tp: 
+                            alvo_str = f"Risco:Retorno {val_tp_atr}" if tipo_tp == 'Risco:Retorno (ATR)' else f"{val_tp_pct}%"
+                            texto_legenda += f"* **Hit Alvo ({alvo_str}) ✅**: O preço atingiu o Alvo de Lucro programado.\n"
+                        if usar_sl: 
+                            sl_str = f"{val_sl}x ATR" if tipo_sl == 'ATR (Volatilidade)' else f"{val_sl}%"
+                            texto_legenda += f"* **Hit SL ({sl_str}) ❌**: O preço bateu no Stop Loss de proteção.\n"
+                        if usar_cruzamento: 
+                            texto_legenda += "* **Saída Cruzamento ❌✅**: As médias inverteram a tendência e o robô encerrou a operação.\n"
+                        if not usar_tp and not usar_sl and not usar_cruzamento: 
+                            texto_legenda += "* ⚠️ **Atenção:** Nenhuma regra de saída habilitada! As operações nunca serão encerradas."
                         
                         st.caption(texto_legenda)
                         
@@ -302,10 +314,25 @@ with aba_raiox:
                                     p_ent = candle['Close']
                                     d_ent = candle[col_dt]
                                     
-                                    # Calcula os pontos apenas se ativados
-                                    risco = candle['ATR'] * mult_atr if (usar_sl or usar_tp) else 0
-                                    sl = p_ent - risco if usar_sl else -np.inf
-                                    tp_alvo = p_ent + (risco * tp_mult) if usar_tp and risco > 0 else np.inf
+                                    # Lógica Flexível de Stop Loss
+                                    if usar_sl:
+                                        if tipo_sl == "ATR (Volatilidade)":
+                                            sl = p_ent - (candle['ATR'] * val_sl)
+                                        else:
+                                            sl = p_ent * (1 - (val_sl / 100))
+                                    else:
+                                        sl = -np.inf
+                                        
+                                    # Lógica Flexível de Take Profit
+                                    if usar_tp:
+                                        if tipo_tp == "Risco:Retorno (ATR)":
+                                            # Risco baseia-se no SL de ATR. Se o SL ATR estiver desligado, assume 1.5x padrão.
+                                            risco_base = (candle['ATR'] * val_sl) if (usar_sl and tipo_sl == "ATR (Volatilidade)") else (candle['ATR'] * 1.5)
+                                            tp_alvo = p_ent + (risco_base * tp_mult)
+                                        else:
+                                            tp_alvo = p_ent * (1 + (val_tp_pct / 100))
+                                    else:
+                                        tp_alvo = np.inf
                             else:
                                 se_bateu_sl = usar_sl and (candle['Low'] <= sl)
                                 se_bateu_tp = usar_tp and (candle['High'] >= tp_alvo)
@@ -316,11 +343,11 @@ with aba_raiox:
                                 
                                 if se_bateu_sl:
                                     lucro = ((sl / p_ent) - 1) * 100
-                                    motivo = "Hit SL ❌"
+                                    motivo = f"Hit SL ❌"
                                     saiu = True
                                 elif se_bateu_tp:
                                     lucro = ((tp_alvo / p_ent) - 1) * 100
-                                    motivo = f"Hit Alvo {rel_risco_retorno} ✅"
+                                    motivo = f"Hit Alvo ✅"
                                     saiu = True
                                 elif virou_tend:
                                     lucro = ((candle['Close'] / p_ent) - 1) * 100
