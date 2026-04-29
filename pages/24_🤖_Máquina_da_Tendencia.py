@@ -48,7 +48,7 @@ def colorir_lucro(row):
     return [''] * len(row)
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO: O CRUZAMENTO FRANKENSTEIN
+# 3. MOTOR MATEMÁTICO: O CRUZAMENTO DO PROFIT
 # ==========================================
 def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0):
     if df is None or len(df) < max(di_len, adx_len, st_len) * 2:
@@ -86,7 +86,7 @@ def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0)
     tr = np.maximum(tr_a, np.maximum(tr_b, tr_c))
     tr[0] = np.nan
 
-    # --- 1. DMI (Ex: 13) PARA AS LINHAS VERDE E VERMELHA ---
+    # --- 1. DMI PARA AS LINHAS VERDE E VERMELHA ---
     tr_di = wilder_rma(tr, di_len)
     pdm_di = wilder_rma(pdm, di_len)
     mdm_di = wilder_rma(mdm, di_len)
@@ -94,7 +94,7 @@ def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0)
     df['+DI'] = 100 * (pdm_di / np.where(tr_di == 0, 1e-10, tr_di))
     df['-DI'] = 100 * (mdm_di / np.where(tr_di == 0, 1e-10, tr_di))
 
-    # --- 2. ADX (Ex: 8) PARA A LINHA PRETA NERVOSA ---
+    # --- 2. ADX PARA A LINHA PRETA NERVOSA ---
     tr_adx = wilder_rma(tr, adx_len)
     pdm_adx = wilder_rma(pdm, adx_len)
     mdm_adx = wilder_rma(mdm, adx_len)
@@ -103,9 +103,9 @@ def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0)
     mdi_adx = 100 * (mdm_adx / np.where(tr_adx == 0, 1e-10, tr_adx))
     
     dx_adx = 100 * np.abs(pdi_adx - mdi_adx) / np.where((pdi_adx + mdi_adx) == 0, 1e-10, (pdi_adx + mdi_adx))
-    df['ADX'] = wilder_rma(dx_adx, adx_len) # A linha preta suavizada no próprio período
+    df['ADX'] = wilder_rma(dx_adx, adx_len)
 
-    # --- 3. SUPERTREND (Matemática Oficial) ---
+    # --- 3. SUPERTREND ---
     st_df = ta.supertrend(df['High'], df['Low'], df['Close'], length=st_len, multiplier=st_mult)
     if st_df is not None and not st_df.empty:
         df['SuperTrend'] = st_df[[col for col in st_df.columns if col.startswith('SUPERT_')][0]]
@@ -118,8 +118,8 @@ def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0)
 
     return df.dropna()
 
-st.title("🤖 Máquina de Tendência (Setup Desacoplado)")
-st.info("📊 **A Regra Pura e Simples:** \n\n🟢 **Gatilho de Compra:** Ocorre APENAS SE o ADX (Preto) cruzar o DI- (Vermelho) de baixo para cima HOJE. Se cruzou, o robô exige que o DI+ esteja maior que o DI- e que o SuperTrend esteja Verde.")
+st.title("🤖 Máquina de Tendência (Regra Estrita)")
+st.info("📊 **A Regra Pura e Simples:** \n\n🟢 **Gatilho de Compra:** Ocorre APENAS SE o ADX (Preto) cruzar o DI- (Vermelho) de baixo para cima HOJE. Se cruzou, o robô exige que NESTE MESMO DIA o DI+ esteja maior que o DI- e que o SuperTrend esteja Verde.")
 
 aba_padrao, aba_individual, aba_futuros = st.tabs(["📡 Radar Padrão", "🔬 Raio-X Individual", "📉 Raio-X Futuros"])
 
@@ -187,7 +187,7 @@ with aba_padrao:
                 alvo_d, stop_d = alvo_g / 100.0, stop_g / 100.0
 
                 for i in range(1, len(df_back)):
-                    # A REGRA EXATA DO CRUZAMENTO FRANKENSTEIN
+                    # A REGRA EXATA DO CRUZAMENTO NO MESMO CANDLE
                     cruzou_adx = (df_back['ADX_Prev'].iloc[i] <= df_back['-DI_Prev'].iloc[i]) and (df_back['ADX'].iloc[i] > df_back['-DI'].iloc[i])
                     di_ok = df_back['+DI'].iloc[i] > df_back['-DI'].iloc[i]
                     st_ok = df_back['ST_Dir'].iloc[i] == 1
@@ -277,7 +277,7 @@ with aba_individual:
             st.markdown("##### ⚙️ ADX & SuperTrend")
             c_rx_adx1, c_rx_adx2 = st.columns(2)
             di_len_rx = c_rx_adx1.number_input("Período DI:", min_value=2, value=13, key="i_tr_dilen")
-            adx_len_rx = c_rx_adx2.number_input("Período ADX:", min_value=2, value=8, key="i_tr_adxlen") # Default para 8 agora!
+            adx_len_rx = c_rx_adx2.number_input("Período ADX:", min_value=2, value=8, key="i_tr_adxlen") 
             
             c_rx_st1, c_rx_st2 = st.columns(2)
             st_len_rx = c_rx_st1.number_input("ST Período:", value=10, key="i_tr_stlen")
@@ -311,7 +311,7 @@ with aba_individual:
                         trades, em_pos, vitorias, derrotas, posicao_atual = [], False, 0, 0, None
 
                         for i in range(1, len(df_b)):
-                            # REGRA EXATA
+                            # REGRA ESTRITA NO MESMO CANDLE
                             cruzou_adx = (df_b['ADX_Prev'].iloc[i] <= df_b['-DI_Prev'].iloc[i]) and (df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i])
                             di_ok = df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]
                             st_ok = df_b['ST_Dir'].iloc[i] == 1
@@ -417,7 +417,7 @@ with aba_futuros:
     with cf2:
         c_fadx1, c_fadx2 = st.columns(2)
         f_di_len = c_fadx1.number_input("Período DI F:", value=13, key="f_tr_dilen")
-        f_adx_len = c_fadx2.number_input("Período ADX F:", value=8, key="f_tr_adxlen") # Default 8
+        f_adx_len = c_fadx2.number_input("Período ADX F:", value=8, key="f_tr_adxlen")
         
         c_f1, c_f2 = st.columns(2)
         f_st_len = c_f1.number_input("Período ST F:", value=10, key="f_tr_st")
@@ -449,11 +449,11 @@ with aba_futuros:
                         for i in range(1, len(df_b)):
                             d_at, d_ant = df_b[col_dt].iloc[i], df_b[col_dt].iloc[i-1]
                             
-                            # COMPRA
+                            # COMPRA ESTRITA NO MESMO CANDLE
                             cruz_compra = (df_b['ADX_Prev'].iloc[i] <= df_b['-DI_Prev'].iloc[i]) and (df_b['ADX'].iloc[i] > df_b['-DI'].iloc[i])
                             sinal_compra = cruz_compra and (df_b['+DI'].iloc[i] > df_b['-DI'].iloc[i]) and (df_b['ST_Dir'].iloc[i] == 1)
                             
-                            # VENDA
+                            # VENDA ESTRITA NO MESMO CANDLE
                             cruz_venda = (df_b['ADX_Prev'].iloc[i] <= df_b['+DI_Prev'].iloc[i]) and (df_b['ADX'].iloc[i] > df_b['+DI'].iloc[i])
                             sinal_venda = cruz_venda and (df_b['-DI'].iloc[i] > df_b['+DI'].iloc[i]) and (df_b['ST_Dir'].iloc[i] == -1)
 
@@ -504,12 +504,13 @@ with aba_futuros:
                                     else: derrs += 1
                                     posicao = 0
                             
-                            if sinal_compra and posicao == 0 and f_dir != "Apenas Venda":
-                                posicao, d_ent, p_ent = 1, d_at, df_b['Close'].iloc[i]
-                                take_p = p_ent + f_alvo
-                            elif sinal_venda and posicao == 0 and f_dir != "Apenas Compra":
-                                posicao, d_ent, p_ent = -1, d_at, df_b['Close'].iloc[i]
-                                take_p = p_ent - f_alvo
+                            if posicao == 0:
+                                if sinal_compra and f_dir != "Apenas Venda":
+                                    posicao, d_ent, p_ent = 1, d_at, df_b['Close'].iloc[i]
+                                    take_p = p_ent + f_alvo
+                                elif sinal_venda and f_dir != "Apenas Compra":
+                                    posicao, d_ent, p_ent = -1, d_at, df_b['Close'].iloc[i]
+                                    take_p = p_ent - f_alvo
 
                         st.divider()
                         if trades:
