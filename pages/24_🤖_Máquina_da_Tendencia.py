@@ -6,7 +6,8 @@ import time
 import warnings
 import sys
 import os
-import plotly.graph_objects as go # IMPORTAÇÃO DO GERADOR DE GRÁFICOS
+import plotly.graph_objects as go 
+from plotly.subplots import make_subplots # <-- NOVO: Gerador de gráficos sobrepostos
 
 warnings.filterwarnings('ignore')
 
@@ -49,7 +50,7 @@ def colorir_lucro(row):
     return [''] * len(row)
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO E GERADOR DE GRÁFICO
+# 3. MOTOR MATEMÁTICO E GERADOR DE GRÁFICO DUPLO
 # ==========================================
 def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0):
     if df is None or len(df) < max(di_len, adx_len, st_len) * 2:
@@ -112,14 +113,25 @@ def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0)
 
     return df.dropna()
 
-def plotar_grafico_supertrend(df, trades_df):
-    fig = go.Figure()
+def plotar_grafico_supertrend(df, trades_df, mostrar_adx=False):
     col_dt = df.columns[0]
+    
+    if mostrar_adx:
+        # Se for mostrar o ADX, cria 2 linhas (1 para preço, 1 para ADX)
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
+        altura_fig = 750
+        l_preco = 1
+        l_adx = 2
+    else:
+        # Se não for mostrar, cria só o principal
+        fig = make_subplots(rows=1, cols=1)
+        altura_fig = 550
+        l_preco = 1
 
     # 1. Os Candles
     fig.add_trace(go.Candlestick(
         x=df[col_dt], open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Preço'
-    ))
+    ), row=l_preco, col=1)
 
     # 2. SuperTrend Dividido por Cores
     st_verde = df.copy()
@@ -127,8 +139,8 @@ def plotar_grafico_supertrend(df, trades_df):
     st_vermelho = df.copy()
     st_vermelho.loc[st_vermelho['ST_Dir'] == 1, 'SuperTrend'] = np.nan
 
-    fig.add_trace(go.Scatter(x=st_verde[col_dt], y=st_verde['SuperTrend'], mode='lines', line=dict(color='lime', width=3), name='ST Alta'))
-    fig.add_trace(go.Scatter(x=st_vermelho[col_dt], y=st_vermelho['SuperTrend'], mode='lines', line=dict(color='red', width=3), name='ST Baixa'))
+    fig.add_trace(go.Scatter(x=st_verde[col_dt], y=st_verde['SuperTrend'], mode='lines', line=dict(color='lime', width=3), name='ST Alta'), row=l_preco, col=1)
+    fig.add_trace(go.Scatter(x=st_vermelho[col_dt], y=st_vermelho['SuperTrend'], mode='lines', line=dict(color='red', width=3), name='ST Baixa'), row=l_preco, col=1)
 
     # 3. Setas de Entrada do Robô
     if trades_df is not None and not trades_df.empty:
@@ -138,14 +150,26 @@ def plotar_grafico_supertrend(df, trades_df):
                 x=entradas[col_dt], y=entradas['Low'] * 0.98, mode='markers',
                 marker=dict(symbol='triangle-up', size=14, color='cyan', line=dict(width=2, color='white')),
                 name='Entrada ADX'
-            ))
+            ), row=l_preco, col=1)
         except: pass
 
+    # 4. PLOTAGEM DO ADX (Se habilitado)
+    if mostrar_adx:
+        fig.add_trace(go.Scatter(x=df[col_dt], y=df['+DI'], mode='lines', line=dict(color='lime', width=1.5), name='+DI'), row=l_adx, col=1)
+        fig.add_trace(go.Scatter(x=df[col_dt], y=df['-DI'], mode='lines', line=dict(color='red', width=1.5), name='-DI'), row=l_adx, col=1)
+        fig.add_trace(go.Scatter(x=df[col_dt], y=df['ADX'], mode='lines', line=dict(color='white', width=2), name='ADX (Força)'), row=l_adx, col=1)
+
+    # Ajustes finais visuais
+    titulo = 'Ação do Preço + SuperTrend' + (' + Indicador ADX/DMI' if mostrar_adx else '')
     fig.update_layout(
-        title='Ação do Preço + SuperTrend', yaxis_title='Cotação',
+        title=titulo, yaxis_title='Cotação',
         xaxis_rangeslider_visible=False, template='plotly_dark',
-        height=550, margin=dict(l=20, r=20, t=50, b=20)
+        height=altura_fig, margin=dict(l=20, r=20, t=50, b=20)
     )
+    
+    # Esconde a barrinha de baixo (rangeslider) em todos os eixos X
+    fig.update_xaxes(rangeslider_visible=False)
+    
     return fig
 
 # ==========================================
@@ -292,7 +316,7 @@ with aba_padrao:
         else: st.warning("Nenhuma operação finalizada.")
 
 # ==========================================
-# ABA 2: RAIO-X INDIVIDUAL (COM GRÁFICO!)
+# ABA 2: RAIO-X INDIVIDUAL (COM GRÁFICO E ADX!)
 # ==========================================
 with aba_individual:
     st.subheader("🔬 Análise Detalhada de Ativo Único (ADX + SuperTrend)")
@@ -313,6 +337,10 @@ with aba_individual:
             c_rx_st1, c_rx_st2 = st.columns(2)
             st_len_rx = c_rx_st1.number_input("ST Período:", value=10, key="i_tr_stlen")
             st_mult_rx = c_rx_st2.number_input("ST Mult:", value=3.0, step=0.1, key="i_tr_stmult")
+            
+            # --- O BOTÃO MÁGICO DO GRÁFICO ADX ---
+            mostrar_adx_rx = st.toggle("📊 Mostrar Gráfico ADX no Raio-X", value=False, key="tg_grafico_adx")
+            
         with ci4:
             st.markdown("##### 🛡️ Gestão de Risco")
             usar_alvo_rx = st.toggle("🎯 Alvo Fixo", value=True, key="tg_alvo_rx")
@@ -390,11 +418,13 @@ with aba_individual:
 
                         st.divider()
                         
-                        # ---> RENDERIZA O GRÁFICO INTERATIVO AQUI <---
-                        st.markdown("### 📈 Visualização do Gráfico (SuperTrend)")
+                        # ---> RENDERIZA O GRÁFICO INTERATIVO COM A OPÇÃO DO ADX AQUI <---
+                        st.markdown(f"### 📈 Visualização do Gráfico ({ativo_rx})")
                         df_trades_plot = pd.DataFrame(trades) if trades else pd.DataFrame()
-                        corte_grafico = df_b.tail(250) # Mostra os últimos 250 dias no gráfico pra não ficar pesado
-                        st.plotly_chart(plotar_grafico_supertrend(corte_grafico, df_trades_plot), use_container_width=True)
+                        corte_grafico = df_b.tail(250) # Mostra os últimos 250 dias
+                        
+                        # Passando a variável mostrar_adx_rx do toggle para a função!
+                        st.plotly_chart(plotar_grafico_supertrend(corte_grafico, df_trades_plot, mostrar_adx_rx), use_container_width=True)
                         st.divider()
 
                         if em_pos and posicao_atual:
