@@ -45,8 +45,8 @@ def colorir_bias(val):
 # ==========================================
 # 3. O MOTOR MATEMÁTICO: TOTALMENTE DINÂMICO
 # ==========================================
-def calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_type, p_adx, thresh_adx, p_rsi_slow, p_rsi_fast, thresh_rsi, p_vwap, p_vol):
-    if df is None or len(df) < max(p_fast, p_slow, p_adx, p_rsi_slow) * 2:
+def calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_type, p_adx, thresh_adx, p_rsi_slow, p_rsi_fast, thresh_rsi, p_vwap, p_vol, p_macd_fast, p_macd_slow, p_macd_sig):
+    if df is None or len(df) < max(p_fast, p_slow, p_adx, p_rsi_slow, p_macd_slow) * 2:
         return None
         
     df.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}, inplace=True)
@@ -73,7 +73,8 @@ def calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_type, p_adx, thresh_adx, 
     df['RSI_Slow'] = ta.rsi(df['Close'], length=p_rsi_slow)
     df['RSI_Fast'] = ta.rsi(df['Close'], length=p_rsi_fast)
     
-    macd = ta.macd(df['Close'], fast=12, slow=26, signal=9)
+    # MACD Dinâmico
+    macd = ta.macd(df['Close'], fast=p_macd_fast, slow=p_macd_slow, signal=p_macd_sig)
     df['MACD_Line'] = macd.iloc[:, 0]
     df['MACD_Signal'] = macd.iloc[:, 2]
     
@@ -131,7 +132,7 @@ st.info("💡 **Sistema Dinâmico:** Ajuste as engrenagens da estratégia abaixo
 # --- BLOCO GLOBAL DE PARÂMETROS ---
 with st.container(border=True):
     st.markdown("#### ⚙️ Calibragem Quant (Parâmetros Globais)")
-    c_ma, c_adx, c_rsi, c_vol = st.columns(4)
+    c_ma, c_macd, c_adx, c_rsi, c_vol = st.columns(5)
     
     with c_ma:
         st.markdown("**Médias Móveis**")
@@ -139,21 +140,27 @@ with st.container(border=True):
         p_fast = st.number_input("Período Rápido:", value=9, step=1)
         p_slow = st.number_input("Período Lento:", value=21, step=1)
         
+    with c_macd:
+        st.markdown("**MACD**")
+        p_macd_fast = st.number_input("MACD Rápido:", value=12, step=1)
+        p_macd_slow = st.number_input("MACD Lento:", value=26, step=1)
+        p_macd_sig = st.number_input("MACD Sinal:", value=9, step=1)
+
     with c_adx:
-        st.markdown("**Força Direcional (ADX)**")
+        st.markdown("**Força (ADX)**")
         p_adx = st.number_input("Período ADX:", value=14, step=1)
-        thresh_adx = st.number_input("Corte ADX (Força Mínima):", value=25, step=1)
+        thresh_adx = st.number_input("Corte ADX (Mín):", value=25, step=1)
         
     with c_rsi:
         st.markdown("**Momentum (RSI)**")
-        p_rsi_slow = st.number_input("Período RSI Padrão:", value=14, step=1)
-        p_rsi_fast = st.number_input("Período RSI Rápido:", value=5, step=1)
-        thresh_rsi = st.number_input("Linha D'água RSI:", value=50, step=1)
+        p_rsi_slow = st.number_input("RSI Padrão:", value=14, step=1)
+        p_rsi_fast = st.number_input("RSI Rápido:", value=5, step=1)
+        thresh_rsi = st.number_input("Linha D'água:", value=50, step=1)
         
     with c_vol:
-        st.markdown("**Institucional (Vol & VWAP)**")
-        p_vol = st.number_input("Média de Volume:", value=20, step=1)
-        p_vwap = st.number_input("Período VWAP (Proxy):", value=20, step=1)
+        st.markdown("**Institucional**")
+        p_vol = st.number_input("Média Volume:", value=20, step=1)
+        p_vwap = st.number_input("VWAP (Proxy):", value=20, step=1)
 
 # --- BLOCO DE GESTÃO DE RISCO E SAÍDAS ---
 with st.container(border=True):
@@ -202,7 +209,8 @@ with aba_radar:
             try:
                 df = puxar_dados_blindados(ativo, tempo_r)
                 if df is None: continue
-                df = calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_tipo, p_adx, thresh_adx, p_rsi_slow, p_rsi_fast, thresh_rsi, p_vwap, p_vol)
+                # Passa todas as variáveis do container principal (incluindo MACD)
+                df = calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_tipo, p_adx, thresh_adx, p_rsi_slow, p_rsi_fast, thresh_rsi, p_vwap, p_vol, p_macd_fast, p_macd_slow, p_macd_sig)
                 if df is None: continue
                 
                 hoje = df.iloc[-1]
@@ -246,7 +254,8 @@ with aba_raiox:
             try:
                 df_full = puxar_dados_blindados(atv_rx, tmp_rx)
                 if df_full is not None:
-                    df = calcular_khan_saab_dinamico(df_full, p_fast, p_slow, ma_tipo, p_adx, thresh_adx, p_rsi_slow, p_rsi_fast, thresh_rsi, p_vwap, p_vol)
+                    # Passa todas as variáveis do container principal (incluindo MACD)
+                    df = calcular_khan_saab_dinamico(df_full, p_fast, p_slow, ma_tipo, p_adx, thresh_adx, p_rsi_slow, p_rsi_fast, thresh_rsi, p_vwap, p_vol, p_macd_fast, p_macd_slow, p_macd_sig)
                     
                     if df is not None:
                         hoje = df.iloc[-1]
@@ -257,14 +266,14 @@ with aba_raiox:
                         st.markdown(f"### 🩺 Estado Clínico: {atv_rx} (Hoje)")
                         
                         dados_clinicos = [
-                            {"Indicador": "Preço x VWAP", "Valor Exato": f"Preço: R${hoje['Close']:.2f} | VWAP: R${hoje['VWAP_Proxy']:.2f}", "Status": "🟢 Acima (Bull)" if hoje['Close'] > hoje['VWAP_Proxy'] else "🔴 Abaixo (Bear)"},
-                            {"Indicador": f"Média Rápida x Lenta ({p_fast}/{p_slow})", "Valor Exato": f"Ráp: R${hoje['MA_Fast']:.2f} | Len: R${hoje['MA_Slow']:.2f}", "Status": "🟢 Comprado (Bull)" if hoje['MA_Fast'] > hoje['MA_Slow'] else "🔴 Vendido (Bear)"},
+                            {"Indicador": f"Preço x VWAP ({p_vwap})", "Valor Exato": f"Preço: R${hoje['Close']:.2f} | VWAP: R${hoje['VWAP_Proxy']:.2f}", "Status": "🟢 Acima (Bull)" if hoje['Close'] > hoje['VWAP_Proxy'] else "🔴 Abaixo (Bear)"},
+                            {"Indicador": f"Médias ({p_fast}/{p_slow})", "Valor Exato": f"Ráp: R${hoje['MA_Fast']:.2f} | Len: R${hoje['MA_Slow']:.2f}", "Status": "🟢 Comprado (Bull)" if hoje['MA_Fast'] > hoje['MA_Slow'] else "🔴 Vendido (Bear)"},
                             {"Indicador": f"RSI Principal ({p_rsi_slow})", "Valor Exato": f"{hoje['RSI_Slow']:.1f}", "Status": "🟢 Alta" if hoje['RSI_Slow'] > thresh_rsi else "🔴 Baixa"},
                             {"Indicador": f"RSI Rápido ({p_rsi_fast})", "Valor Exato": f"{hoje['RSI_Fast']:.1f}", "Status": "🟢 Alta" if hoje['RSI_Fast'] > thresh_rsi else "🔴 Baixa"},
-                            {"Indicador": "MACD (Linha x Sinal)", "Valor Exato": f"Lin: {hoje['MACD_Line']:.2f} | Sin: {hoje['MACD_Signal']:.2f}", "Status": "🟢 Comprado" if hoje['MACD_Line'] > hoje['MACD_Signal'] else "🔴 Vendido"},
+                            {"Indicador": f"MACD ({p_macd_fast},{p_macd_slow},{p_macd_sig})", "Valor Exato": f"Lin: {hoje['MACD_Line']:.2f} | Sin: {hoje['MACD_Signal']:.2f}", "Status": "🟢 Comprado" if hoje['MACD_Line'] > hoje['MACD_Signal'] else "🔴 Vendido"},
                             {"Indicador": f"DMI (+DI x -DI)", "Valor Exato": f"+DI: {hoje['+DI']:.1f} | -DI: {hoje['-DI']:.1f}", "Status": "🟢 +DI Acima" if hoje['+DI'] > hoje['-DI'] else "🔴 -DI Acima"},
                             {"Indicador": f"Força ADX ({p_adx})", "Valor Exato": f"{hoje['ADX']:.1f}", "Status": f"🔥 Forte (> {thresh_adx})" if hoje['ADX'] > thresh_adx else f"🧊 Fraco (< {thresh_adx})"},
-                            {"Indicador": "Volume x Média", "Valor Exato": f"Vol: {hoje['Volume']:.0f}", "Status": "🟢 Acima da Média" if hoje['Volume'] > hoje['Vol_Avg'] else "⚪ Normal/Baixo"}
+                            {"Indicador": f"Volume x Média ({p_vol})", "Valor Exato": f"Vol: {hoje['Volume']:.0f}", "Status": "🟢 Acima da Média" if hoje['Volume'] > hoje['Vol_Avg'] else "⚪ Normal/Baixo"}
                         ]
                         
                         df_clinico = pd.DataFrame(dados_clinicos)
@@ -284,7 +293,6 @@ with aba_raiox:
                         # ==================================================
                         st.markdown("### 📊 Backtest Histórico de Tiros")
                         
-                        # Legenda que se adapta ao que você ativou/desativou
                         texto_legenda = "**📖 Legenda de Saídas Ativas:**\n"
                         if usar_tp: 
                             alvo_str = f"Risco:Retorno {val_tp_atr}" if tipo_tp == 'Risco:Retorno (ATR)' else f"{val_tp_pct}%"
@@ -326,7 +334,6 @@ with aba_raiox:
                                     # Lógica Flexível de Take Profit
                                     if usar_tp:
                                         if tipo_tp == "Risco:Retorno (ATR)":
-                                            # Risco baseia-se no SL de ATR. Se o SL ATR estiver desligado, assume 1.5x padrão.
                                             risco_base = (candle['ATR'] * val_sl) if (usar_sl and tipo_sl == "ATR (Volatilidade)") else (candle['ATR'] * 1.5)
                                             tp_alvo = p_ent + (risco_base * tp_mult)
                                         else:
