@@ -2,14 +2,16 @@ import streamlit as st, pandas as pd, pandas_ta as ta, numpy as np, sys, os
 import plotly.graph_objects as go
 import warnings, traceback
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+warnings.filterwarnings('ignore')
+st.set_page_config(page_title="Máquina Profit V7", layout="wide", page_icon="🛡️")
+
+# --- CORREÇÃO DO CAMINHO DO BUNKER (Apenas 1 nível: '..') ---
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 try:
     from bunker import motor_busca
 except Exception as e:
-    st.error("Erro ao importar o Bunker. Verifique se o arquivo existe.")
-
-warnings.filterwarnings('ignore')
-st.set_page_config(page_title="Máquina Profit V6", layout="wide", page_icon="🛡️")
+    st.error("🚨 Erro Crítico: O arquivo 'bunker.py' não foi encontrado na pasta raiz.")
+    st.stop()
 
 if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("Por favor, faça login na Home.")
@@ -18,9 +20,7 @@ if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
 # --- TRADUTOR DE COLUNAS (O ESCUDO ANTI-ERRO SILENCIOSO) ---
 def padronizar_df(df):
     if df is None or df.empty: return None
-    # Converte tudo para minúsculo para evitar erro de Case
     df.columns = df.columns.str.lower()
-    # Se o Bunker mandar em português, traduz pro inglês
     df.rename(columns={'abertura':'open', 'maxima':'high', 'minima':'low', 'fechamento':'close', 'fech':'close'}, inplace=True)
     return df
 
@@ -66,7 +66,7 @@ def processar_estrategia(df, p_di, p_adx, s_adx, m_adx, p_st, m_st):
 # --- FUNÇÃO DO GRÁFICO INTERATIVO ---
 def plotar_grafico(df_b, trades_df):
     fig = go.Figure()
-    col_data = df_b.columns[0] # Pega a coluna de data, independente do nome
+    col_data = df_b.columns[0] 
 
     # 1. Os Candles
     fig.add_trace(go.Candlestick(
@@ -114,7 +114,7 @@ def plotar_grafico(df_b, trades_df):
     return fig
 
 # --- INTERFACE PRINCIPAL ---
-st.title("🛡️ MÁQUINA PROFIT V6 (Resiliência Total)")
+st.title("🛡️ MÁQUINA PROFIT V7 (Bunker Corrigido)")
 
 with st.sidebar:
     st.header("⚙️ Calibragem Profit")
@@ -127,7 +127,7 @@ with st.sidebar:
     p_st = st.number_input("ST Período:", value=10)
     m_st = st.number_input("ST Multiplicador:", value=3.0)
 
-aba_rx, aba_radar = st.tabs(["🔬 Raio-X com Gráfico", "📡 Em breve..."])
+aba_rx, aba_radar = st.tabs(["🔬 Raio-X com Gráfico", "📡 Varredura Geral"])
 
 with aba_rx:
     c1, c2, c3 = st.columns(3)
