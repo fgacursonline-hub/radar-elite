@@ -12,19 +12,20 @@ import os
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# 1. IMPORTAÇÃO CENTRALIZADA DOS ATIVOS
+# 1. IMPORTAÇÃO CENTRALIZADA DOS ATIVOS E BUNKER
 # ==========================================
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 try:
     from config_ativos import bdrs_elite, ibrx_selecao
+    from bunker import motor_busca  # <-- IMPORTAÇÃO DO MOTOR DE BUSCA INSERIDA AQUI
 except ImportError:
-    st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
+    st.error("❌ Arquivo 'config_ativos.py' ou 'bunker.py' não encontrado na raiz do projeto.")
     st.stop()
 
 ativos_para_rastrear = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
 
 # ==========================================
-# 2. CONFIGURAÇÃO DA PÁGINA E TVDATAFEED
+# 2. CONFIGURAÇÃO DA PÁGINA
 # ==========================================
 st.set_page_config(page_title="Trend Machine", layout="wide", page_icon="🤖")
 
@@ -32,11 +33,7 @@ if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, faça login na página inicial (Home).")
     st.stop()
 
-@st.cache_resource
-def get_tv_connection():
-    return TvDatafeed()
-
-tv = get_tv_connection()
+# Removida a inicialização direta do TvDatafeed aqui, pois o motor_busca fará isso.
 
 tradutor_periodo_nome = {
     '1mo': '1 Mês', '3mo': '3 Meses', '6mo': '6 Meses',
@@ -129,7 +126,6 @@ with aba_padrao:
     btn_iniciar_tr = st.button("🚀 Iniciar Varredura de Tendência", type="primary", use_container_width=True, key="tr_btn")
 
     if btn_iniciar_tr:
-        intervalo_tv = tradutor_intervalo.get(tempo_tr, Interval.in_daily)
         ativos_tr = bdrs_elite if lista_tr == "BDRs Elite" else ibrx_selecao if lista_tr == "IBrX Seleção" else bdrs_elite + ibrx_selecao
         ativos_tr = sorted(list(set([a.replace('.SA', '') for a in ativos_tr])))
         
@@ -141,8 +137,12 @@ with aba_padrao:
             p_bar.progress((idx + 1) / len(ativos_tr))
 
             try:
-                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                # SUBSTITUIÇÃO: Busca guiada pelo motor central Bunker
+                df_full = motor_busca(ativo, tempo_tr)
                 if df_full is None or len(df_full) < 50: continue
+                
+                # Para garantir que as colunas estejam no padrão que seu código usa
+                df_full.columns = df_full.columns.str.lower()
                 df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                 
                 df_full = calcular_indicadores_trend(df_full, di_len_g, adx_len_g, st_len_g, st_mult_g)
@@ -265,15 +265,15 @@ with aba_individual:
             usar_saida_dmi_rx = st.toggle("📉 Saída Reversão DMI (+DI < -DI)", value=False, key="tg_dmi_rx")
 
     if st.button("🔍 Gerar Raio-X da Máquina", type="primary", use_container_width=True, key="i_tr_btn"):
-        intervalo_tv = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
         alvo_d, stop_d = lupa_alvo / 100.0, lupa_stop / 100.0
 
         with st.spinner(f'Processando matemática para {ativo_rx}...'):
             try:
-                exc = 'BITSTAMP' if 'BTC' in ativo_rx else 'BMFBOVESPA'
-                df_full = tv.get_hist(symbol=ativo_rx, exchange=exc, interval=intervalo_tv, n_bars=5000)
+                # SUBSTITUIÇÃO: Busca guiada pelo motor central Bunker
+                df_full = motor_busca(ativo_rx, tempo_rx)
                 
                 if df_full is not None and len(df_full) > 50:
+                    df_full.columns = df_full.columns.str.lower()
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     df_full = calcular_indicadores_trend(df_full, di_len_rx, adx_len_rx, st_len_rx, st_mult_rx)
                     
@@ -375,7 +375,7 @@ with aba_individual:
                             
                             st.dataframe(df_res.style.map(colorir_res_indiv, subset=['Situação']), use_container_width=True, hide_index=True)
                         else: st.info("Nenhum trade fechado no período de estudo selecionado.")
-                else: st.error("Base de dados vazia para este ativo no TradingView.")
+                else: st.error("Base de dados vazia para este ativo no Motor Busca.")
             except Exception as e: st.error(f"Erro no processamento: {e}")
 
 # ==========================================
@@ -409,12 +409,13 @@ with aba_futuros:
         btn_fut = st.button("🚀 Gerar Raio-X Futuros", type="primary", use_container_width=True, key="f_tr_btn")
 
     if btn_fut:
-        intervalo_tv = tradutor_intervalo.get(f_tmp, Interval.in_15_minute)
         with st.spinner(f'Simulando Tanque de Guerra em {f_selecionado}...'):
             try:
-                exc = 'BITSTAMP' if 'BTC' in f_ativo else 'BMFBOVESPA'
-                df_full = tv.get_hist(symbol=f_ativo, exchange=exc, interval=intervalo_tv, n_bars=10000)
+                # SUBSTITUIÇÃO: Busca guiada pelo motor central Bunker
+                df_full = motor_busca(f_ativo, f_tmp)
+                
                 if df_full is not None:
+                    df_full.columns = df_full.columns.str.lower()
                     df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
                     df_full = calcular_indicadores_trend(df_full, f_di_len, f_adx_len, f_st_len, f_st_mult)
                     
