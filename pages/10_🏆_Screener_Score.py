@@ -60,6 +60,9 @@ def calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_type, p_adx, thresh_adx, 
     elif ma_type == 'SMA (Simples)':
         df['MA_Fast'] = ta.sma(df['Close'], length=p_fast)
         df['MA_Slow'] = ta.sma(df['Close'], length=p_slow)
+    elif ma_type == 'WMA (Ponderada)':
+        df['MA_Fast'] = ta.wma(df['Close'], length=p_fast)
+        df['MA_Slow'] = ta.wma(df['Close'], length=p_slow)
     else: # EMA Padrão
         df['MA_Fast'] = ta.ema(df['Close'], length=p_fast)
         df['MA_Slow'] = ta.ema(df['Close'], length=p_slow)
@@ -132,7 +135,7 @@ with st.container(border=True):
     
     with c_ma:
         st.markdown("**Médias Móveis**")
-        ma_tipo = st.selectbox("Tipo de Média:", ['EMA (Exponencial)', 'RMA (Welles Wilder)', 'SMA (Simples)'])
+        ma_tipo = st.selectbox("Tipo de Média:", ['EMA (Exponencial)', 'RMA (Welles Wilder)', 'SMA (Simples)', 'WMA (Ponderada)'])
         p_fast = st.number_input("Período Rápido:", value=9, step=1)
         p_slow = st.number_input("Período Lento:", value=21, step=1)
         
@@ -151,6 +154,24 @@ with st.container(border=True):
         st.markdown("**Institucional (Vol & VWAP)**")
         p_vol = st.number_input("Média de Volume:", value=20, step=1)
         p_vwap = st.number_input("Período VWAP (Proxy):", value=20, step=1)
+
+# --- BLOCO DE GESTÃO DE RISCO E SAÍDAS ---
+with st.container(border=True):
+    st.markdown("#### 🛡️ Gestão de Risco e Saídas")
+    c_sl, c_tp, c_trail = st.columns(3)
+    
+    with c_sl:
+        usar_sl = st.toggle("🛡️ Usar Stop Loss (ATR)", value=True)
+        mult_atr = st.number_input("Multiplicador do Stop (ATR):", value=1.5, step=0.1, disabled=not usar_sl)
+        
+    with c_tp:
+        usar_tp = st.toggle("🎯 Usar Take Profit Fixo", value=True)
+        rel_risco_retorno = st.selectbox("Risco : Retorno (Alvo)", ["1:1", "1:2", "1:3", "1:4", "1:5"], index=1, disabled=not usar_tp)
+        tp_mult = int(rel_risco_retorno.split(":")[1]) # Extrai o multiplicador (ex: "1:2" -> 2)
+        
+    with c_trail:
+        usar_cruzamento = st.toggle("📉 Saída por Cruzamento Inverso", value=True, help="Encerra o trade se a Média Rápida cruzar a Lenta para baixo, independentemente dos alvos.")
+
 
 aba_radar, aba_raiox = st.tabs(["📡 Radar de Mercado", "🔬 Raio-X Clínico"])
 
@@ -175,7 +196,6 @@ with aba_radar:
             try:
                 df = puxar_dados_blindados(ativo, tempo_r)
                 if df is None: continue
-                # Passa todas as variáveis do container principal
                 df = calcular_khan_saab_dinamico(df, p_fast, p_slow, ma_tipo, p_adx, thresh_adx, p_rsi_slow, p_rsi_fast, thresh_rsi, p_vwap, p_vol)
                 if df is None: continue
                 
@@ -210,17 +230,16 @@ with aba_radar:
 
 # --- ABA 2: RAIO-X E ESTADO CLÍNICO ---
 with aba_raiox:
-    c1, c2, c3 = st.columns([1.5, 1, 1])
+    c1, c2, c3 = st.columns([1.5, 1, 1.5])
     atv_rx = c1.selectbox("Ativo a Testar:", ativos_para_rastrear)
     tmp_rx = c2.selectbox("Tempo:", ['15m', '60m', '1d', '1wk'], index=2, key='rx_tmp')
-    mult_atr = c3.number_input("Multiplicador SL/TP (ATR):", value=1.5, step=0.1)
+    score_rx = c3.slider("Score Exigido p/ Entrada (Backtest):", 40, 100, 70, 10, key='score_backtest')
 
-    if st.button("🔬 Diagnóstico Completo", type="primary", use_container_width=True):
+    if st.button("🔬 Diagnóstico e Backtest Completo", type="primary", use_container_width=True):
         with st.spinner("Realizando ressonância magnética do ativo..."):
             try:
                 df_full = puxar_dados_blindados(atv_rx, tmp_rx)
                 if df_full is not None:
-                    # Passa todas as variáveis do container principal
                     df = calcular_khan_saab_dinamico(df_full, p_fast, p_slow, ma_tipo, p_adx, thresh_adx, p_rsi_slow, p_rsi_fast, thresh_rsi, p_vwap, p_vol)
                     
                     if df is not None:
@@ -255,16 +274,18 @@ with aba_raiox:
                         st.divider()
 
                         # ==================================================
-                        # BACKTEST TRADICIONAL
+                        # BACKTEST DINÂMICO
                         # ==================================================
                         st.markdown("### 📊 Backtest Histórico de Tiros")
                         
-                        st.caption("""
-                        **📖 Legenda de Saídas:**
-                        * **Hit Alvo 1:2 ✅**: O preço atingiu o Alvo de Lucro (lucro 2x maior que o risco).
-                        * **Hit SL ❌**: O preço bateu no Stop Loss (limite de perda de proteção).
-                        * **Saída Cruzamento ❌✅**: As médias inverteram a tendência e o robô encerrou a operação no meio do caminho.
-                        """)
+                        # Legenda Dinâmica de acordo com o que está ligado
+                        texto_legenda = "**📖 Legenda de Saídas Ativas:**\n"
+                        if usar_tp: texto_legenda += f"* **Hit Alvo {rel_risco_retorno} ✅**: O preço atingiu o Alvo de Lucro programado.\n"
+                        if usar_sl: texto_legenda += "* **Hit SL ❌**: O preço bateu no Stop Loss de proteção.\n"
+                        if usar_cruzamento: texto_legenda += "* **Saída Cruzamento ❌✅**: As médias inverteram a tendência e o robô encerrou a operação.\n"
+                        if not usar_tp and not usar_sl and not usar_cruzamento: texto_legenda += "* ⚠️ **Atenção:** Nenhuma regra de saída habilitada! As operações nunca serão encerradas."
+                        
+                        st.caption(texto_legenda)
                         
                         trades = []
                         em_posicao = False
@@ -276,17 +297,19 @@ with aba_raiox:
                             candle = df_b.iloc[i]
                             
                             if not em_posicao:
-                                if candle['Buy_Cross'] and candle['Bull_Pct'] >= 70:
+                                if candle['Buy_Cross'] and candle['Bull_Pct'] >= score_rx:
                                     em_posicao = True
                                     p_ent = candle['Close']
                                     d_ent = candle[col_dt]
-                                    risco = candle['ATR'] * mult_atr
-                                    sl = p_ent - risco
-                                    tp_alvo = p_ent + (risco * 2) 
+                                    
+                                    # Calcula os pontos apenas se ativados
+                                    risco = candle['ATR'] * mult_atr if (usar_sl or usar_tp) else 0
+                                    sl = p_ent - risco if usar_sl else -np.inf
+                                    tp_alvo = p_ent + (risco * tp_mult) if usar_tp and risco > 0 else np.inf
                             else:
-                                se_bateu_sl = candle['Low'] <= sl
-                                se_bateu_tp = candle['High'] >= tp_alvo
-                                virou_tend = candle['Sell_Cross']
+                                se_bateu_sl = usar_sl and (candle['Low'] <= sl)
+                                se_bateu_tp = usar_tp and (candle['High'] >= tp_alvo)
+                                virou_tend = usar_cruzamento and candle['Sell_Cross']
                                 
                                 saiu = False
                                 motivo = ""
@@ -297,7 +320,7 @@ with aba_raiox:
                                     saiu = True
                                 elif se_bateu_tp:
                                     lucro = ((tp_alvo / p_ent) - 1) * 100
-                                    motivo = "Hit Alvo 1:2 ✅"
+                                    motivo = f"Hit Alvo {rel_risco_retorno} ✅"
                                     saiu = True
                                 elif virou_tend:
                                     lucro = ((candle['Close'] / p_ent) - 1) * 100
@@ -321,5 +344,5 @@ with aba_raiox:
                             
                             df_res['Retorno (%)'] = df_res['Retorno (%)'].apply(lambda x: f"{x:.2f}%")
                             st.dataframe(df_res.style.map(lambda v: 'color: #28a745; font-weight: bold' if '✅' in str(v) else 'color: #dc3545; font-weight: bold' if '❌' in str(v) else '', subset=['Motivo']), use_container_width=True, hide_index=True)
-                        else: st.warning("Com esse nível de confluência, não houve tiros fechados no histórico.")
+                        else: st.warning("Com essas regras, o Sniper não realizou disparos fechados no histórico.")
             except Exception as e: st.error(f"Erro: {e}")
