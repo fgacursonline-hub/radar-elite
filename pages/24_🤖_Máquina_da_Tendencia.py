@@ -48,7 +48,7 @@ def colorir_lucro(row):
     return [''] * len(row)
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO: MATEMÁTICA PURA DESACOPLADA (PROFIT)
+# 3. MOTOR MATEMÁTICO: O CRUZAMENTO FRANKENSTEIN
 # ==========================================
 def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0):
     if df is None or len(df) < max(di_len, adx_len, st_len) * 2:
@@ -59,7 +59,7 @@ def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0)
         df.columns = df.columns.get_level_values(0)
     df.index = df.index.tz_localize(None)
 
-    # --- 1. DMI E ADX (CÁLCULO MANUAL PARA BATER COM O PROFIT) ---
+    # --- FUNÇÃO MATEMÁTICA DE SUAVIZAÇÃO (WILDER) ---
     def wilder_rma(series, length):
         rma = np.full_like(series, np.nan, dtype=float)
         valid_idx = np.where(~np.isnan(series))[0]
@@ -73,7 +73,7 @@ def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0)
 
     high, low, close = df['High'].values, df['Low'].values, df['Close'].values
     
-    # Movimento Direcional
+    # Movimento Direcional Básico
     up = np.append(0, high[1:] - high[:-1])
     down = np.append(0, low[:-1] - low[1:])
     pdm = np.where((up > down) & (up > 0), up, 0.0)
@@ -86,35 +86,39 @@ def calcular_indicadores_trend(df, di_len=13, adx_len=8, st_len=10, st_mult=3.0)
     tr = np.maximum(tr_a, np.maximum(tr_b, tr_c))
     tr[0] = np.nan
 
-    # Suavização (Período DI = 13)
-    tr_rma = wilder_rma(tr, di_len)
-    pdm_rma = wilder_rma(pdm, di_len)
-    mdm_rma = wilder_rma(mdm, di_len)
-
-    # Criação das Linhas Verde (+DI) e Vermelha (-DI)
-    df['+DI'] = 100 * (pdm_rma / np.where(tr_rma == 0, 1e-10, tr_rma))
-    df['-DI'] = 100 * (mdm_rma / np.where(tr_rma == 0, 1e-10, tr_rma))
-
-    # Diferença Direcional (DX)
-    dx = 100 * np.abs(df['+DI'] - df['-DI']) / np.where((df['+DI'] + df['-DI']) == 0, 1e-10, (df['+DI'] + df['-DI']))
+    # --- 1. DMI (Ex: 13) PARA AS LINHAS VERDE E VERMELHA ---
+    tr_di = wilder_rma(tr, di_len)
+    pdm_di = wilder_rma(pdm, di_len)
+    mdm_di = wilder_rma(mdm, di_len)
     
-    # Criação da Linha Preta (ADX) - Profit suaviza com Média Exponencial (Período ADX = 8)
-    df['ADX'] = ta.ema(pd.Series(dx), length=adx_len) 
+    df['+DI'] = 100 * (pdm_di / np.where(tr_di == 0, 1e-10, tr_di))
+    df['-DI'] = 100 * (mdm_di / np.where(tr_di == 0, 1e-10, tr_di))
 
-    # --- 2. SUPERTREND (Idêntico ao Pine Script) ---
+    # --- 2. ADX (Ex: 8) PARA A LINHA PRETA NERVOSA ---
+    tr_adx = wilder_rma(tr, adx_len)
+    pdm_adx = wilder_rma(pdm, adx_len)
+    mdm_adx = wilder_rma(mdm, adx_len)
+    
+    pdi_adx = 100 * (pdm_adx / np.where(tr_adx == 0, 1e-10, tr_adx))
+    mdi_adx = 100 * (mdm_adx / np.where(tr_adx == 0, 1e-10, tr_adx))
+    
+    dx_adx = 100 * np.abs(pdi_adx - mdi_adx) / np.where((pdi_adx + mdi_adx) == 0, 1e-10, (pdi_adx + mdi_adx))
+    df['ADX'] = wilder_rma(dx_adx, adx_len) # A linha preta suavizada no próprio período
+
+    # --- 3. SUPERTREND (Matemática Oficial) ---
     st_df = ta.supertrend(df['High'], df['Low'], df['Close'], length=st_len, multiplier=st_mult)
     if st_df is not None and not st_df.empty:
         df['SuperTrend'] = st_df[[col for col in st_df.columns if col.startswith('SUPERT_')][0]]
         df['ST_Dir'] = st_df[[col for col in st_df.columns if col.startswith('SUPERTd_')][0]]
 
-    # --- 3. MEMÓRIAS PARA O CRUZAMENTO ---
+    # --- MEMÓRIAS PARA CAÇAR O CRUZAMENTO ---
     df['ADX_Prev'] = df['ADX'].shift(1)
     df['-DI_Prev'] = df['-DI'].shift(1)
     df['+DI_Prev'] = df['+DI'].shift(1)
 
     return df.dropna()
 
-st.title("🤖 Máquina de Tendência (ADX + SuperTrend)")
+st.title("🤖 Máquina de Tendência (Setup Desacoplado)")
 st.info("📊 **A Regra Pura e Simples:** \n\n🟢 **Gatilho de Compra:** Ocorre APENAS SE o ADX (Preto) cruzar o DI- (Vermelho) de baixo para cima HOJE. Se cruzou, o robô exige que o DI+ esteja maior que o DI- e que o SuperTrend esteja Verde.")
 
 aba_padrao, aba_individual, aba_futuros = st.tabs(["📡 Radar Padrão", "🔬 Raio-X Individual", "📉 Raio-X Futuros"])
@@ -136,7 +140,7 @@ with aba_padrao:
             st.markdown("##### ⚙️ ADX & SuperTrend")
             c_adx1, c_adx2 = st.columns(2)
             di_len_g = c_adx1.number_input("Período DI (+/-):", min_value=2, value=13, step=1, key="tr_di_len")
-            adx_len_g = c_adx2.number_input("Período ADX:", min_value=2, value=14, step=1, key="tr_adx_len")
+            adx_len_g = c_adx2.number_input("Período ADX:", min_value=2, value=8, step=1, key="tr_adx_len")
             
             c_st1, c_st2 = st.columns(2)
             st_len_g = c_st1.number_input("ST Período:", min_value=2, value=10, step=1, key="tr_st_len")
@@ -164,7 +168,6 @@ with aba_padrao:
             p_bar.progress((idx + 1) / len(ativos_tr))
 
             try:
-                # SUBSTITUIÇÃO: Busca guiada pelo motor de dados blindado
                 df_full = puxar_dados_blindados(ativo, tempo_tr)
                 
                 if df_full is None or len(df_full) < 50: continue
@@ -184,7 +187,7 @@ with aba_padrao:
                 alvo_d, stop_d = alvo_g / 100.0, stop_g / 100.0
 
                 for i in range(1, len(df_back)):
-                    # A REGRA EXATA DO CRUZAMENTO
+                    # A REGRA EXATA DO CRUZAMENTO FRANKENSTEIN
                     cruzou_adx = (df_back['ADX_Prev'].iloc[i] <= df_back['-DI_Prev'].iloc[i]) and (df_back['ADX'].iloc[i] > df_back['-DI'].iloc[i])
                     di_ok = df_back['+DI'].iloc[i] > df_back['-DI'].iloc[i]
                     st_ok = df_back['ST_Dir'].iloc[i] == 1
@@ -274,7 +277,7 @@ with aba_individual:
             st.markdown("##### ⚙️ ADX & SuperTrend")
             c_rx_adx1, c_rx_adx2 = st.columns(2)
             di_len_rx = c_rx_adx1.number_input("Período DI:", min_value=2, value=13, key="i_tr_dilen")
-            adx_len_rx = c_rx_adx2.number_input("Período ADX:", min_value=2, value=14, key="i_tr_adxlen")
+            adx_len_rx = c_rx_adx2.number_input("Período ADX:", min_value=2, value=8, key="i_tr_adxlen") # Default para 8 agora!
             
             c_rx_st1, c_rx_st2 = st.columns(2)
             st_len_rx = c_rx_st1.number_input("ST Período:", value=10, key="i_tr_stlen")
@@ -293,7 +296,6 @@ with aba_individual:
 
         with st.spinner(f'Processando matemática para {ativo_rx}...'):
             try:
-                # SUBSTITUIÇÃO: Busca guiada pelo motor de dados blindado
                 df_full = puxar_dados_blindados(ativo_rx, tempo_rx)
                 
                 if df_full is not None and len(df_full) > 50:
@@ -415,7 +417,7 @@ with aba_futuros:
     with cf2:
         c_fadx1, c_fadx2 = st.columns(2)
         f_di_len = c_fadx1.number_input("Período DI F:", value=13, key="f_tr_dilen")
-        f_adx_len = c_fadx2.number_input("Período ADX F:", value=14, key="f_tr_adxlen")
+        f_adx_len = c_fadx2.number_input("Período ADX F:", value=8, key="f_tr_adxlen") # Default 8
         
         c_f1, c_f2 = st.columns(2)
         f_st_len = c_f1.number_input("Período ST F:", value=10, key="f_tr_st")
@@ -433,7 +435,6 @@ with aba_futuros:
     if btn_fut:
         with st.spinner(f'Simulando Tanque de Guerra em {f_selecionado}...'):
             try:
-                # SUBSTITUIÇÃO: Busca guiada pelo motor de dados blindado
                 df_full = puxar_dados_blindados(f_ativo, f_tmp)
                 
                 if df_full is not None:
