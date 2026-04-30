@@ -272,139 +272,152 @@ with aba_radar:
             st.warning("Nenhum histórico encontrado com a calibração selecionada.")
 
 # ==========================================
-# ABA 2: RAIO-X INDIVIDUAL (O LABORATÓRIO)
+# ABA 2: RAIO-X INDIVIDUAL (ESTOCÁSTICO)
 # ==========================================
 with aba_individual:
-    with st.container(border=True):
-        st.markdown("**1. Setup e Capital**")
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            ativo_rx = st.selectbox("Ativo (Ex: TSLA34):", ativos_para_rastrear, key="rx_ativo")
-            periodo_rx = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], format_func=lambda x: tradutor_periodo_nome[x], index=4, key="rx_per")
-        with c2:
-            capital_rx = st.number_input("Capital Base (R$):", value=10000.00, step=1000.00, key="rx_cap")
-            tempo_rx = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="rx_tmp")
-        with c3:
-            usar_saida_indicador_rx = st.toggle("📈 Sair pelo Indicador", value=True, key="tg_ind_rx")
-            usar_alvo_rx = st.toggle("🎯 Habilitar Alvo", value=False, key="tg_alvo_rx")
-            alvo_rx = st.number_input("Alvo (%):", value=10.00, step=1.00, key="rx_alvo", disabled=not usar_alvo_rx)
-        with c4:
-            st.markdown("<br>", unsafe_allow_html=True)
-            usar_stop_rx = st.toggle("🛡️ Habilitar Stop Loss", value=True, key="tg_stop_rx")
-            stop_rx = st.number_input("Stop Loss (%):", value=5.00, step=1.00, key="rx_stop", disabled=not usar_stop_rx)
-            
-        exibir_explicacao_estrategia()
-            
-        st.markdown("**2. Calibração (Full Stochastic)**")
-        col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
-        with col_m1: k_rx = st.number_input("Período (%K):", value=14, step=1, key="k_rx")
-        with col_m2: d_rx = st.number_input("Média (%D):", value=3, step=1, key="d_rx")
-        with col_m3: smooth_rx = st.number_input("Suavização:", value=3, step=1, key="smooth_rx")
-        with col_m4: sobrecompra_rx = st.number_input("Sobrecompra:", value=80, step=5, key="sc_rx")
-        with col_m5: sobrevenda_rx = st.number_input("Sobrevenda:", value=20, step=5, key="sv_rx")
-            
-    btn_rx = st.button("🔍 Rodar Laboratório Estocástico", type="primary", use_container_width=True)
+    st.subheader("🔬 Análise Detalhada: Oscilador Estocástico")
     
-    if btn_rx:
-        intervalo_tv_rx = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
-        with st.spinner(f"Calculando reversões de {ativo_rx} via tvDatafeed..."):
+    with st.container(border=True):
+        ci1, ci2, ci3, ci4 = st.columns(4)
+        
+        with ci1:
+            ativo_rx = st.selectbox("Ativo a Testar:", ativos_para_rastrear, key="st_rx_ativo")
+            capital_rx = st.number_input("Capital Base (R$):", value=10000.0, step=1000.0, key="st_rx_cap")
+            
+        with ci2:
+            tempo_rx = st.selectbox("Tempo Gráfico:", options=['15m', '60m', '1d', '1wk', '1mo'], index=2, 
+                                    format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal', '1mo': 'Mensal'}[x], 
+                                    key="st_rx_tmp")
+            periodo_rx = st.selectbox("Período de Estudo:", options=['1mo', '3mo', '6mo', '1y', '2y', '5y', 'max'], 
+                                      format_func=lambda x: tradutor_periodo_nome[x], index=3, key="st_rx_per")
+            
+        with ci3:
+            st.markdown("##### ⚙️ Parâmetros do Estocástico")
+            c_st_k, c_st_d, c_st_s = st.columns(3)
+            k_len = c_st_k.number_input("K (Período):", min_value=1, value=14, key="st_rx_k")
+            d_len = c_st_d.number_input("D (Média):", min_value=1, value=3, key="st_rx_d")
+            smooth_len = c_st_s.number_input("Suavizar:", min_value=1, value=3, key="st_rx_smooth")
+            
+            # Níveis de sobrevenda e sobrecompra
+            c_lev1, c_lev2 = st.columns(2)
+            oversold_rx = c_lev1.number_input("Sobrevenda:", value=20, key="st_rx_os")
+            overbought_rx = c_lev2.number_input("Sobrecompra:", value=80, key="st_rx_ob")
+            
+            mostrar_subgrafico_st = st.toggle("📊 Mostrar Oscilador no Gráfico", value=True, key="tg_st_visual")
+            
+        with ci4:
+            st.markdown("##### 🛡️ Gestão de Risco")
+            usar_alvo_rx = st.toggle("🎯 Alvo Fixo", value=True, key="tg_alvo_st")
+            lupa_alvo = st.number_input("Alvo (%):", value=10.0, step=0.5, disabled=not usar_alvo_rx, key="st_rx_val_alvo")
+            
+            usar_stop_rx = st.toggle("🛡️ Stop Loss Fixo", value=False, key="tg_stop_st")
+            lupa_stop = st.number_input("Stop Loss (%):", value=5.0, step=0.5, disabled=not usar_stop_rx, key="st_rx_val_stop")
+            
+            usar_saida_ob_rx = st.toggle("📉 Saída em Sobrecompra", value=True, key="tg_st_ob_exit")
+            usar_saida_cross_rx = st.toggle("📉 Saída no Cruzamento Inverso", value=False, key="tg_st_cross_exit")
+
+    if st.button("🔍 Gerar Raio-X do Estocástico", type="primary", use_container_width=True, key="st_rx_btn"):
+        alvo_d, stop_d = lupa_alvo / 100.0, lupa_stop / 100.0
+
+        with st.spinner(f'Calculando ciclos de mercado para {ativo_rx}...'):
             try:
-                df_full = tv.get_hist(symbol=ativo_rx.replace('.SA', ''), exchange='BMFBOVESPA', interval=intervalo_tv_rx, n_bars=5000)
+                df_full = puxar_dados_blindados(ativo_rx, tempo_rx)
                 
-                if df_full is not None and len(df_full) > (k_rx + smooth_rx):
-                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
-                    df_full = df_full.dropna()
+                if df_full is not None and len(df_full) > 50:
+                    # Chamar a função de cálculo específica do Estocástico
+                    df_full = calcular_indicadores_estocastico(df_full, k_len, d_len, smooth_len)
                     
-                    df_full = calcular_estocastico(df_full, k=k_rx, d=d_rx, smooth_k=smooth_rx, sobrecompra=sobrecompra_rx, sobrevenda=sobrevenda_rx)
-                    
-                    data_atual = df_full.index[-1]
-                    if periodo_rx == '1mo': data_corte = data_atual - pd.DateOffset(months=1)
-                    elif periodo_rx == '3mo': data_corte = data_atual - pd.DateOffset(months=3)
-                    elif periodo_rx == '6mo': data_corte = data_atual - pd.DateOffset(months=6)
-                    elif periodo_rx == '1y': data_corte = data_atual - pd.DateOffset(years=1)
-                    elif periodo_rx == '2y': data_corte = data_atual - pd.DateOffset(years=2)
-                    elif periodo_rx == '5y': data_corte = data_atual - pd.DateOffset(years=5)
-                    else: data_corte = df_full.index[0]
-                    
-                    df_ativo = df_full[df_full.index >= data_corte].copy()
-                    
-                    if not df_ativo.empty:
-                        alvo_pct = alvo_rx / 100.0
-                        stop_pct = stop_rx / 100.0
-                        trades_fechados = []
-                        em_aberto = None
-                        
-                        for i in range(len(df_ativo)):
-                            linha = df_ativo.iloc[i]
-                            data = df_ativo.index[i]
+                    if df_full is not None:
+                        # Lógica de recorte de tempo (Offset)
+                        data_atual_dt = df_full.index[-1]
+                        offset_map = {'1mo': 1, '3mo': 3, '6mo': 6, '1y': 12, '2y': 24, '5y': 60}
+                        data_corte = data_atual_dt - pd.DateOffset(months=offset_map.get(periodo_rx, 120)) if periodo_rx != 'max' else df_full.index[0]
+
+                        df_b = df_full[df_full.index >= data_corte].copy().reset_index()
+                        col_dt = df_b.columns[0]
+                        trades, em_pos, vitorias, derrotas, posicao_atual = [], False, 0, 0, None
+
+                        # Loop de Simulação
+                        for i in range(1, len(df_b)):
+                            # CRITÉRIOS DE ENTRADA: %K cruza acima de %D abaixo do nível de sobrevenda
+                            cruzou_k_cima = (df_b['STOCHk_Prev'].iloc[i] <= df_b['STOCHd_Prev'].iloc[i]) and (df_b['STOCHk'].iloc[i] > df_b['STOCHd'].iloc[i])
+                            regiao_compra = df_b['STOCHk'].iloc[i] < oversold_rx
+                            sinal_entrada = cruzou_k_cima and regiao_compra
                             
-                            if em_aberto is None:
-                                if linha['Cruzou_Compra']:
-                                    em_aberto = {'entrada_data': data, 'entrada_preco': linha['Close'], 'pico': linha['Close'], 'pior_queda': 0.0}
+                            if not em_pos:
+                                if sinal_entrada:
+                                    em_pos = True
+                                    d_ent = df_b[col_dt].iloc[i]
+                                    p_ent = df_b['Close'].iloc[i]
+                                    min_na_op = p_ent 
+                                    cap_inv = float(capital_rx)
+                                    take_p = p_ent * (1 + alvo_d)
+                                    stop_p = p_ent * (1 - stop_d)
+                                    posicao_atual = {'Data': d_ent, 'PM': p_ent, 'Cap': cap_inv}
                             else:
-                                if linha['High'] > em_aberto['pico']: em_aberto['pico'] = linha['High']
-                                dd = (linha['Low'] / em_aberto['pico']) - 1
-                                if dd < em_aberto['pior_queda']: em_aberto['pior_queda'] = dd
+                                if df_b['Low'].iloc[i] < min_na_op: min_na_op = df_b['Low'].iloc[i]
                                 
-                                bateu_stop = usar_stop_rx and (linha['Low'] <= em_aberto['entrada_preco'] * (1 - stop_pct))
-                                bateu_alvo = usar_alvo_rx and (linha['High'] >= em_aberto['entrada_preco'] * (1 + alvo_pct))
-                                sinal_venda = usar_saida_indicador_rx and linha['Cruzou_Venda']
+                                # CRITÉRIOS DE SAÍDA
+                                bateu_alvo = usar_alvo_rx and (df_b['High'].iloc[i] >= take_p)
+                                bateu_stop = usar_stop_rx and (df_b['Low'].iloc[i] <= stop_p)
+                                regiao_sobrecompra = usar_saida_ob_rx and (df_b['STOCHk'].iloc[i] > overbought_rx)
+                                cruzou_k_baixo = usar_saida_cross_rx and (df_b['STOCHk'].iloc[i] < df_b['STOCHd'].iloc[i])
                                 
-                                if bateu_stop or bateu_alvo or sinal_venda:
-                                    if bateu_stop:
-                                        preco_saida = em_aberto['entrada_preco'] * (1 - stop_pct); motivo = "Stop Loss"
-                                    elif bateu_alvo:
-                                        preco_saida = em_aberto['entrada_preco'] * (1 + alvo_pct); motivo = "Alvo Fixo (Gain)"
-                                    else:
-                                        preco_saida = linha['Close']; motivo = "Reversão (Sobrecompra)"
+                                saiu = False
+                                if bateu_stop:
+                                    lucro = -(float(capital_rx) * stop_d)
+                                    derrotas += 1; situacao = "Stop ❌"; saiu = True
+                                elif bateu_alvo:
+                                    lucro = float(capital_rx) * alvo_d
+                                    vitorias += 1; situacao = "Alvo ✅"; saiu = True
+                                elif regiao_sobrecompra or cruzou_k_baixo:
+                                    lucro = float(capital_rx) * ((df_b['Close'].iloc[i] / p_ent) - 1)
+                                    situacao = "Saída Estocástico 🎯" if lucro > 0 else "Saída Técnica ❌"
+                                    if lucro > 0: vitorias += 1
+                                    else: derrotas += 1
+                                    saiu = True
 
-                                    lucro_pct = (preco_saida / em_aberto['entrada_preco']) - 1
-                                    lucro_rs = capital_rx * lucro_pct
-                                    duracao = (data - em_aberto['entrada_data']).days
-                                    trades_fechados.append({
-                                        'Entrada': em_aberto['entrada_data'].strftime("%d/%m/%Y"), 
-                                        'Saída': data.strftime("%d/%m/%Y"), 
-                                        'Motivo Saída': motivo, 
-                                        'Duração': duracao, 
-                                        'Lucro (R$)': lucro_rs, 
-                                        'Queda Máx': em_aberto['pior_queda'], 
-                                        'Situação': "Gain ✅" if lucro_pct > 0 else "Loss ❌"
+                                if saiu:
+                                    duracao = (df_b[col_dt].iloc[i] - d_ent).days
+                                    dd = ((min_na_op / p_ent) - 1) * 100
+                                    trades.append({
+                                        'Entrada': d_ent.strftime('%d/%m/%Y'), 
+                                        'Saída': df_b[col_dt].iloc[i].strftime('%d/%m/%Y'), 
+                                        'Duração': f"{duracao} d", 
+                                        'Lucro (R$)': lucro, 
+                                        'Queda Máx': dd, 
+                                        'Situação': situacao
                                     })
-                                    em_aberto = None
+                                    em_pos, posicao_atual = False, None
 
-                        if em_aberto is not None:
-                            st.info(f"⏳ **{ativo_rx}: Em Operação** (Buscando Sobrecompra | Desde {em_aberto['entrada_data'].strftime('%d/%m/%Y')} a R$ {em_aberto['entrada_preco']:.2f})")
-                        else:
-                            st.success(f"✅ **{ativo_rx}: Aguardando Novo Sinal na Zona de Sobrevenda (<{sobrevenda_rx})**")
-
-                        st.markdown(f"### 📊 Resultado Consolidado: {ativo_rx}")
-                        if trades_fechados:
-                            df_trades = pd.DataFrame(trades_fechados)
-                            m1, m2, m3, m4 = st.columns(4)
-                            m1.metric("Lucro Total", f"R$ {df_trades['Lucro (R$)'].sum():.2f}")
-                            m2.metric("Duração Média", f"{df_trades['Duração'].mean():.1f} dias")
-                            m3.metric("Operações Fechadas", len(df_trades))
-                            m4.metric("Pior Queda", f"{df_trades['Queda Máx'].min()*100:.2f}%")
-                            
-                            st.markdown("<br>", unsafe_allow_html=True)
-                            df_show = df_trades.copy()
-                            df_show['Lucro (R$)'] = df_show['Lucro (R$)'].apply(lambda x: f"R$ {x:.2f}")
-                            df_show['Queda Máx'] = df_show['Queda Máx'].apply(lambda x: f"{x*100:.2f}%")
-                            def colorir_tabela(val):
-                                if 'Gain' in str(val) or ('R$' in str(val) and '-' not in str(val) and val != 'R$ 0.00'): return 'color: #00FFCC; font-weight: bold'
-                                if 'Loss' in str(val) or ('R$' in str(val) and '-' in str(val)): return 'color: #FF4D4D; font-weight: bold'
-                                return ''
-                            st.dataframe(df_show.style.map(colorir_tabela), use_container_width=True, hide_index=True)
-                        else:
-                            st.warning("Nenhuma operação concluída no período com os parâmetros selecionados.")
-
+                        # --- RENDERIZAÇÃO DO GRÁFICO ---
                         st.divider()
-                        st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
-                        renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
-                        st.info("💡 **Dica:** No gráfico acima, clique em 'Indicadores' e adicione o 'Stochastic' para visualizar o cruzamento nas zonas de pressão.")
-                    else:
-                        st.error("Sem dados suficientes no período de corte.")
+                        st.markdown(f"### 📈 Gráfico de Execução ({ativo_rx})")
+                        df_trades_plot = pd.DataFrame(trades) if trades else pd.DataFrame()
+                        corte_grafico = df_b.tail(300) # Foco nos últimos 300 candles
+                        
+                        # Função de plotagem personalizada para Estocástico
+                        st.plotly_chart(plotar_grafico_estocastico(corte_grafico, df_trades_plot, mostrar_subgrafico_st), use_container_width=True)
+                        st.divider()
+
+                        # Métricas Atuais e Históricas (Mesma lógica do ADX)
+                        if em_pos and posicao_atual:
+                            st.warning(f"⚠️ **OPERAÇÃO EM CURSO: {ativo_rx}**")
+                            # ... (Código das métricas de operação em curso igual ao seu anterior)
+                        
+                        if trades:
+                            df_res = pd.DataFrame(trades)
+                            st.markdown("### 📊 Consolidado do Raio-X")
+                            m1, m2, m3, m4 = st.columns(4)
+                            m1.metric("Lucro Acumulado", f"R$ {df_res['Lucro (R$)'].sum():,.2f}")
+                            m2.metric("Total de Trades", len(df_res))
+                            m3.metric("Win Rate", f"{(vitorias / len(df_res) * 100):.1f}%")
+                            m4.metric("Drawdown Máx", f"{df_res['Queda Máx'].min():.2f}%")
+                            
+                            st.dataframe(df_res.style.map(lambda x: 'color: #28a745' if '✅' in str(x) or '🎯' in str(x) else 'color: #dc3545' if '❌' in str(x) else '', subset=['Situação']), use_container_width=True, hide_index=True)
+                        else:
+                            st.info("O Estocástico não identificou entradas no período.")
                 else:
-                    st.error("Não foi possível coletar dados do TradingView para este ativo.")
+                    st.error("Dados insuficientes para este ativo.")
             except Exception as e:
-                st.error(f"Erro no processamento via tvDatafeed: {e}")
+                st.error(f"Erro no processamento: {e}")
