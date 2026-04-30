@@ -5,3 +5,4 @@ tradingview-datafeed
 yfinance
 requests
 plotly
+scikit-learn
