@@ -9,7 +9,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# 1. CONFIGURAÇÃO E SEGURANÇA
+# 1. CONFIGURAÇÃO
 # ==========================================
 st.set_page_config(page_title="Ichimoku TK Elite", layout="wide", page_icon="☁️")
 
@@ -22,19 +22,18 @@ try:
     from config_ativos import bdrs_elite, ibrx_selecao, macro_elite
     from motor_dados import puxar_dados_blindados
 except ImportError:
-    st.error("❌ Erro ao carregar dependências do sistema.")
+    st.error("❌ Erro ao carregar dependências.")
     st.stop()
 
 ativos_lista = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)] + list(macro_elite.keys()))))
 
 # ==========================================
-# 2. MOTOR MATEMÁTICO (BLINDADO CONTRA NONE)
+# 2. MOTOR MATEMÁTICO BLINDADO
 # ==========================================
 def calcular_ichimoku_tk(df, tenkan=20, kijun=60, senkou=120, displacement=30, ema_p=200):
-    if df is None or len(df) < 5: return None
+    if df is None or len(df) < 10: return None
     df = df.copy()
     
-    # Padronização de Colunas
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
     df.columns = [c.lower() for c in df.columns]
     
@@ -45,27 +44,19 @@ def calcular_ichimoku_tk(df, tenkan=20, kijun=60, senkou=120, displacement=30, e
     df['tenkan_sen'] = donchian(tenkan)
     df['kijun_sen'] = donchian(kijun)
     
-    # CÁLCULO SEGURO: Evita o erro 'NoneType' se o histórico for curto
     ema_series = ta.ema(df['close'], length=ema_p)
-    if ema_series is not None:
-        df['ma_filtro'] = ema_series.bfill()
-    else:
-        # Se não houver dados para a média, preenchemos com o próprio fechamento 
-        # para não quebrar, mas os sinais de filtro não serão ativados.
-        df['ma_filtro'] = df['close']
+    df['ma_filtro'] = ema_series.bfill() if ema_series is not None else df['close']
     
-    # Sinais
     df['tk_cross_up'] = (df['tenkan_sen'] > df['kijun_sen']) & (df['tenkan_sen'].shift(1) <= df['kijun_sen'].shift(1))
     df['tk_cross_down'] = (df['tenkan_sen'] < df['kijun_sen']) & (df['tenkan_sen'].shift(1) >= df['kijun_sen'].shift(1))
     
-    # Condição de Compra: TK Cross + Preço > Média Escolhida
     df['entry_long'] = (df['tenkan_sen'] > df['kijun_sen']) & (df['close'] > df['ma_filtro']) & df['tk_cross_up']
     df['exit_long'] = df['tk_cross_down']
     
     return df
 
 # ==========================================
-# 3. INTERFACE STREAMLIT
+# 3. INTERFACE
 # ==========================================
 st.title("☁️ Ichimoku Cloud + Filtro Móvel")
 
@@ -100,28 +91,45 @@ with aba_radar:
             try:
                 df_cru = puxar_dados_blindados(ativo, tempo_r)
                 df = calcular_ichimoku_tk(df_cru, p_tenkan, p_kijun, p_senkou, p_disp, p_ema)
-                
                 if df is not None:
                     hoje = df.iloc[-1]
                     if hoje['entry_long']: status = "🟢 COMPRA"
                     elif hoje['tenkan_sen'] > hoje['kijun_sen'] and hoje['close'] > hoje['ma_filtro']: status = "📈 Alta"
                     elif hoje['tenkan_sen'] < hoje['kijun_sen']: status = "📉 Baixa"
                     else: status = "🟡 Neutro"
-                        
-                    ls_res.append({
-                        'Ativo': ativo, 'Preço': f"R$ {hoje['close']:.2f}",
-                        'Status': status, f'Média ({p_ema})': f"{hoje['ma_filtro']:.2f}"
-                    })
-            except Exception as e:
-                st.warning(f"Atenção em {ativo}: {e}")
+                    ls_res.append({'Ativo': ativo, 'Preço': f"R$ {hoje['close']:.2f}", 'Status': status, f'Média ({p_ema})': f"{hoje['ma_filtro']:.2f}"})
+            except: pass
         
         s_text.empty(); p_bar.empty()
-        if ls_res:
-            st.dataframe(pd.DataFrame(ls_res), use_container_width=True, hide_index=True)
-        else:
-            st.info("Nenhum ativo processado. Verifique sua conexão com o Bunker de dados.")
+        if ls_res: st.dataframe(pd.DataFrame(ls_res), use_container_width=True, hide_index=True)
 
-# Aba de Backtest mantida com a mesma lógica de segurança
 with aba_test:
-    # ... (mesmo código do backtest anterior, chamando o motor blindado)
-    pass
+    t1, t2 = st.columns(2)
+    atv_test = t1.selectbox("Selecione o Ativo:", ativos_lista)
+    tmp_test = t2.selectbox("Tempo Gráfico:", ['60m', '1d', '1wk'], index=1, key='tk_test')
+    
+    if st.button("📊 Rodar Backtest Ichimoku", type="primary", use_container_width=True):
+        try:
+            df_cru = puxar_dados_blindados(atv_test, tmp_test)
+            df = calcular_ichimoku_tk(df_cru, p_tenkan, p_kijun, p_senkou, p_disp, p_ema)
+            if df is not None:
+                trades, em_posicao = [], False
+                df_b = df.reset_index()
+                col_dt = df_b.columns[0]
+                for i in range(1, len(df_b)):
+                    candle = df_b.iloc[i]
+                    if not em_posicao and candle['entry_long']:
+                        em_posicao, preco_ent, data_ent = True, candle['close'], candle[col_dt]
+                    elif em_posicao and candle['exit_long']:
+                        lucro = ((candle['close'] / preco_ent) - 1) * 100
+                        trades.append({'Entrada': data_ent.strftime('%d/%m/%Y'), 'Saída': candle[col_dt].strftime('%d/%m/%Y'), 'Retorno (%)': lucro})
+                        em_posicao = False
+                if trades:
+                    df_res = pd.DataFrame(trades)
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Trades", len(df_res))
+                    m2.metric("Win Rate", f"{(len(df_res[df_res['Retorno (%)'] > 0])/len(df_res)*100):.1f}%")
+                    m3.metric("Retorno Total", f"{df_res['Retorno (%)'].sum():.2f}%")
+                    st.dataframe(df_res, use_container_width=True, hide_index=True)
+                else: st.warning("Nenhum trade encontrado.")
+        except Exception as e: st.error(f"Erro: {e}")
