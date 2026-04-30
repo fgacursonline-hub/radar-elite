@@ -28,58 +28,61 @@ except ImportError:
 ativos_lista = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)] + list(macro_elite.keys()))))
 
 # ==========================================
-# 2. O MOTOR MATEMÁTICO ICHIMOKU
+# 2. O MOTOR MATEMÁTICO ICHIMOKU (CORRIGIDO)
 # ==========================================
-def calcular_ichimoku_tk(df, tenkan=20, kijun=60, senkou=120, displacement=30):
-    """
-    Motor matemático Ichimoku com períodos customizados para filtragem institucional.
-    """
-    if df is None or len(df) < senkou: return None
+def calcular_ichimoku_tk(df, tenkan=20, kijun=60, senkou=120, displacement=30, ema_p=200):
+    if df is None or len(df) < max(senkou, ema_p): return None
     df = df.copy()
     
-    # Cálculos de Ichimoku (High+Low / 2)
+    # PADRONIZAÇÃO DE COLUNAS (Evita erro 'high', 'low', etc.)
+    if isinstance(df.columns, pd.MultiIndex): 
+        df.columns = df.columns.get_level_values(0)
+    df.columns = [c.lower() for c in df.columns]
+    
+    # Garantir que temos as colunas necessárias
+    colunas_necessarias = ['open', 'high', 'low', 'close']
+    if not all(col in df.columns for col in colunas_necessarias):
+        return None
+
+    # Cálculos de Ichimoku
     def donchian(len_p):
         return (df['high'].rolling(window=len_p).max() + df['low'].rolling(window=len_p).min()) / 2
 
-    df['Tenkan_sen'] = donchian(tenkan) # Conversion Line
-    df['Kijun_sen'] = donchian(kijun)   # Base Line
+    df['tenkan_sen'] = donchian(tenkan)
+    df['kijun_sen'] = donchian(kijun)
     
-    # EMA 200 como Filtro de Tendência Primária
-    df['EMA200'] = ta.ema(df['close'], length=200)
+    # MÉDIA MÓVEL DINÂMICA (Livre para escolha)
+    df['ma_filtro'] = ta.ema(df['close'], length=ema_p)
     
-    # Senkou Span A e B (A Nuvem)
-    df['Senkou_A'] = ((df['Tenkan_sen'] + df['Kijun_sen']) / 2).shift(displacement)
-    df['Senkou_B'] = donchian(senkou).shift(displacement)
+    # Senkou Span (Nuvem)
+    df['senkou_a'] = ((df['tenkan_sen'] + df['kijun_sen']) / 2).shift(displacement)
+    df['senkou_b'] = donchian(senkou).shift(displacement)
     
-    # --- REGRAS DE ENTRADA E SAÍDA ---
-    # TK Cross: Tenkan cruzando Kijun para cima
-    df['TK_Cross_Up'] = (df['Tenkan_sen'] > df['Kijun_sen']) & (df['Tenkan_sen'].shift(1) <= df['Kijun_sen'].shift(1))
-    df['TK_Cross_Down'] = (df['Tenkan_sen'] < df['Kijun_sen']) & (df['Tenkan_sen'].shift(1) >= df['Kijun_sen'].shift(1))
+    # Sinais
+    df['tk_cross_up'] = (df['tenkan_sen'] > df['kijun_sen']) & (df['tenkan_sen'].shift(1) <= df['kijun_sen'].shift(1))
+    df['tk_cross_down'] = (df['tenkan_sen'] < df['kijun_sen']) & (df['tenkan_sen'].shift(1) >= df['kijun_sen'].shift(1))
     
-    # Condição de Compra: TK Cross Up + Preço Acima da EMA 200
-    df['Entry_Long'] = (df['Tenkan_sen'] > df['Kijun_sen']) & (df['close'] > df['EMA200']) & df['TK_Cross_Up']
+    # Condição: TK Up + Acima da Média escolhida
+    df['entry_long'] = (df['tenkan_sen'] > df['kijun_sen']) & (df['close'] > df['ma_filtro']) & df['tk_cross_up']
+    df['exit_long'] = df['tk_cross_down']
     
-    # Condição de Saída: TK Cross Down
-    df['Exit_Long'] = df['TK_Cross_Down']
-    
-    return df.dropna(subset=['Tenkan_sen', 'Kijun_sen', 'EMA200'])
+    return df.dropna(subset=['tenkan_sen', 'kijun_sen', 'ma_filtro'])
 
 # ==========================================
 # 3. INTERFACE STREAMLIT
 # ==========================================
-st.title("☁️ Ichimoku Cloud + EMA 200")
-st.markdown("""
-Esta estratégia utiliza o **Equilíbrio de Ichimoku** filtrado pela **Média de 200 períodos**. 
-O objetivo é capturar o início de grandes tendências quando o momentum de curto prazo (Tenkan) vence o equilíbrio de médio prazo (Kijun).
-""")
+st.title("☁️ Ichimoku Cloud + Filtro de Média")
+st.info("💡 **Dica de Especialista:** O cruzamento Tenkan > Kijun acima da Média Móvel indica que o momentum de curto prazo venceu a resistência de médio prazo em um mercado de tendência definida.")
 
 with st.container(border=True):
-    st.markdown("#### ⚙️ Parâmetros da Nuvem")
-    c1, c2, c3, c4 = st.columns(4)
+    st.markdown("#### ⚙️ Parâmetros da Nuvem e Filtro")
+    c1, c2, c3, c4, c5 = st.columns(5)
     p_tenkan = c1.number_input("Tenkan (Conversão):", 20)
     p_kijun = c2.number_input("Kijun (Base):", 60)
     p_senkou = c3.number_input("Senkou B (Nuvem):", 120)
     p_disp = c4.number_input("Deslocamento:", 30)
+    # AQUI ESTÁ A MÉDIA LIVRE
+    p_ema = c5.number_input("Média Móvel (Filtro):", 200, help="Filtra a direção principal. Sugestões: 200 (Long Term), 50 (Mid Term).")
 
 aba_radar, aba_test = st.tabs(["📡 Radar de Cruzamento TK", "🔬 Raio-X da Nuvem"])
 
@@ -90,9 +93,11 @@ with aba_radar:
     tempo_r = r2.selectbox("Tempo Gráfico:", ['60m', '1d', '1wk'], index=1)
     
     if st.button("🚀 Escanear Sinais da Nuvem", type="primary", use_container_width=True):
-        ativos_tr = bdrs_elite if lista_r == "BDRs Elite" else ibrx_selecao if lista_r == "IBrX Seleção" else list(macro_elite.keys())
+        if lista_r == "BDRs Elite": ativos_tr = bdrs_elite
+        elif lista_r == "IBrX Seleção": ativos_tr = ibrx_selecao
+        else: ativos_tr = list(macro_elite.keys())
+            
         ativos_tr = sorted(list(set([a.replace('.SA', '') for a in ativos_tr])))
-        
         ls_res = []
         p_bar = st.progress(0)
         
@@ -100,32 +105,23 @@ with aba_radar:
             p_bar.progress((idx + 1) / len(ativos_tr))
             try:
                 df_cru = puxar_dados_blindados(ativo, tempo_r)
-                df = calcular_ichimoku_tk(df_cru, p_tenkan, p_kijun, p_senkou, p_disp)
+                df = calcular_ichimoku_tk(df_cru, p_tenkan, p_kijun, p_senkou, p_disp, p_ema)
                 if df is not None:
                     hoje = df.iloc[-1]
-                    # Verifica se deu entrada ou se está em tendência
-                    if hoje['Entry_Long']:
-                        status = "🟢 COMPRA (Novo Sinal)"
-                    elif hoje['Tenkan_sen'] > hoje['Kijun_sen'] and hoje['close'] > hoje['EMA200']:
-                        status = "📈 Tendência de Alta"
-                    elif hoje['Tenkan_sen'] < hoje['Kijun_sen']:
-                        status = "📉 Tendência de Baixa"
-                    else:
-                        status = "🟡 Neutro / Consolidação"
+                    if hoje['entry_long']: status = "🟢 COMPRA (Novo Sinal)"
+                    elif hoje['tenkan_sen'] > hoje['kijun_sen'] and hoje['close'] > hoje['ma_filtro']: status = "📈 Tendência de Alta"
+                    elif hoje['tenkan_sen'] < hoje['kijun_sen']: status = "📉 Tendência de Baixa"
+                    else: status = "🟡 Neutro"
                         
                     ls_res.append({
                         'Ativo': ativo, 'Preço': f"R$ {hoje['close']:.2f}",
-                        'Status': status, 'Tenkan': f"{hoje['Tenkan_sen']:.2f}", 'Kijun': f"{hoje['Kijun_sen']:.2f}"
+                        'Status': status, f'Média ({p_ema})': f"{hoje['ma_filtro']:.2f}"
                     })
             except: pass
         
         p_bar.empty()
         if ls_res:
-            df_final = pd.DataFrame(ls_res)
-            st.dataframe(df_final.style.applymap(
-                lambda x: 'color: #28a745; font-weight: bold' if 'COMPRA' in str(x) else ('color: #dc3545' if 'Baixa' in str(x) else ''),
-                subset=['Status']
-            ), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(ls_res), use_container_width=True, hide_index=True)
 
 # --- ABA 2: BACKTEST ---
 with aba_test:
@@ -136,38 +132,25 @@ with aba_test:
     if st.button("📊 Rodar Backtest Ichimoku", type="primary", use_container_width=True):
         try:
             df_cru = puxar_dados_blindados(atv_test, tmp_test)
-            df = calcular_ichimoku_tk(df_cru, p_tenkan, p_kijun, p_senkou, p_disp)
+            df = calcular_ichimoku_tk(df_cru, p_tenkan, p_kijun, p_senkou, p_disp, p_ema)
             
             if df is not None:
                 trades = []
                 em_posicao = False
-                
-                df_b = df.reset_index()
-                col_dt = df_b.columns[0]
-                
-                for i in range(1, len(df_b)):
-                    candle = df_b.iloc[i]
-                    if not em_posicao and candle['Entry_Long']:
+                for i in range(1, len(df)):
+                    candle = df.iloc[i]
+                    if not em_posicao and candle['entry_long']:
                         em_posicao = True
                         preco_ent = candle['close']
-                        data_ent = candle[col_dt]
-                    elif em_posicao and candle['Exit_Long']:
+                        data_ent = df.index[i]
+                    elif em_posicao and candle['exit_long']:
                         lucro = ((candle['close'] / preco_ent) - 1) * 100
-                        trades.append({
-                            'Entrada': data_ent.strftime('%d/%m/%Y'),
-                            'Saída': candle[col_dt].strftime('%d/%m/%Y'),
-                            'Retorno (%)': lucro
-                        })
+                        trades.append({'Entrada': data_ent.strftime('%d/%m/%Y'), 'Saída': df.index[i].strftime('%d/%m/%Y'), 'Retorno (%)': lucro})
                         em_posicao = False
                 
                 if trades:
                     df_res = pd.DataFrame(trades)
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Total Trades", len(df_res))
-                    m2.metric("Win Rate", f"{(len(df_res[df_res['Retorno (%)'] > 0])/len(df_res)*100):.1f}%")
-                    m3.metric("Retorno Acumulado", f"{df_res['Retorno (%)'].sum():.2f}%")
-                    st.dataframe(df_res, use_container_width=True)
-                else:
-                    st.warning("Nenhum trade completo encontrado no histórico.")
-        except Exception as e:
-            st.error(f"Erro: {e}")
+                    st.metric("Retorno Acumulado", f"{df_res['Retorno (%)'].sum():.2f}%")
+                    st.dataframe(df_res, use_container_width=True, hide_index=True)
+                else: st.warning("Nenhum trade encontrado.")
+        except Exception as e: st.error(f"Erro no processamento: {e}")
