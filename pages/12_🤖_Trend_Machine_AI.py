@@ -70,7 +70,6 @@ def calcular_ai_supertrend_pivot(df, k=6, n_points=48, st_len=10, st_factor=3.5,
     supertrend = np.zeros(len(df))
     st_direction = np.zeros(len(df))
     
-    # Prevenção rigorosa contra NaNs antes de virar numpy array
     up_arr = st_upper.bfill().fillna(df['Close']).values.copy()
     dn_arr = st_lower.bfill().fillna(df['Close']).values.copy()
     close_arr = df['Close'].values.copy()
@@ -105,7 +104,6 @@ def calcular_ai_supertrend_pivot(df, k=6, n_points=48, st_len=10, st_factor=3.5,
         y_train = df['Label_Real'].iloc[i-n_points:i].values
         X_test = np.array([[df['SuperTrend'].iloc[i]]])
         
-        # Só treina se houver diversidade nos dados, senão copia o estado anterior
         if len(np.unique(y_train)) > 1:
             knn = KNeighborsClassifier(n_neighbors=k, weights='distance')
             try:
@@ -122,7 +120,6 @@ def calcular_ai_supertrend_pivot(df, k=6, n_points=48, st_len=10, st_factor=3.5,
     bull_score = np.zeros(len(df))
     bear_score = np.zeros(len(df))
     
-    # Reduzindo a exigência de 144 para 50 períodos para evitar destruir dados curtos
     highest_high = df['High'].rolling(50, min_periods=1).quantile(0.75).bfill()
     lowest_low = df['Low'].rolling(50, min_periods=1).quantile(0.25).bfill()
     
@@ -183,7 +180,7 @@ with st.container(border=True):
         
     with c4:
         st.markdown("**Filtro Institucional**")
-        p_use_adx = st.toggle("Usar Filtro ADX/DMI", value=False, help="Deixado desligado por padrão para facilitar o aparecimento de sinais iniciais.")
+        p_use_adx = st.toggle("Usar Filtro ADX/DMI", value=False)
         p_adx_len = st.number_input("Período ADX:", value=14, step=1, disabled=not p_use_adx)
 
 
@@ -210,7 +207,6 @@ with aba_radar:
             s_text.text(f"🤖 Analisando {ativo}...")
             p_bar.progress((idx + 1) / len(ativos_tr))
             
-            # MODO DEBUG: Se der erro, ele vai aparecer na tela em vez de sumir silenciosamente
             try:
                 df_cru = puxar_dados_blindados(ativo, tempo_r)
                 df = calcular_ai_supertrend_pivot(df_cru, p_k, p_pts, p_st_len, p_st_fac, p_adx_len, p_use_adx, p_piv)
@@ -221,7 +217,7 @@ with aba_radar:
                 elif hoje['Entry_Short']:
                     ls_vendas.append({'Ativo': ativo, 'Preço (R$)': f"{hoje['Close']:.2f}", 'Score Pivô': f"{hoje['Pivot_Trend_Value']:.1f}"})
             except Exception as e:
-                st.error(f"Erro no ativo {ativo}: {e}")
+                pass # Ignora erros de ativos sem dados
             
         s_text.empty(); p_bar.empty()
         
@@ -235,6 +231,22 @@ with aba_radar:
             st.error("🔴 **SINAIS DE VENDA / SHORT**")
             if ls_vendas: st.dataframe(pd.DataFrame(ls_vendas), use_container_width=True, hide_index=True)
             else: st.write("A IA não autorizou vendas.")
+
+        st.markdown("---")
+        with st.expander("📖 Manual Prático: Como interpretar esses resultados?"):
+            st.markdown("""
+            ### Entendendo a Varredura da IA
+            Se um ativo apareceu nas tabelas acima, significa que o algoritmo **KNN (Inteligência Artificial)** confirmou que o padrão atual tem alta probabilidade estatística de continuar a tendência.
+
+            ### O que é o "Score Pivô"?
+            A coluna **Score Pivô** mede a violência e a qualidade dessa tendência comparando os topos e fundos recentes com o histórico longo do ativo.
+            
+            * **🟢 Score Positivo (Ex: +7.5):** Significa força compradora estrutural. Um score de **7.5** indica que o ativo está rompendo topos anteriores de forma extremamente agressiva e os fundos estão cada vez mais altos. Quanto maior o número, mais violenta é a tendência de alta.
+            * **🔴 Score Negativo (Ex: -7.5):** Significa fraqueza estrutural severa. Um score de **-7.5** mostra que o ativo perdeu os "chãos" importantes que o defendiam no passado e está derretendo. Quanto mais negativo, mais forte é a tendência de baixa (Short).
+            * **Scores Baixos (Ex: 1.5 ou -1.5):** O sinal foi confirmado pela IA, mas o rompimento ainda é tímido ou está em fase inicial.
+            
+            **Dica Operacional:** Em gráficos diários (1d), procure montar posições focando nos ativos que apresentam a mesma direção da IA aliada aos maiores Scores (positivos ou negativos) da lista.
+            """)
 
 # --- ABA 2: BACKTEST INDIVIDUAL ---
 with aba_raiox:
@@ -302,5 +314,4 @@ with aba_raiox:
                 else:
                     st.warning("Com essas calibragens, a IA não encontrou nenhum trade finalizado.")
             except Exception as e:
-                # O ERRO AGORA APARECE NA TELA PARA VOCÊ LER
                 st.error(f"Ocorreu um erro no processamento: {e}")
