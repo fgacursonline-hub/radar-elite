@@ -1,8 +1,7 @@
 import streamlit as st
-from tvDatafeed import TvDatafeed, Interval
-import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 import time
 import warnings
 import sys
@@ -12,19 +11,20 @@ from datetime import datetime
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# 1. IMPORTAÇÃO CENTRALIZADA DOS ATIVOS
+# 1. IMPORTAÇÃO CENTRALIZADA DOS ATIVOS E BUNKER
 # ==========================================
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 try:
     from config_ativos import bdrs_elite, ibrx_selecao
+    from motor_dados import puxar_dados_blindados # MODO BUSCA PELO BUNKER AQUI
 except ImportError:
-    st.error("❌ Arquivo 'config_ativos.py' não encontrado na raiz do projeto.")
+    st.error("❌ Arquivo 'config_ativos.py' ou 'motor_dados.py' não encontrado na raiz do projeto.")
     st.stop()
 
 ativos_para_rastrear = sorted(list(set([a.replace('.SA', '') for a in (bdrs_elite + ibrx_selecao)])))
 
 # ==========================================
-# 2. CONFIGURAÇÃO DA PÁGINA E TVDATAFEED
+# 2. CONFIGURAÇÃO DA PÁGINA
 # ==========================================
 st.set_page_config(page_title="Darvas Box Elite", layout="wide", page_icon="📦")
 
@@ -32,24 +32,10 @@ if 'autenticado' not in st.session_state or not st.session_state['autenticado']:
     st.error("🚫 Por favor, faça login na página inicial (Home).")
     st.stop()
 
-# Conexão com o TradingView
-@st.cache_resource
-def get_tv_connection():
-    return TvDatafeed()
-
-tv = get_tv_connection()
-
 tradutor_periodo_nome = {
     '1mo': '1 Mês', '3mo': '3 Meses', '6mo': '6 Meses',
     '1y': '1 Ano', '2y': '2 Anos', '5y': '5 Anos',
     'max': 'Máximo', '60d': '60 Dias'
-}
-
-tradutor_intervalo = {
-    '15m': Interval.in_15_minute,
-    '60m': Interval.in_1_hour,
-    '1d': Interval.in_daily,
-    '1wk': Interval.in_weekly
 }
 
 st.title("📦 Máquina Quantitativa: Darvas Box")
@@ -58,7 +44,7 @@ st.markdown("Trend Following agressivo: Compre rompimentos de máximas e mova o 
 aba_radar, aba_individual = st.tabs(["🌐 Radar Global (Scanner & Top 20)", "🔬 Raio-X Individual (Backtest)"])
 
 # ==========================================
-# 3. MOTOR MATEMÁTICO (DARVAS BOX)
+# 3. MOTOR MATEMÁTICO E GRÁFICO (DARVAS BOX)
 # ==========================================
 def calcular_darvas(df, periodo_caixa=20):
     if df.empty or len(df) < periodo_caixa: return pd.DataFrame()
@@ -75,32 +61,28 @@ def calcular_darvas(df, periodo_caixa=20):
     
     return df.dropna()
 
-def renderizar_grafico_tv(symbol):
-    html_code = f"""
-    <div class="tradingview-widget-container">
-      <div id="tv_chart_{symbol.replace(':', '')}" style="height: 600px; width: 100%;"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-      <script type="text/javascript">
-      new TradingView.widget(
-      {{
-      "autosize": true,
-      "symbol": "{symbol}",
-      "interval": "D",
-      "timezone": "America/Sao_Paulo",
-      "theme": "dark",
-      "style": "1",
-      "locale": "br",
-      "enable_publishing": false,
-      "hide_top_toolbar": false,
-      "hide_legend": false,
-      "save_image": false,
-      "container_id": "tv_chart_{symbol.replace(':', '')}"
-    }}
-      );
-      </script>
-    </div>
-    """
-    components.html(html_code, height=600)
+def plotar_darvas_plotly(df, trades_df, mostrar_caixas):
+    fig = go.Figure()
+    
+    # Preço em Candlestick
+    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Preço"))
+    
+    # Linhas da Caixa de Darvas (em formato 'step' / 'hv' para ficar com cara de caixa)
+    if mostrar_caixas and 'Darvas_Top' in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df['Darvas_Top'], name="Teto (Darvas)", line=dict(color='#00FFCC', width=1.5, shape='hv')))
+        fig.add_trace(go.Scatter(x=df.index, y=df['Darvas_Bottom'], name="Piso (Darvas)", line=dict(color='#FF4D4D', width=1.5, shape='hv')))
+
+    # Setas de Entrada
+    if not trades_df.empty:
+        for _, trade in trades_df.iterrows():
+            try:
+                data_ent = pd.to_datetime(trade['Entrada'], format="%d/%m/%Y")
+                if data_ent in df.index:
+                    fig.add_annotation(x=data_ent, y=df.loc[data_ent, 'Low'], text="▲ COMPRA", showarrow=True, arrowhead=1, color="green", yshift=-10)
+            except: pass
+
+    fig.update_layout(height=600, template="plotly_dark", xaxis_rangeslider_visible=False, margin=dict(l=10, r=10, t=30, b=10))
+    return fig
 
 def exibir_explicacao_estrategia():
     st.info("📦 **A Estratégia Darvas Box:** Sistema clássico de Trend Following (Seguidor de Tendência) criado por Nicolas Darvas. \n\n🟢 **Gatilho de Compra:** Ocorre no exato momento em que o preço rompe o Teto (resistência máxima) de uma consolidação. \n\n🔴 **Gatilho de Venda (Defesa):** O Stop Loss padrão da estratégia fica posicionado logo abaixo do Piso da Caixa anterior. O trade só encerra quando esse piso é rompido para baixo (ou se atingir os seus alvos e stops fixos opcionais).")
@@ -143,23 +125,24 @@ with aba_radar:
     else: ativos_alvo = bdrs_elite + ibrx_selecao
     ativos_alvo = sorted(list(set([a.replace('.SA', '') for a in ativos_alvo])))
 
-    btn_iniciar_global = st.button("🚀 Iniciar Varredura Darvas Box (tvDatafeed)", type="primary", use_container_width=True)
+    btn_iniciar_global = st.button("🚀 Iniciar Varredura Darvas Box (Bunker)", type="primary", use_container_width=True)
 
     if btn_iniciar_global:
-        intervalo_tv = tradutor_intervalo.get(tempo_grafico_global, Interval.in_daily)
-        
         oportunidades, andamento, historico = [], [], []
         p_bar = st.progress(0)
         s_text = st.empty()
         
         for i, ativo in enumerate(ativos_alvo):
-            s_text.text(f"Desenhando Caixas via TV: {ativo} ({i+1}/{len(ativos_alvo)})")
+            s_text.text(f"Desenhando Caixas via Bunker: {ativo} ({i+1}/{len(ativos_alvo)})")
             p_bar.progress((i + 1) / len(ativos_alvo))
             try:
-                df_full = tv.get_hist(symbol=ativo, exchange='BMFBOVESPA', interval=intervalo_tv, n_bars=5000)
+                # SUBSTITUÍDO tv.get_hist PELO BUNKER
+                df_full = puxar_dados_blindados(ativo, tempo_grafico_global)
                 if df_full is None or len(df_full) < 50: continue
 
-                df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                # Padronizando colunas para manter a compatibilidade com a sua lógica original
+                if isinstance(df_full.columns, pd.MultiIndex): df_full.columns = df_full.columns.get_level_values(0)
+                df_full.columns = [c.capitalize() for c in df_full.columns]
                 df_full = df_full.dropna()
                 
                 df_full = calcular_darvas(df_full, periodo_caixa=periodo_caixa_g)
@@ -223,7 +206,7 @@ with aba_radar:
                     historico.append({"Ativo": ativo, "Trades": total_trades, "Pior Queda": pior_dd, "Investimento": investimento, "Lucro R$": lucro_total, "Resultado": lucro_total / investimento if investimento > 0 else 0})
             except Exception as e: 
                 pass
-            time.sleep(0.05)
+            time.sleep(0.01)
         
         p_bar.empty(); s_text.empty()
         
@@ -269,6 +252,8 @@ with aba_individual:
         with c3:
             tempo_rx = st.selectbox("Tempo Gráfico:", ['15m', '60m', '1d', '1wk'], index=2, format_func=lambda x: {'15m': '15 min', '60m': '60 min', '1d': 'Diário', '1wk': 'Semanal'}[x], key="rx_tmp")
             usar_stop_darvas_rx = st.toggle("📦 Usar Piso como Stop", value=True, key="tg_stop_darvas_rx")
+            # Adicionado Botão do Gráfico aqui para preservar sua estrutura
+            mostrar_grafico_rx = st.toggle("📊 Mostrar Caixas no Gráfico", value=True, key="tg_graf_rx")
         with c4:
             usar_alvo_rx = st.toggle("🎯 Alvo Fixo", value=False, key="tg_alvo_rx")
             alvo_rx = st.number_input("Alvo (%):", value=15.00, step=1.00, key="rx_alvo", disabled=not usar_alvo_rx)
@@ -280,13 +265,15 @@ with aba_individual:
     btn_rx = st.button("🔍 Rodar Laboratório Darvas", type="primary", use_container_width=True)
     
     if btn_rx:
-        intervalo_tv_rx = tradutor_intervalo.get(tempo_rx, Interval.in_daily)
-        with st.spinner(f"Construindo as Caixas de {ativo_rx} via tvDatafeed..."):
+        with st.spinner(f"Construindo as Caixas de {ativo_rx} via Bunker..."):
             try:
-                df_full = tv.get_hist(symbol=ativo_rx.replace('.SA', ''), exchange='BMFBOVESPA', interval=intervalo_tv_rx, n_bars=5000)
+                # SUBSTITUÍDO tv.get_hist PELO BUNKER
+                df_full = puxar_dados_blindados(ativo_rx, tempo_rx)
                 
                 if df_full is not None and len(df_full) > 50:
-                    df_full.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close'}, inplace=True)
+                    # Padronizando colunas para manter a compatibilidade com a sua lógica original
+                    if isinstance(df_full.columns, pd.MultiIndex): df_full.columns = df_full.columns.get_level_values(0)
+                    df_full.columns = [c.capitalize() for c in df_full.columns]
                     df_full = df_full.dropna()
                     
                     df_full = calcular_darvas(df_full, periodo_caixa=periodo_caixa_rx)
@@ -374,11 +361,14 @@ with aba_individual:
 
                         st.divider()
                         st.markdown(f"### 📈 Gráfico Interativo: {ativo_rx}")
-                        renderizar_grafico_tv(f"BMFBOVESPA:{ativo_rx}")
-                        st.info("💡 **Dica para o Gráfico:** No TradingView acima, clique no ícone de Indicadores e pesquise por 'Darvas Box' para visualizar as caixas desenhadas na tela.")
+                        # SUBSTITUÍDO: renderizar_grafico_tv PELO PLOTLY
+                        corte_grafico = df_ativo.tail(250)
+                        df_trades_plot = pd.DataFrame(trades_fechados) if trades_fechados else pd.DataFrame()
+                        st.plotly_chart(plotar_darvas_plotly(corte_grafico, df_trades_plot, mostrar_grafico_rx), use_container_width=True)
+                        st.info("💡 **Dica:** O gráfico acima desenha o Teto e o Piso da Caixa de Darvas. O rompimento do teto (linha verde) dispara a entrada.")
                     else:
                         st.error("Sem dados suficientes no período de corte.")
                 else:
-                    st.error("Não foi possível coletar dados do TradingView para este ativo.")
+                    st.error("Não foi possível coletar dados do Bunker para este ativo.")
             except Exception as e:
-                st.error(f"Erro no processamento via tvDatafeed: {e}")
+                st.error(f"Erro no processamento via Bunker: {e}")
