@@ -1,14 +1,4 @@
 import streamlit as st
-import pandas as pd
-import pandas_ta as ta
-import numpy as np
-import sys
-import os
-import warnings
-from datetime import datetime
-
-warnings.filterwarnings('ignore')
-import streamlit as st
 from tvDatafeed import TvDatafeed, Interval
 import streamlit.components.v1 as components
 import pandas as pd
